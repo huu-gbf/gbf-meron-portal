@@ -66,7 +66,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="text-left">
-              <label htmlFor="crewPassword" class="block text-xs font-semibold text-slate-300 mb-1">
+              <label htmlFor="crewPassword" className="block text-xs font-semibold text-slate-300 mb-1">
                 合言葉 / 団員パスワード
               </label>
               <input
@@ -78,9 +78,6 @@ export const AuthGate: React.FC<AuthGateProps> = ({
                 required
                 className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition"
               />
-              <p className="text-xs text-slate-500 mt-2">
-                ※ 初期設定パスワード: <code className="text-amber-300 bg-slate-800 px-1.5 py-0.5 rounded font-mono">[REMOVED]</code>
-              </p>
             </div>
 
             {error && (
