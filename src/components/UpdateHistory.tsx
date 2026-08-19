@@ -5,9 +5,17 @@ import { UpdateHistoryItem } from '@/types';
 
 const UPDATE_LOGS: UpdateHistoryItem[] = [
   {
+    id: '3',
+    date: '2026/08/20',
+    category: 'ポータル改善',
+    title: '古戦場周回効率計算機を統合',
+    description: 'ポータル内から古戦場周回効率計算機（貢献度時速・必要肉数・目標逆算）へアクセスできるようツールを統合しました。',
+    author: ''
+  },
+  {
     id: '2',
     date: '2026/08/20',
-    category: '更新',
+    category: '団ルール',
     title: '団規則に傭兵の項目追加',
     description: '団規約等の欄に「傭兵 ノルマ（募集する時期などにより変動あり、現在は10万位以内）」を追加しました。',
     author: ''
@@ -35,18 +43,26 @@ export const UpdateHistory: React.FC = () => {
 
       {/* Timeline list */}
       <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
-        {UPDATE_LOGS.map((item) => (
+        {UPDATE_LOGS.map((item, index) => (
           <div key={item.id} className="relative">
             {/* Timeline Dot */}
-            <span className="absolute -left-6 top-1.5 w-4 h-4 rounded-full border-4 border-slate-950 bg-amber-400 shadow-md shadow-amber-500/40" />
+            <span className={`absolute -left-6 top-1.5 w-4 h-4 rounded-full border-4 border-slate-950 ${
+              index === 0 ? 'bg-amber-400 shadow-md shadow-amber-500/40' : 'bg-slate-500'
+            }`} />
 
             <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
                   {item.date}
                 </span>
-                <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
-                  運用開始
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                  item.category === '開設'
+                    ? 'bg-emerald-500/20 text-emerald-300'
+                    : item.category === '団ルール'
+                    ? 'bg-cyan-500/20 text-cyan-300'
+                    : 'bg-amber-500/20 text-amber-300'
+                }`}>
+                  {item.category}
                 </span>
                 <strong className="text-sm font-bold text-white">
                   {item.title}
