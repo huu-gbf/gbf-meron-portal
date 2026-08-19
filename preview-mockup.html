@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>騎空団ポータル | Granblue Fantasy Crew Hub</title>
+  <meta name="description" content="グラブル騎空団員30名専用の閲覧用ポータルサイトモックアップ">
+  <!-- Tailwind CSS (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            gbf: {
+              dark: '#0a0e1a',
+              card: '#121829',
+              border: '#242f4c',
+              gold: '#f5c842',
+              goldHover: '#ffd866',
+              cyan: '#38bdf8',
+              accent: '#e11d48'
+            }
+          },
+          fontFamily: {
+            display: ['"Outfit"', 'sans-serif'],
+            sans: ['"Noto Sans JP"', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background-color: #080b14;
+      color: #f1f5f9;
+      font-family: 'Noto Sans JP', sans-serif;
+      overflow-x: hidden;
+    }
+    .stars-bg {
+      position: fixed;
+      inset: 0;
+      background-image: 
+        radial-gradient(1.5px 1.5px at 20px 30px, #ffffff, rgba(0,0,0,0)),
+        radial-gradient(1px 1px at 40px 70px, #fde047, rgba(0,0,0,0)),
+        radial-gradient(2px 2px at 90px 40px, #38bdf8, rgba(0,0,0,0)),
+        radial-gradient(1.5px 1.5px at 160px 120px, #ffffff, rgba(0,0,0,0)),
+        radial-gradient(1px 1px at 230px 190px, #fde047, rgba(0,0,0,0));
+      background-repeat: repeat;
+      background-size: 300px 300px;
+      opacity: 0.3;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .glow-effect {
+      box-shadow: 0 0 25px -5px rgba(245, 200, 66, 0.15);
+    }
+    .glass-panel {
+      background: rgba(18, 24, 41, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+    }
+  </style>
+</head>
+<body class="min-h-screen relative pb-16">
+  <div class="stars-bg"></div>
+
+  <!-- =========================================================
+       1. パスワード認証画面（未認証時に表示）
+  ========================================================= -->
+  <div id="authScreen" class="relative z-10 min-h-screen flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md p-8 rounded-2xl glow-effect text-center relative overflow-hidden">
+      <!-- Top Decorative Emblem -->
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 p-0.5 flex items-center justify-center shadow-lg shadow-amber-500/20">
+        <div class="w-full h-full bg-[#0a0e1a] rounded-full flex items-center justify-center text-2xl">
+          ⚔️
+        </div>
+      </div>
+
+      <span class="inline-block px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-full tracking-wider mb-2">
+        GRANBLUE FANTASY CREW
+      </span>
+      <h1 class="text-2xl font-bold text-white mb-2">騎空団ポータル</h1>
+      <p class="text-slate-400 text-sm mb-6">団員専用ページです。合言葉（パスワード）を入力して入場してください。</p>
+
+      <form id="authForm" class="space-y-4" onsubmit="handleAuth(event)">
+        <div class="text-left">
+          <label for="crewPassword" class="block text-xs font-semibold text-slate-300 mb-1">合言葉 / 団員パスワード</label>
+          <div class="relative">
+            <input 
+              type="password" 
+              id="crewPassword" 
+              placeholder="合言葉を入力..." 
+              required
+              class="w-full bg-slate-900/90 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition"
+            />
+            <span class="absolute right-3 top-3.5 text-slate-500 text-sm">🔒</span>
+          </div>
+        </div>
+
+        <div id="authError" class="hidden text-rose-400 text-xs bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5">
+          パスワードが正しくありません。団長にお問い合わせください。
+        </div>
+
+        <button 
+          type="submit" 
+          class="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold py-3 px-4 rounded-xl shadow-lg shadow-amber-500/25 transition transform active:scale-95 flex items-center justify-center gap-2"
+        >
+          <span>団員認証して入室</span>
+          <span>→</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       2. メインポータル画面（認証後に表示）
+  ========================================================= -->
+  <div id="portalScreen" class="hidden relative z-10">
+    <!-- Navigation Bar -->
+    <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+      <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">⚔️</span>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-white tracking-wide text-lg">めろ～ん王国</h1>
+            <span class="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full font-semibold">団員30名専用</span>
+          </div>
+        </div>
+
+        <!-- Right: Status and Logout -->
+        <div class="flex items-center gap-3">
+          <button 
+            onclick="handleLogout()" 
+            class="text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 transition"
+          >
+            ログアウト
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-6xl mx-auto px-4 pt-8">
+      
+      <!-- Top Info Banner -->
+      <div class="glass-panel rounded-2xl p-6 mb-8 relative overflow-hidden glow-effect">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span class="inline-flex items-center gap-1.5 text-xs font-bold text-amber-400 mb-1">
+              <span>👑</span> 騎空団基本情報
+            </span>
+            <h2 class="text-xl sm:text-2xl font-black text-white">決戦！星の古戦場（光属性有利）準備期間中</h2>
+          </div>
+          <div class="grid grid-cols-3 gap-3 text-center min-w-[280px]">
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+              <span class="block text-[11px] text-slate-400">団員数</span>
+              <strong class="text-lg text-white font-bold">30 / 30</strong>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+              <span class="block text-[11px] text-slate-400">団グレード</span>
+              <strong class="text-lg text-amber-400 font-bold">SSS</strong>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3">
+              <span class="block text-[11px] text-slate-400">団サポ</span>
+              <strong class="text-lg text-cyan-400 font-bold">LvMAX</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="flex items-center gap-2 border-b border-slate-800 mb-6 pb-2 overflow-x-auto">
+        <button onclick="switchTab('schedule')" id="tabBtn-schedule" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-amber-500 text-slate-950 whitespace-nowrap">
+          <span>📅</span>
+          <span>古戦場・イベント予定</span>
+        </button>
+        <button onclick="switchTab('notices')" id="tabBtn-notices" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
+          <span>📜</span>
+          <span>団規約等</span>
+        </button>
+        <button onclick="switchTab('recruit')" id="tabBtn-recruit" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
+          <span>📝</span>
+          <span>現在の団員募集内容</span>
+        </button>
+        <button onclick="switchTab('links')" id="tabBtn-links" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
+          <span>🔗</span>
+          <span>ツール</span>
+        </button>
+        <button onclick="switchTab('history')" id="tabBtn-history" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
+          <span>🔄</span>
+          <span>更新履歴</span>
+        </button>
+      </div>
+
+      <!-- =========================================================
+           TAB 1: 古戦場・イベントスケジュール
+      ========================================================= -->
+      <section id="tab-schedule" class="space-y-6">
+        <!-- Next UNF Schedule Timeline -->
+        <div class="glass-panel rounded-2xl p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 pb-3 border-b border-slate-800">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+              <span>⚔️</span> 次回「決戦！星の古戦場（光属性有利）」日程表
+            </h3>
+            <span class="text-xs px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-semibold font-mono">
+              全体期間: 09/21(月) 19:00 〜 09/28(月) 23:59
+            </span>
+          </div>
+
+          <div class="space-y-2.5">
+            <!-- 1. 予選 -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                <div>
+                  <strong class="text-white text-sm">予選</strong>
+                  <span class="text-xs text-amber-300 font-semibold block sm:inline sm:ml-2">※90HELL / 95HELL解禁</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">21日(月) 19:00 〜 22日(火) 23:59</span>
+            </div>
+
+            <!-- 2. 予選集計 -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/40 border border-slate-800/60 gap-2 opacity-80">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+                <div>
+                  <strong class="text-slate-300 text-sm">予選集計</strong>
+                  <span class="text-xs text-slate-400 block sm:inline sm:ml-2">集計期間</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-400 font-mono bg-slate-800/80 px-2.5 py-1 rounded">23日(水) 00:00 〜 23日(水) 06:59</span>
+            </div>
+
+            <!-- 3. インターバル -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                <div>
+                  <strong class="text-white text-sm">インターバル</strong>
+                  <span class="text-xs text-slate-400 block sm:inline sm:ml-2">肉集め＆トリガー確保</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">23日(水) 07:00 〜 24日(木) 06:59</span>
+            </div>
+
+            <!-- 4. 本戦 1戦目 -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                <div>
+                  <strong class="text-white text-sm">本戦 1戦目</strong>
+                  <span class="text-xs text-amber-300 font-semibold block sm:inline sm:ml-2">※100HELL / 150HELL解禁</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">24日(木) 07:00 〜 24日(木) 23:59</span>
+            </div>
+
+            <!-- 5. 本戦 2戦目 -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                <div>
+                  <strong class="text-white text-sm">本戦 2戦目</strong>
+                  <span class="text-xs text-amber-300 font-semibold block sm:inline sm:ml-2">※200HELL解禁</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">25日(金) 07:00 〜 25日(金) 23:59</span>
+            </div>
+
+            <!-- 6. 本戦 3戦目 -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
+                <div>
+                  <strong class="text-white text-sm">本戦 3戦目</strong>
+                  <span class="text-xs text-rose-300 font-semibold block sm:inline sm:ml-2">※250HELL解禁</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">26日(土) 07:00 〜 26日(土) 23:59</span>
+            </div>
+
+            <!-- 7. 本戦 4戦目 -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                <div>
+                  <strong class="text-white text-sm">本戦 4戦目</strong>
+                  <span class="text-xs text-slate-400 block sm:inline sm:ml-2">最終決戦（250HELLノルマ日）</span>
+                </div>
+              </div>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">27日(日) 07:00 〜 27日(日) 23:59</span>
+            </div>
+
+            <!-- 8. SPバトル -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 gap-2">
+              <div class="flex items-center gap-3">
+                <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                <div>
+                  <strong class="text-white text-sm">スペシャルバトル</strong>
+                  <span class="text-xs text-purple-300 font-semibold block sm:inline sm:ml-2">※ゼウス戦（討伐報酬獲得）</span>
+                </div>
+              </div>
+              <span class="text-xs text-purple-200 font-mono bg-slate-800 px-2.5 py-1 rounded">28日(月) 07:00 〜 28日(月) 23:59</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           TAB 2: 団規約等
+      ========================================================= -->
+      <section id="tab-notices" class="hidden space-y-4">
+        <!-- Normal Notice 1: 古戦場 -->
+        <div class="glass-panel rounded-2xl p-5 hover:border-slate-700 transition">
+          <div class="flex items-start justify-between gap-4 mb-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-xs font-bold rounded-md">古戦場</span>
+              <h3 class="text-base font-bold text-white">次回光有利古戦場の個人ノルマ・目標について</h3>
+            </div>
+          </div>
+          <div class="text-slate-300 text-sm leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-2">
+            <p>4戦目に250HELLを20体以上討伐またはそれに相当する貢献度15億稼ぐ、本戦最終順位個人10万位以内（連期割れで除名対象)。</p>
+          </div>
+        </div>
+
+        <!-- Normal Notice 2: ドレッドバラージュ -->
+        <div class="glass-panel rounded-2xl p-5 hover:border-slate-700 transition">
+          <div class="flex items-start justify-between gap-4 mb-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-xs font-bold rounded-md">ドレッドバラージュ</span>
+              <h3 class="text-base font-bold text-white">ドレッドバラージュの目標・ノルマについて</h3>
+            </div>
+          </div>
+          <div class="text-slate-300 text-sm leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-2">
+            <p>最大報酬獲得に必要なものの1/30(150万貢献度)⇚※ドレッドバラージュのみ参加の人はこの条件だけでOK</p>
+          </div>
+        </div>
+
+        <!-- Normal Notice 3: 禁止事項 -->
+        <div class="glass-panel rounded-2xl p-5 hover:border-rose-500/30 transition border-rose-500/20">
+          <div class="flex items-start justify-between gap-4 mb-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2 py-0.5 bg-rose-500/20 text-rose-300 text-xs font-bold rounded-md">団規約</span>
+              <h3 class="text-base font-bold text-white">禁止事項</h3>
+            </div>
+          </div>
+          <div class="text-slate-300 text-sm leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-1.5">
+            <p>・ノルマ２期連続達成失敗</p>
+            <p>・３日以上の連続非ログイン</p>
+            <p>・4日以上応答なし</p>
+            <p>・報連相ができない、やる気がないと感じる等が重なった場合、こちらの裁量で退団処理の可能性があります。</p>
+          </div>
+        </div>
+
+        <!-- Normal Notice 4: マルチのルール -->
+        <div class="glass-panel rounded-2xl p-5 hover:border-slate-700 transition">
+          <div class="flex items-start justify-between gap-4 mb-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-xs font-bold rounded-md">マルチ</span>
+              <h3 class="text-base font-bold text-white">マルチのルール</h3>
+            </div>
+          </div>
+          <div class="text-slate-300 text-sm leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-2">
+            <p>団に救援を流す際は、他参戦者が戦闘不能or動けなくなる場合、自身が戦闘不能となるまでは行動し、外部救援も活用し速やかな討伐に努め放置しないこと</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           TAB 3: 現在の団員募集内容
+      ========================================================= -->
+      <section id="tab-recruit" class="hidden space-y-6">
+        <div class="glass-panel rounded-2xl p-6 sm:p-8">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-xs font-bold">騎空団員募集</span>
+                <span class="text-xs text-slate-400">最新要項</span>
+              </div>
+              <h3 class="text-xl font-bold text-white">めろ～ん王国 団員募集要項</h3>
+            </div>
+            <button 
+              onclick="copyRecruitText()" 
+              id="copyRecruitBtn"
+              class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 whitespace-nowrap"
+            >
+              <span>📋</span>
+              <span id="copyRecruitTextLabel">募集全文をコピー</span>
+            </button>
+          </div>
+
+          <!-- Basic Info Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+              <span class="block text-xs text-slate-400">騎空団名</span>
+              <strong class="text-base text-white font-bold">めろ～ん王国</strong>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+              <span class="block text-xs text-slate-400">団長ID（ゆかり愛）</span>
+              <strong class="text-base text-amber-300 font-mono font-bold">804235</strong>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+              <span class="block text-xs text-slate-400">勧誘担当ID</span>
+              <strong class="text-base text-cyan-300 font-mono font-bold">15436050</strong>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+              <span class="block text-xs text-slate-400">団員の平均ランク</span>
+              <strong class="text-base text-white font-bold">425</strong>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+              <span class="block text-xs text-slate-400">団員数</span>
+              <strong class="text-base text-white font-bold">現在30名</strong>
+            </div>
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+              <span class="block text-xs text-slate-400">団サポート</span>
+              <strong class="text-xs text-slate-200 block mt-1">ポーション・風見鶏・銅鑼・虹炉・机</strong>
+            </div>
+          </div>
+
+          <!-- Full Text Card -->
+          <div class="bg-slate-950/80 border border-slate-800/90 rounded-xl p-5 text-sm text-slate-200 leading-relaxed font-sans whitespace-pre-wrap select-all font-mono text-[13px]" id="recruitRawText">はじめまして！めろ～ん王国団長のゆかり愛といいます。フリーランで予選300位以内平均3勝以上で安定してる団です。よろしければぜひご検討ください！
+
+※条件 ノルマ＋実装済みオリジンジョブレベル５０を間に合わせれる、ヴェルサシア挑戦済みもしくは挑戦する気のある、かつやる気のある方
+
+【騎空団名】 めろ～ん王国
+【団長ID】804235
+【勧誘担当ID】 15436050　※団長かどちらかに言ってもらえればOKです！
+【団員の平均ランク】425
+【施設(船LV/サポート)】サポート：ポーション、風見鶏、銅鑼、虹炉、勉強机
+【団員数】 現在30名
+
+【古戦場】
+・予選は出来るだけ200位あたりで着地したいので余裕のあるメンバーで調整しています。
+
+・勝ちは常に目指していますが、敗色濃厚な場合は出来るだけ早期に撤退、その後は古戦場周回でも日課でも自由になります。
+
+・勝敗が早期に判明するような相手団に対しては目標貢献度を設定しその貢献度を超えたら古戦場以外の日課なども自由になります。
+
+・納品ボックスに関しては各自自由
+
+・接戦時は各自が出来る範囲で協力お願いします
+
+低空指示の強制はありませんが余裕のある人が１、２戦目に貢献度を抑えてくれているので成績も予選300位以内で平均3勝以上で安定してます。
+
+【団マルチ】 ヴェルサシアやる気があるけど、未挑戦の人には挑戦のフォローをしています。また、古戦場向けのヴェルサシアの恩寵キャリーも積極的に行っています！（キャリーの内容については、キャラ装備不足していても行けるものを各自に説明しますのでご安心を）
+
+☆前回は火破壊武器5凸22名達成☆
+
+ヴェルサシア(まだ1名)、天元、ルシゼロおすそ分けを流してくれている人も団に何人かいます！！
+
+・古戦場前に要請があったとき、古戦場参戦可能な予定（日ごとに何時から何時という形で)をシート記入または団長挨拶欄へ連絡をお願いしてます。※あくまで団アビ発動時間等作戦の参考にするため
+
+☆ノルマ
+4戦目に250HELLを20体以上討伐またはそれに相当する貢献度15億稼ぐ、本戦最終順位個人10万位以内（連期割れで除名対象)、
+
+・ドレッドバラージュ最大報酬獲得に必要なものの1/30(150万貢献度)⇚※ドレッドバラージュのみ参加の人はこの条件だけでOK
+
+※禁止事項
+・ノルマ２期連続達成失敗
+・３日以上の連続非ログイン
+・4日以上応答なし
+・報連相ができない、やる気がないと感じる等が重なった場合、こちらの裁量で退団処理の可能性があります。
+
+ルール
+・団に救援を流す際は、他参戦者が戦闘不能or動けなくなる場合、自身が戦闘不能となるまでは行動し、外部救援も活用し速やかな討伐に努め放置しないこと
+
+【外部ツール】※非強制
+・スプレッドシート
+・Xツイッター(スプレッドシートのURL案内用)※個人的なDM等もすることもあるかもしれません
+
+以上です。ご質問などあればお気軽にどうぞ。
+ご連絡お待ちしておりますm(_ _)m</div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           TAB 4: ツール（外部リンク集）
+      ========================================================= -->
+      <section id="tab-links" class="hidden">
+        <div class="max-w-2xl mx-auto">
+          <!-- UNF Speed Calculator (Created Tool) -->
+          <a href="../時速ツール/index.html" target="_blank" rel="noopener noreferrer" class="glass-panel rounded-2xl p-6 sm:p-8 hover:border-amber-400 transition group border-amber-500/40 block shadow-xl shadow-amber-500/5 hover:shadow-amber-500/15">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center text-3xl group-hover:scale-110 transition shadow-lg shadow-amber-500/10">
+                ⏱️
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h4 class="text-xl font-bold text-white group-hover:text-amber-300 transition">古戦場 周回効率計算機</h4>
+                  <span class="text-xs px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full font-bold">騎空団専用ツール</span>
+                </div>
+                <span class="text-xs text-slate-400">90HELL〜250HELL対応 / 貢献度時速・必要肉数・目標逆算</span>
+              </div>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+              討伐秒数とロード硬直時間を入力するだけで、1時間あたりの貢献度時速・周回数・消費肉数を自動計算します。目標貢献度（10億など）からの逆算や全難易度の時速比較機能も搭載しています。
+            </p>
+            <div class="mt-4 flex items-center justify-end text-xs font-bold text-amber-400 group-hover:translate-x-1 transition gap-1">
+              <span>ツールを開く</span>
+              <span>→</span>
+            </div>
+          </a>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           TAB 4: 🔄 更新履歴 (Changelog)
+      ========================================================= -->
+      <section id="tab-history" class="hidden space-y-4">
+        <div class="glass-panel rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-6 pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🔄</span>
+              <h3 class="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
+            </div>
+            <span class="text-xs text-slate-400">最終更新: 2026/08/19</span>
+          </div>
+
+          <!-- Timeline list -->
+          <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
+            
+            <!-- Log Item 1 (Today Start) -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/19</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">運用開始</span>
+                  <strong class="text-sm font-bold text-white">めろ～ん王国 ポータルサイト運用開始</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  本日より騎空団専用ポータルサイトの運用を開始しました。
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    const DEFAULT_PASS = 'gbf2026';
+    const STORAGE_KEY = 'gbf_crew_auth';
+
+    // Check Auth State on Load
+    document.addEventListener('DOMContentLoaded', () => {
+      const isAuth = localStorage.getItem(STORAGE_KEY);
+      if (isAuth === 'true') {
+        showPortal();
+      } else {
+        showAuth();
+      }
+    });
+
+    function handleAuth(e) {
+      e.preventDefault();
+      const input = document.getElementById('crewPassword').value.trim();
+      const errorDiv = document.getElementById('authError');
+
+      if (input === DEFAULT_PASS) {
+        localStorage.setItem(STORAGE_KEY, 'true');
+        errorDiv.classList.add('hidden');
+        showPortal();
+      } else {
+        errorDiv.classList.remove('hidden');
+      }
+    }
+
+    function handleLogout() {
+      localStorage.removeItem(STORAGE_KEY);
+      showAuth();
+    }
+
+    function showPortal() {
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('portalScreen').classList.remove('hidden');
+    }
+
+    function showAuth() {
+      document.getElementById('authScreen').classList.remove('hidden');
+      document.getElementById('portalScreen').classList.add('hidden');
+      document.getElementById('crewPassword').value = '';
+    }
+
+    function switchTab(tabId) {
+      // Hide all tabs
+      ['schedule', 'notices', 'recruit', 'links', 'history'].forEach(id => {
+        const tabEl = document.getElementById(`tab-${id}`);
+        if (tabEl) tabEl.classList.add('hidden');
+        const btn = document.getElementById(`tabBtn-${id}`);
+        if (btn) {
+          btn.classList.remove('bg-amber-500', 'text-slate-950');
+          btn.classList.add('text-slate-400');
+        }
+      });
+
+      // Show selected tab
+      const selectedTabEl = document.getElementById(`tab-${tabId}`);
+      if (selectedTabEl) selectedTabEl.classList.remove('hidden');
+      const activeBtn = document.getElementById(`tabBtn-${tabId}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('text-slate-400');
+        activeBtn.classList.add('bg-amber-500', 'text-slate-950');
+      }
+    }
+
+    function copyRecruitText() {
+      const rawText = document.getElementById('recruitRawText').innerText;
+      navigator.clipboard.writeText(rawText).then(() => {
+        const label = document.getElementById('copyRecruitTextLabel');
+        const originalText = label.innerText;
+        label.innerText = 'コピーしました！✨';
+        setTimeout(() => {
+          label.innerText = originalText;
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
