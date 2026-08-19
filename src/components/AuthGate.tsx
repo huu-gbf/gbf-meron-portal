@@ -4,39 +4,57 @@ import React, { useState, useEffect } from 'react';
 
 interface AuthGateProps {
   children: React.ReactNode;
-  correctPassword?: string;
+  correctPasswordHash?: string;
+}
+
+// '[REMOVED]' の SHA-256 ハッシュ値
+const DEFAULT_HASH = 'cc1d9af0bb9ac07141c3c53cf5b2ced53876a1d1239756fbb77628424921ef0d';
+const STORAGE_KEY = 'gbf_crew_auth_hash';
+
+async function sha256(text: string): Promise<string> {
+  const uint8 = new TextEncoder().encode(text);
+  const digestBuffer = await crypto.subtle.digest('SHA-256', uint8);
+  return Array.from(new Uint8Array(digestBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export const AuthGate: React.FC<AuthGateProps> = ({ 
   children, 
-  correctPassword = process.env.NEXT_PUBLIC_CREW_PASSWORD || '[REMOVED]' 
+  correctPasswordHash = process.env.NEXT_PUBLIC_CREW_PASSWORD_HASH || DEFAULT_HASH 
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [inputPassword, setInputPassword] = useState('');
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    const savedAuth = localStorage.getItem('gbf_crew_auth');
-    if (savedAuth === 'true') {
+    const savedAuth = localStorage.getItem(STORAGE_KEY);
+    if (savedAuth === correctPasswordHash) {
       setIsAuthenticated(true);
     } else {
       setIsAuthenticated(false);
     }
-  }, []);
+  }, [correctPasswordHash]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputPassword.trim() === correctPassword) {
-      localStorage.setItem('gbf_crew_auth', 'true');
-      setIsAuthenticated(true);
-      setError(false);
-    } else {
+    try {
+      const inputHash = await sha256(inputPassword.trim());
+      if (inputHash === correctPasswordHash) {
+        localStorage.setItem(STORAGE_KEY, correctPasswordHash);
+        setIsAuthenticated(true);
+        setError(false);
+      } else {
+        setError(true);
+      }
+    } catch (err) {
+      console.error('Hashing failed:', err);
       setError(true);
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('gbf_crew_auth');
+    localStorage.removeItem(STORAGE_KEY);
     setIsAuthenticated(false);
     setInputPassword('');
   };

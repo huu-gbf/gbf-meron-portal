@@ -7,9 +7,10 @@ import { ScheduleSection } from '@/components/ScheduleSection';
 import { RecruitSection } from '@/components/RecruitSection';
 import { LinksSection } from '@/components/LinksSection';
 import { UpdateHistory } from '@/components/UpdateHistory';
+import { DropRateCalculator } from '@/components/DropRateCalculator';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'schedule' | 'notices' | 'recruit' | 'links' | 'history'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'drops' | 'notices' | 'recruit' | 'links' | 'history'>('drops');
 
   return (
     <AuthGate>
@@ -44,6 +45,17 @@ export default function Home() {
 
         {/* Tab Buttons */}
         <div className="flex items-center gap-2 border-b border-slate-800 mb-6 pb-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('drops')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'drops'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>🎰</span>
+            <span>ドロップ率計算機</span>
+          </button>
           <button
             onClick={() => setActiveTab('schedule')}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${
@@ -102,6 +114,7 @@ export default function Home() {
         </div>
 
         {/* Tab Content */}
+        {activeTab === 'drops' && <DropRateCalculator />}
         {activeTab === 'schedule' && <ScheduleSection />}
         {activeTab === 'notices' && <NoticeBoard />}
         {activeTab === 'recruit' && <RecruitSection />}
