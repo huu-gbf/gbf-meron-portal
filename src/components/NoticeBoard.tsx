@@ -14,6 +14,14 @@ const INITIAL_NOTICES: Notice[] = [
   },
   {
     id: '2',
+    title: '傭兵　ノルマ',
+    category: '古戦場',
+    author: '',
+    date: '',
+    content: `募集する時期などにより変動あり、現在は10万位以内`
+  },
+  {
+    id: '3',
     title: 'ドレッドバラージュの目標・ノルマについて',
     category: 'ドレバラ',
     author: '',
@@ -21,7 +29,7 @@ const INITIAL_NOTICES: Notice[] = [
     content: `最大報酬獲得に必要なものの1/30(150万貢献度)⇚※ドレッドバラージュのみ参加の人はこの条件だけでOK`
   },
   {
-    id: '3',
+    id: '4',
     title: '禁止事項',
     category: '団規約',
     author: '',
@@ -32,7 +40,7 @@ const INITIAL_NOTICES: Notice[] = [
 ・報連相ができない、やる気がないと感じる等が重なった場合、こちらの裁量で退団処理の可能性があります。`
   },
   {
-    id: '4',
+    id: '5',
     title: 'マルチのルール',
     category: 'マルチ',
     author: '',
