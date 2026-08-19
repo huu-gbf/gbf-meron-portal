@@ -8,7 +8,6 @@ const RECRUIT_TEXT = `はじめまして！めろ～ん王国団長のゆかり�
 
 【騎空団名】 めろ～ん王国
 【団長ID】804235
-【勧誘担当ID】 15436050　※団長かどちらかに言ってもらえればOKです！
 【団員の平均ランク】425
 【施設(船LV/サポート)】サポート：ポーション、風見鶏、銅鑼、虹炉、勉強机
 【団員数】 現在30名
@@ -97,10 +96,6 @@ export const RecruitSection: React.FC = () => {
           <strong className="text-base text-amber-300 font-mono font-bold">804235</strong>
         </div>
         <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5">
-          <span className="block text-xs text-slate-400">勧誘担当ID</span>
-          <strong className="text-base text-cyan-300 font-mono font-bold">15436050</strong>
-        </div>
-        <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5">
           <span className="block text-xs text-slate-400">団員の平均ランク</span>
           <strong className="text-base text-white font-bold">425</strong>
         </div>
@@ -108,7 +103,7 @@ export const RecruitSection: React.FC = () => {
           <span className="block text-xs text-slate-400">団員数</span>
           <strong className="text-base text-white font-bold">現在30名</strong>
         </div>
-        <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5">
+        <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 sm:col-span-2 md:col-span-2">
           <span className="block text-xs text-slate-400">団サポート</span>
           <strong className="text-xs text-slate-200 block mt-1">ポーション・風見鶏・銅鑼・虹炉・机</strong>
         </div>
