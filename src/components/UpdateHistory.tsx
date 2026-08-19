@@ -5,6 +5,14 @@ import { UpdateHistoryItem } from '@/types';
 
 const UPDATE_LOGS: UpdateHistoryItem[] = [
   {
+    id: '2',
+    date: '2026/08/20',
+    category: '更新',
+    title: '団規則に傭兵の項目追加',
+    description: '団規約等の欄に「傭兵 ノルマ（募集する時期などにより変動あり、現在は10万位以内）」を追加しました。',
+    author: ''
+  },
+  {
     id: '1',
     date: '2026/08/19',
     category: '開設',
@@ -22,7 +30,7 @@ export const UpdateHistory: React.FC = () => {
           <span className="text-xl">🔄</span>
           <h3 className="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
         </div>
-        <span className="text-xs text-slate-400">最終更新: 2026/08/19</span>
+        <span className="text-xs text-slate-400">最終更新: 2026/08/20</span>
       </div>
 
       {/* Timeline list */}
