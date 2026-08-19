@@ -5,13 +5,22 @@ import { ExternalLink } from '@/types';
 
 const TOOLS: ExternalLink[] = [
   {
+    id: 'drop_calc',
+    title: 'ドロップ率計算機',
+    category: '新ツール',
+    description: '雫(Lv×CP) × トレハン × 風見鶏(1.2倍) × (1.0 + 装備/石/キャラ/大事なもの加算) の正確な計算式で最終倍率をリアルタイム算出。ヒヒイロカネや刻の流砂などのアイテム基礎確率を入力すると、1個ドロップに必要な平均周回数や95%確率ラインも逆算できます。',
+    url: 'drop-calculator.html',
+    icon: '🎰',
+    highlight: true
+  },
+  {
     id: '1',
     title: '古戦場 周回効率計算機',
     category: '騎空団専用ツール',
     description: '討伐秒数とロード硬直時間を入力するだけで、1時間あたりの貢献度時速・周回数・消費肉数を自動計算します。目標貢献度（10億など）からの逆算や全難易度の時速比較機能も搭載しています。',
     url: '../時速ツール/index.html',
     icon: '⏱️',
-    highlight: true
+    highlight: false
   }
 ];
 

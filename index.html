@@ -485,11 +485,34 @@
            TAB 4: ツール（外部リンク集）
       ========================================================= -->
       <section id="tab-links" class="hidden">
-        <div class="max-w-2xl mx-auto">
-          <!-- UNF Speed Calculator (Created Tool) -->
-          <a href="../時速ツール/index.html" target="_blank" rel="noopener noreferrer" class="glass-panel rounded-2xl p-6 sm:p-8 hover:border-amber-400 transition group border-amber-500/40 block shadow-xl shadow-amber-500/5 hover:shadow-amber-500/15">
+        <div class="max-w-2xl mx-auto space-y-4">
+          <!-- Drop Rate Calculator -->
+          <a href="drop-calculator.html" target="_blank" rel="noopener noreferrer" class="glass-panel rounded-2xl p-6 sm:p-8 hover:border-amber-400 transition group border-amber-500/40 block shadow-xl shadow-amber-500/5 hover:shadow-amber-500/15">
             <div class="flex items-center gap-4 mb-4">
               <div class="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center text-3xl group-hover:scale-110 transition shadow-lg shadow-amber-500/10">
+                🎰
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h4 class="text-xl font-bold text-white group-hover:text-amber-300 transition">ドロップ率計算機</h4>
+                  <span class="text-xs px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full font-bold">新ツール</span>
+                </div>
+                <span class="text-xs text-slate-400">雫・トレハン・両面カグヤ・エッセル対応 / 実効確率シミュレーター</span>
+              </div>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+              雫(Lv×CP) × トレハン × 風見鶏(1.2倍) × (1.0 + 装備/石/キャラ/大事なもの加算) の正確な計算式で最終倍率をリアルタイム算出。ヒヒイロカネや刻の流砂などのアイテム基礎確率を入力すると、1個ドロップに必要な平均周回数や95%確率ラインも逆算できます。
+            </p>
+            <div class="mt-4 flex items-center justify-end text-xs font-bold text-amber-400 group-hover:translate-x-1 transition gap-1">
+              <span>ツールを開く</span>
+              <span>→</span>
+            </div>
+          </a>
+
+          <!-- UNF Speed Calculator (Created Tool) -->
+          <a href="../時速ツール/index.html" target="_blank" rel="noopener noreferrer" class="glass-panel rounded-2xl p-6 sm:p-8 hover:border-amber-400 transition group border-slate-800 hover:border-amber-500/40 block shadow-xl">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-14 h-14 rounded-2xl bg-slate-800 text-amber-300 border border-slate-700 flex items-center justify-center text-3xl group-hover:scale-110 transition shadow-lg">
                 ⏱️
               </div>
               <div>
@@ -550,29 +573,48 @@
   </div>
 
   <script>
-    const DEFAULT_PASS = 'gbf2026';
-    const STORAGE_KEY = 'gbf_crew_auth';
+    // パスワードのSHA-256ハッシュ値（初期値: 'gbf2026' のハッシュ）
+    // 平文のパスワードはコード内に持たせません
+    const CORRECT_HASH = 'cc1d9af0bb9ac07141c3c53cf5b2ced53876a1d1239756fbb77628424921ef0d';
+    const STORAGE_KEY = 'gbf_crew_auth_hash';
+
+    // 文字列をSHA-256ハッシュ化する関数（Web Crypto APIを利用）
+    async function sha256(text) {
+      const uint8 = new TextEncoder().encode(text);
+      const digestBuffer = await crypto.subtle.digest('SHA-256', uint8);
+      return Array.from(new Uint8Array(digestBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
 
     // Check Auth State on Load
     document.addEventListener('DOMContentLoaded', () => {
-      const isAuth = localStorage.getItem(STORAGE_KEY);
-      if (isAuth === 'true') {
+      const savedHash = localStorage.getItem(STORAGE_KEY);
+      // 保存されたハッシュ値が一致していれば認証済みにする
+      if (savedHash === CORRECT_HASH) {
         showPortal();
       } else {
         showAuth();
       }
     });
 
-    function handleAuth(e) {
+    async function handleAuth(e) {
       e.preventDefault();
       const input = document.getElementById('crewPassword').value.trim();
       const errorDiv = document.getElementById('authError');
 
-      if (input === DEFAULT_PASS) {
-        localStorage.setItem(STORAGE_KEY, 'true');
-        errorDiv.classList.add('hidden');
-        showPortal();
-      } else {
+      try {
+        const inputHash = await sha256(input);
+        if (inputHash === CORRECT_HASH) {
+          localStorage.setItem(STORAGE_KEY, CORRECT_HASH);
+          errorDiv.classList.add('hidden');
+          showPortal();
+        } else {
+          errorDiv.classList.remove('hidden');
+        }
+      } catch (err) {
+        console.error('Hashing error:', err);
+        errorDiv.textContent = '認証処理中にエラーが発生しました。';
         errorDiv.classList.remove('hidden');
       }
     }
