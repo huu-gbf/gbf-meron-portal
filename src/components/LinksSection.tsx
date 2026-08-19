@@ -18,7 +18,7 @@ const TOOLS: ExternalLink[] = [
     title: '古戦場 周回効率計算機',
     category: '騎空団専用ツール',
     description: '討伐秒数とロード硬直時間を入力するだけで、1時間あたりの貢献度時速・周回数・消費肉数を自動計算します。目標貢献度（10億など）からの逆算や全難易度の時速比較機能も搭載しています。',
-    url: 'speed-calculator.html',
+    url: 'speed-calculator-folder/speed-calculator.html',
     icon: '⏱️',
     highlight: false
   }
