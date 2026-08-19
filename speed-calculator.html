@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>古戦場 周回効率計算ツール | Granblue Fantasy UNF Calculator</title>
+  <meta name="description" content="グランブルーファンタジー（グラブル）の決戦！星の古戦場におけるHELL難易度別貢献度時速・周回数・必要肉数・目標逆算を瞬時にシミュレーションできる高機能計算機。">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+/* =========================================================
+   星の古戦場 周回効率計算ツール Design System
+   Theme: Celestial Fantasy Dark Mode (Navy & Gold Accent)
+========================================================= */
+
+:root {
+  --bg-primary: #090c15;
+  --bg-secondary: #0f1527;
+  --card-bg: rgba(18, 26, 48, 0.7);
+  --card-bg-hover: rgba(26, 38, 70, 0.85);
+  --card-border: rgba(212, 175, 55, 0.22);
+  --card-border-glow: rgba(255, 215, 0, 0.45);
+  
+  --gold-primary: #f5c842;
+  --gold-light: #ffe58f;
+  --gold-dark: #b8860b;
+  --gold-gradient: linear-gradient(135deg, #ffe066 0%, #f5c842 50%, #d49a15 100%);
+  
+  --cyan-primary: #38bdf8;
+  --cyan-glow: rgba(56, 189, 248, 0.4);
+  --purple-glow: rgba(168, 85, 247, 0.3);
+  
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-sub: #cbd5e1;
+  --text-gold: #fde047;
+  
+  --accent-red: #f43f5e;
+  --accent-green: #10b981;
+  
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  
+  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.6), 0 0 15px rgba(245, 200, 66, 0.08);
+  --shadow-glow: 0 0 25px rgba(245, 200, 66, 0.25);
+  --shadow-cyan-glow: 0 0 25px rgba(56, 189, 248, 0.25);
+  
+  --font-main: 'Noto Sans JP', sans-serif;
+  --font-display: 'Outfit', sans-serif;
+  --font-numbers: 'Space Grotesk', 'Outfit', sans-serif;
+  --font-serif: 'Cinzel', serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: var(--font-main);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* Background Atmosphere */
+.stars-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(1.5px 1.5px at 20px 30px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 40px 70px, #fde047, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 90px 40px, #38bdf8, rgba(0,0,0,0)),
+    radial-gradient(1.5px 1.5px at 160px 120px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(1px 1px at 230px 190px, #fde047, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 300px 80px, #a855f7, rgba(0,0,0,0));
+  background-repeat: repeat;
+  background-size: 350px 350px;
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.glow-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.orb-1 {
+  width: 500px;
+  height: 500px;
+  top: -150px;
+  right: -100px;
+  background: radial-gradient(circle, rgba(212, 175, 55, 0.15) 0%, rgba(56, 189, 248, 0.05) 70%, transparent 100%);
+  animation: floatOrb 18s ease-in-out infinite alternate;
+}
+
+.orb-2 {
+  width: 600px;
+  height: 600px;
+  bottom: -200px;
+  left: -150px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.05) 70%, transparent 100%);
+  animation: floatOrb 22s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes floatOrb {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, 30px) scale(1.1); }
+  100% { transform: translate(-30px, -20px) scale(0.95); }
+}
+
+/* Glass Card Component */
+.glass-card {
+  background: var(--card-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.glow-border {
+  border-color: rgba(245, 200, 66, 0.4);
+  box-shadow: 0 10px 35px -5px rgba(0, 0, 0, 0.7), 0 0 20px rgba(245, 200, 66, 0.18);
+}
+
+/* Main Layout */
+.app-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Header Nav */
+.header-nav-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.back-to-portal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(20, 30, 55, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--text-sub);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: all 0.2s ease;
+}
+
+.back-to-portal-btn:hover {
+  background: rgba(30, 45, 80, 0.95);
+  border-color: var(--gold-primary);
+  color: #fff;
+  transform: translateX(-2px);
+}
+
+/* Header */
+.app-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 200, 66, 0.12);
+  border: 1px solid rgba(245, 200, 66, 0.3);
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--gold-light);
+}
+
+.badge-sub {
+  background: var(--gold-dark);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-family: var(--font-main);
+  letter-spacing: 0.5px;
+}
+
+.app-title {
+  font-family: var(--font-display), var(--font-main);
+  font-size: 2.3rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, #ffffff 30%, #ffd866 75%, #f5c842 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-top: 10px;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.app-subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  max-width: 650px;
+  margin: 0 auto;
+}
+
+/* Main Grid: Left inputs, Right results */
+.main-layout {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+@media (max-width: 960px) {
+  .main-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Panel Header */
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 12px;
+}
+
+.panel-header h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+  font-family: var(--font-display), var(--font-main);
+}
+
+.panel-icon {
+  font-size: 1.3rem;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-sub);
+  margin-bottom: 12px;
+}
+
+.label-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--gold-dark);
+  color: #000;
+  font-size: 0.75rem;
+  font-weight: 900;
+  font-family: var(--font-numbers);
+}
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.section-desc {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: -12px;
+  margin-bottom: 16px;
+}
+
+/* 1. HELL Selection Cards */
+.hell-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .hell-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.hell-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  background: rgba(15, 21, 39, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+
+.hell-card:hover {
+  background: var(--card-bg-hover);
+  border-color: rgba(245, 200, 66, 0.4);
+  transform: translateY(-2px);
+}
+
+.hell-card.active {
+  background: linear-gradient(145deg, rgba(30, 41, 75, 0.9) 0%, rgba(45, 30, 80, 0.9) 100%);
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 16px rgba(245, 200, 66, 0.3), inset 0 0 12px rgba(245, 200, 66, 0.12);
+  transform: translateY(-2px);
+}
+
+.hell-tag {
+  position: absolute;
+  top: -7px;
+  right: 8px;
+  background: #334155;
+  color: #94a3b8;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.hell-tag.popular {
+  background: #e11d48;
+  color: #fff;
+}
+
+.hell-tag.final {
+  background: linear-gradient(90deg, #7c3aed, #d946ef);
+  color: #fff;
+}
+
+.hell-name {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+  margin-top: 2px;
+}
+
+.hell-card.active .hell-name {
+  color: var(--gold-light);
+}
+
+.hell-pt {
+  font-family: var(--font-numbers);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--cyan-primary);
+  margin-top: 2px;
+}
+
+.hell-meat {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* 2. Time Inputs */
+.time-inputs-wrapper {
+  background: rgba(10, 15, 28, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.time-input-dual {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.input-with-suffix {
+  display: flex;
+  align-items: center;
+  background: rgba(20, 30, 55, 0.9);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-with-suffix:focus-within {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 10px rgba(245, 200, 66, 0.3);
+}
+
+.input-with-suffix input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-family: var(--font-numbers);
+  font-size: 1.35rem;
+  font-weight: 700;
+  width: 55px;
+  text-align: right;
+  padding-right: 4px;
+}
+
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+.input-suffix {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.time-colon {
+  font-family: var(--font-numbers);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.total-sec-display {
+  font-family: var(--font-numbers);
+  color: var(--text-sub);
+  font-size: 0.95rem;
+}
+
+.total-sec-display span {
+  color: var(--gold-light);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+/* Preset Chips */
+.preset-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  background: rgba(30, 41, 68, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-sub);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-family: var(--font-numbers), var(--font-main);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chip:hover {
+  background: rgba(245, 200, 66, 0.15);
+  border-color: rgba(245, 200, 66, 0.4);
+  color: var(--gold-light);
+}
+
+.chip.active {
+  background: var(--gold-gradient);
+  border-color: var(--gold-primary);
+  color: #000;
+  font-weight: 700;
+}
+
+/* 3. Interval Slider */
+.interval-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.interval-value-badge {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: var(--cyan-primary);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: var(--font-numbers);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.slider-row input[type="range"] {
+  width: 100%;
+  height: 6px;
+  background: #1e293b;
+  border-radius: 3px;
+  outline: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.slider-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--cyan-primary);
+  box-shadow: 0 0 10px var(--cyan-primary);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.slider-row input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.slider-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.cycle-summary {
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  color: var(--text-sub);
+}
+
+.cycle-summary strong {
+  color: var(--cyan-primary);
+  font-family: var(--font-numbers);
+  font-size: 1.05rem;
+}
+
+/* =========================================================
+   Right Column: Main Results Card
+========================================================= */
+.results-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.main-result-card {
+  background: linear-gradient(160deg, rgba(20, 30, 58, 0.9) 0%, rgba(13, 19, 38, 0.95) 100%);
+  border: 1.5px solid rgba(245, 200, 66, 0.35);
+  position: relative;
+}
+
+.card-watermark {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.03);
+  user-select: none;
+  pointer-events: none;
+}
+
+.result-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.selected-hell-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.badge-pt-unit {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-family: var(--font-main);
+}
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--accent-green);
+  font-weight: 600;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 8px var(--accent-green);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+/* Primary Speed Box */
+.speed-primary-box {
+  background: radial-gradient(ellipse at center, rgba(245, 200, 66, 0.12) 0%, rgba(15, 22, 43, 0.6) 100%);
+  border: 1px solid rgba(245, 200, 66, 0.3);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  text-align: center;
+  margin-bottom: 20px;
+  box-shadow: inset 0 0 20px rgba(245, 200, 66, 0.05);
+}
+
+.speed-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.speed-number-wrapper {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.speed-main-num {
+  font-family: var(--font-numbers);
+  font-size: 3.5rem;
+  font-weight: 900;
+  line-height: 1;
+  background: var(--gold-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 10px rgba(245, 200, 66, 0.3));
+}
+
+.speed-unit {
+  font-family: var(--font-display), var(--font-main);
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--gold-light);
+}
+
+.speed-suffix {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.speed-exact-num {
+  font-family: var(--font-numbers);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Secondary Metrics Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.metric-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(10, 15, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.metric-icon {
+  font-size: 1.4rem;
+}
+
+.metric-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.metric-val-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+.metric-val {
+  font-family: var(--font-numbers);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.metric-sub-unit {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.metric-note {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+/* Buttons */
+.result-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-main);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.btn-copy {
+  background: rgba(245, 200, 66, 0.15);
+  border: 1.5px solid rgba(245, 200, 66, 0.4);
+  color: var(--gold-light);
+}
+
+.btn-copy:hover {
+  background: rgba(245, 200, 66, 0.28);
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 15px rgba(245, 200, 66, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-copy:active {
+  transform: translateY(0);
+}
+
+/* Goal Reverse Calculator Card */
+.goal-card {
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+.goal-card:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.goal-input-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.goal-input-block label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-sub);
+  margin-bottom: 4px;
+}
+
+.goal-input-block input {
+  width: 100%;
+  font-size: 1.15rem;
+  text-align: left;
+}
+
+.goal-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.goal-preset-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.goal-chip {
+  padding: 3px 8px;
+  font-size: 0.75rem;
+}
+
+.goal-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  background: rgba(10, 15, 30, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+@media (max-width: 600px) {
+  .goal-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.goal-stat-item {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.goal-stat-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.goal-stat-value {
+  font-family: var(--font-numbers);
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--cyan-primary);
+}
+
+.goal-stat-value strong {
+  font-size: 1.35rem;
+  color: #fff;
+}
+
+.goal-stat-value .unit {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* =========================================================
+   Bottom Section: Comparison Matrix
+========================================================= */
+.comparison-section {
+  margin-top: 10px;
+}
+
+.table-responsive {
+  overflow-x: auto;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.88rem;
+}
+
+.comparison-table th {
+  background: rgba(15, 23, 42, 0.9);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.comparison-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: middle;
+}
+
+.comparison-table tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.comparison-table tr.current-selected {
+  background: rgba(245, 200, 66, 0.08);
+  border-left: 3px solid var(--gold-primary);
+}
+
+.table-hell-name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #fff;
+}
+
+.table-time-input {
+  background: rgba(20, 30, 55, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #fff;
+  font-family: var(--font-numbers);
+  font-weight: 700;
+  padding: 4px 8px;
+  width: 65px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.table-time-input:focus {
+  border-color: var(--gold-primary);
+  outline: none;
+}
+
+.table-speed-val {
+  font-family: var(--font-numbers);
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--gold-light);
+}
+
+.speed-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.speed-bar-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.speed-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #f5c842);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.speed-pct {
+  font-family: var(--font-numbers);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  width: 38px;
+}
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(16, 185, 129, 0.95);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 700;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  transform: translateY(100px);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+/* Footer */
+.app-footer {
+  text-align: center;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  color: #64748b;
+  font-size: 0.78rem;
+}
+  </style>
+</head>
+<body>
+  <div class="stars-bg"></div>
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+
+  <div class="app-container">
+    <!-- Top Navigation -->
+    <div class="header-nav-bar">
+      <a href="index.html" class="back-to-portal-btn">
+        <span>←</span>
+        <span>ポータルTOPへ戻る</span>
+      </a>
+      <div class="header-badge">
+        <span class="badge-icon">⚔️</span>
+        <span>GRANBLUE FANTASY</span>
+        <span class="badge-sub">星の古戦場</span>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <header class="app-header">
+      <h1 class="app-title">古戦場 周回効率・時速計算ツール</h1>
+      <p class="app-subtitle">HELL難易度と討伐秒数から、貢献度時速・周回数・消費肉・目標達成時間をリアルタイム算出</p>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="main-layout">
+      <!-- Left Column: Input Settings -->
+      <section class="config-panel glass-card">
+        <div class="panel-header">
+          <div class="panel-icon">⚙️</div>
+          <h2>周回条件の設定</h2>
+        </div>
+
+        <!-- 1. HELL Difficulty Selection -->
+        <div class="form-group">
+          <label class="section-label">
+            <span class="label-step">1</span>
+            <span>HELL難易度を選択</span>
+          </label>
+          <div class="hell-grid" id="hellSelector">
+            <button type="button" class="hell-card" data-level="90" data-pt="310000" data-meat="5">
+              <span class="hell-tag">Lv90</span>
+              <span class="hell-name">90 HELL</span>
+              <span class="hell-pt">31万 pt</span>
+              <span class="hell-meat">肉 5個</span>
+            </button>
+            <button type="button" class="hell-card" data-level="95" data-pt="910000" data-meat="10">
+              <span class="hell-tag">Lv95</span>
+              <span class="hell-name">95 HELL</span>
+              <span class="hell-pt">91万 pt</span>
+              <span class="hell-meat">肉 10個</span>
+            </button>
+            <button type="button" class="hell-card" data-level="100" data-pt="2680000" data-meat="20">
+              <span class="hell-tag">Lv100</span>
+              <span class="hell-name">100 HELL</span>
+              <span class="hell-pt">268万 pt</span>
+              <span class="hell-meat">肉 20個</span>
+            </button>
+            <button type="button" class="hell-card" data-level="150" data-pt="4100000" data-meat="20">
+              <span class="hell-tag">Lv150</span>
+              <span class="hell-name">150 HELL</span>
+              <span class="hell-pt">410万 pt</span>
+              <span class="hell-meat">肉 20個</span>
+            </button>
+            <button type="button" class="hell-card active" data-level="200" data-pt="20000000" data-meat="20">
+              <span class="hell-tag popular">主力</span>
+              <span class="hell-name">200 HELL</span>
+              <span class="hell-pt">2,000万 pt</span>
+              <span class="hell-meat">肉 20個</span>
+            </button>
+            <button type="button" class="hell-card" data-level="250" data-pt="75000000" data-meat="20">
+              <span class="hell-tag final">最高峰</span>
+              <span class="hell-name">250 HELL</span>
+              <span class="hell-pt">7,500万 pt</span>
+              <span class="hell-meat">肉 20個</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Battle Clear Time Input -->
+        <div class="form-group">
+          <label class="section-label">
+            <span class="label-step">2</span>
+            <span>1回の討伐時間を入力</span>
+          </label>
+
+          <div class="time-inputs-wrapper">
+            <div class="time-input-dual">
+              <div class="input-block">
+                <div class="input-with-suffix">
+                  <input type="number" id="inputMinutes" min="0" max="59" value="1" placeholder="0">
+                  <span class="input-suffix">分</span>
+                </div>
+              </div>
+              <span class="time-colon">:</span>
+              <div class="input-block">
+                <div class="input-with-suffix">
+                  <input type="number" id="inputSeconds" min="0" max="59" value="15" placeholder="0">
+                  <span class="input-suffix">秒</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="total-sec-display">
+              （合計 <span id="totalBattleSeconds">75</span> 秒）
+            </div>
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="preset-label">クイックプリセット:</div>
+          <div class="preset-chips">
+            <button type="button" class="chip" data-time="12">12秒</button>
+            <button type="button" class="chip" data-time="20">20秒</button>
+            <button type="button" class="chip" data-time="30">30秒</button>
+            <button type="button" class="chip" data-time="45">45秒</button>
+            <button type="button" class="chip" data-time="60">1分00秒</button>
+            <button type="button" class="chip" data-time="75">1分15秒</button>
+            <button type="button" class="chip" data-time="90">1分30秒</button>
+            <button type="button" class="chip" data-time="120">2分00秒</button>
+            <button type="button" class="chip" data-time="180">3分00秒</button>
+            <button type="button" class="chip" data-time="240">4分00秒</button>
+            <button type="button" class="chip" data-time="300">5分00秒</button>
+          </div>
+        </div>
+
+        <!-- 3. Interval / Loading Delay -->
+        <div class="form-group">
+          <div class="interval-header">
+            <label class="section-label" for="inputInterval">
+              <span class="label-step">3</span>
+              <span>ロード・リザルト硬直</span>
+            </label>
+            <span class="interval-value-badge">+<span id="intervalDisplay">3</span>秒 / 周</span>
+          </div>
+          <div class="slider-row">
+            <input type="range" id="inputInterval" min="0" max="15" step="1" value="3">
+            <span class="slider-hint">※再戦クリック〜戦闘開始までの演出・ロード時間目安（0〜15秒）</span>
+          </div>
+          <div class="cycle-summary">
+            1周の実質所要時間: <strong id="cycleTotalTimeDisplay">78.0</strong> 秒
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Result Highlights -->
+      <section class="results-panel">
+        <!-- Main Highlight Card: Hourly Honor Speed -->
+        <div class="glass-card main-result-card glow-border">
+          <div class="card-watermark">UNF SPEED</div>
+          <div class="result-header-row">
+            <div class="selected-hell-badge" id="resHellBadge">
+              <span id="resHellLevel">200 HELL</span>
+              <span class="badge-pt-unit">（単体 <span id="resSinglePt">2,000万</span> pt）</span>
+            </div>
+            <div class="live-indicator">
+              <span class="pulse-dot"></span>
+              リアルタイム算出
+            </div>
+          </div>
+
+          <div class="speed-primary-box">
+            <span class="speed-label">1時間あたりの獲得貢献度（時速）</span>
+            <div class="speed-number-wrapper">
+              <span class="speed-main-num" id="honorHourlyFormatted">9.23</span>
+              <span class="speed-unit" id="honorHourlyUnit">億</span>
+              <span class="speed-suffix">pt / 時</span>
+            </div>
+            <div class="speed-exact-num" id="honorHourlyExact">
+              （約 923,076,923 pt / h）
+            </div>
+          </div>
+
+          <!-- Secondary Metric Grid -->
+          <div class="metrics-grid">
+            <div class="metric-box">
+              <span class="metric-icon">🔄</span>
+              <div class="metric-info">
+                <span class="metric-label">1時間討伐回数</span>
+                <div class="metric-val-wrap">
+                  <span class="metric-val" id="clearsHourly">46.15</span>
+                  <span class="metric-sub-unit">周 / h</span>
+                </div>
+                <span class="metric-note">1分あたり 約 <span id="clearsPerMin">0.77</span> 周</span>
+              </div>
+            </div>
+
+            <div class="metric-box">
+              <span class="metric-icon">🥩</span>
+              <div class="metric-info">
+                <span class="metric-label">1時間消費肉数</span>
+                <div class="metric-val-wrap">
+                  <span class="metric-val" id="meatHourly">923</span>
+                  <span class="metric-sub-unit">個 / h</span>
+                </div>
+                <span class="metric-note">トリガー <span id="meatPerRun">20</span>個 × 周回数</span>
+              </div>
+            </div>
+
+            <div class="metric-box">
+              <span class="metric-icon">⚡</span>
+              <div class="metric-info">
+                <span class="metric-label">分速（1分貢献度）</span>
+                <div class="metric-val-wrap">
+                  <span class="metric-val" id="honorMinuteFormatted">1,538</span>
+                  <span class="metric-sub-unit">万 pt / 分</span>
+                </div>
+                <span class="metric-note">1分間の平均獲得量</span>
+              </div>
+            </div>
+
+            <div class="metric-box">
+              <span class="metric-icon">🧪</span>
+              <div class="metric-info">
+                <span class="metric-label">1時間消費AP</span>
+                <div class="metric-val-wrap">
+                  <span class="metric-val" id="apHourly">2,308</span>
+                  <span class="metric-sub-unit">AP / h</span>
+                </div>
+                <span class="metric-note">半汁換算: 約 <span id="halfElixirHourly">46</span> 本</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="result-actions">
+            <button type="button" class="btn btn-copy" id="btnCopyResult">
+              <span class="btn-icon">📋</span>
+              <span id="copyBtnText">結果テキストをコピー</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Target Simulator Card (Goal Reverse Calculation) -->
+        <div class="glass-card goal-card">
+          <div class="panel-header">
+            <div class="panel-icon">🎯</div>
+            <h2>目標貢献度 逆算シミュレーター</h2>
+          </div>
+          <p class="section-desc">目標の貢献度を設定すると、現在の周回ペースで必要な周回数・所要時間・必要肉数を逆算します。</p>
+
+          <div class="goal-input-row">
+            <div class="input-block goal-input-block">
+              <label for="inputTargetHonor">目標貢献度 (pt)</label>
+              <div class="input-with-suffix">
+                <input type="number" id="inputTargetHonor" value="1000000000" step="10000000" min="1000000">
+                <span class="input-suffix">pt</span>
+              </div>
+            </div>
+            <div class="goal-presets">
+              <span class="goal-preset-label">目標目安:</span>
+              <button type="button" class="chip goal-chip" data-goal="300000000">3億</button>
+              <button type="button" class="chip goal-chip" data-goal="800000000">8億</button>
+              <button type="button" class="chip goal-chip active" data-goal="1000000000">10億</button>
+              <button type="button" class="chip goal-chip" data-goal="2500000000">25億</button>
+              <button type="button" class="chip goal-chip" data-goal="5000000000">50億</button>
+            </div>
+          </div>
+
+          <!-- Goal Results -->
+          <div class="goal-stats-grid">
+            <div class="goal-stat-item">
+              <span class="goal-stat-label">🎯 必要討伐回数</span>
+              <div class="goal-stat-value"><strong id="goalTotalRuns">50</strong> <span class="unit">周</span></div>
+            </div>
+            <div class="goal-stat-item">
+              <span class="goal-stat-label">⏱️ 合計所要時間</span>
+              <div class="goal-stat-value"><strong id="goalTotalTime">1時間 5分</strong></div>
+            </div>
+            <div class="goal-stat-item">
+              <span class="goal-stat-label">🥩 必要グラッジチャンク</span>
+              <div class="goal-stat-value"><strong id="goalTotalMeat">1,000</strong> <span class="unit">個</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Section: Comparison Matrix Across All HELLs -->
+    <section class="glass-card comparison-section">
+      <div class="panel-header">
+        <div class="panel-icon">⚖️</div>
+        <div>
+          <h2>全難易度 時速比較・シミュレーション表</h2>
+          <p class="section-desc">難易度ごとのタイムを入力して、どの難易度が最も時速・肉効率が出るかを一覧比較できます。</p>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="comparison-table" id="comparisonTable">
+          <thead>
+            <tr>
+              <th>難易度</th>
+              <th>単体貢献度</th>
+              <th>自発肉</th>
+              <th>想定討伐タイム</th>
+              <th>時速周回数</th>
+              <th>貢献度時速 (pt/h)</th>
+              <th>時速効率比較</th>
+            </tr>
+          </thead>
+          <tbody id="comparisonTableBody">
+            <!-- Populated dynamically by script -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>グランブルーファンタジー非公式ツール | 基準貢献度: 90HELL(31万), 95HELL(91万), 100HELL(268万), 150HELL(410万), 200HELL(2,000万), 250HELL(7,500万)</p>
+    </footer>
+  </div>
+
+  <!-- Toast Notification for Copy -->
+  <div id="toast" class="toast">クリップボードにコピーしました！</div>
+
+  <script>
+/**
+ * Granblue Fantasy UNF (星の古戦場) Speed & Efficiency Calculator
+ */
+
+// HELL Difficulty Dataset
+const HELL_DATA = {
+  90: { name: '90 HELL', level: 90, pt: 310000, meat: 5, ap: 30, defaultSec: 10 },
+  95: { name: '95 HELL', level: 95, pt: 910000, meat: 10, ap: 40, defaultSec: 20 },
+  100: { name: '100 HELL', level: 100, pt: 2680000, meat: 20, ap: 50, defaultSec: 45 },
+  150: { name: '150 HELL', level: 150, pt: 4100000, meat: 20, ap: 50, defaultSec: 70 },
+  200: { name: '200 HELL', level: 200, pt: 20000000, meat: 20, ap: 50, defaultSec: 90 },
+  250: { name: '250 HELL', level: 250, pt: 75000000, meat: 20, ap: 50, defaultSec: 240 }
+};
+
+// Current State
+let state = {
+  selectedHell: 200,
+  minutes: 1,
+  seconds: 15,
+  intervalSec: 3,
+  targetHonor: 1000000000,
+  comparisonTimes: {
+    90: 10,
+    95: 20,
+    100: 45,
+    150: 70,
+    200: 90,
+    250: 240
+  }
+};
+
+// DOM Elements
+const elements = {
+  hellCards: document.querySelectorAll('.hell-card'),
+  inputMinutes: document.getElementById('inputMinutes'),
+  inputSeconds: document.getElementById('inputSeconds'),
+  totalBattleSeconds: document.getElementById('totalBattleSeconds'),
+  inputInterval: document.getElementById('inputInterval'),
+  intervalDisplay: document.getElementById('intervalDisplay'),
+  cycleTotalTimeDisplay: document.getElementById('cycleTotalTimeDisplay'),
+  presetChips: document.querySelectorAll('.preset-chips .chip'),
+  
+  // Results
+  resHellLevel: document.getElementById('resHellLevel'),
+  resSinglePt: document.getElementById('resSinglePt'),
+  honorHourlyFormatted: document.getElementById('honorHourlyFormatted'),
+  honorHourlyUnit: document.getElementById('honorHourlyUnit'),
+  honorHourlyExact: document.getElementById('honorHourlyExact'),
+  clearsHourly: document.getElementById('clearsHourly'),
+  clearsPerMin: document.getElementById('clearsPerMin'),
+  meatHourly: document.getElementById('meatHourly'),
+  meatPerRun: document.getElementById('meatPerRun'),
+  honorMinuteFormatted: document.getElementById('honorMinuteFormatted'),
+  apHourly: document.getElementById('apHourly'),
+  halfElixirHourly: document.getElementById('halfElixirHourly'),
+  
+  // Goal
+  inputTargetHonor: document.getElementById('inputTargetHonor'),
+  goalChips: document.querySelectorAll('.goal-chip'),
+  goalTotalRuns: document.getElementById('goalTotalRuns'),
+  goalTotalTime: document.getElementById('goalTotalTime'),
+  goalTotalMeat: document.getElementById('goalTotalMeat'),
+  
+  // Comparison Table
+  comparisonTableBody: document.getElementById('comparisonTableBody'),
+  
+  // Actions
+  btnCopyResult: document.getElementById('btnCopyResult'),
+  copyBtnText: document.getElementById('copyBtnText'),
+  toast: document.getElementById('toast')
+};
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  setupEventListeners();
+  renderComparisonTable();
+  updateCalculation();
+});
+
+// Setup Events
+function setupEventListeners() {
+  // HELL Card Selection
+  elements.hellCards.forEach(card => {
+    card.addEventListener('click', () => {
+      elements.hellCards.forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      state.selectedHell = parseInt(card.dataset.level, 10);
+      updateCalculation();
+      highlightComparisonRow();
+    });
+  });
+
+  // Minutes & Seconds Inputs
+  elements.inputMinutes.addEventListener('input', handleTimeInput);
+  elements.inputSeconds.addEventListener('input', handleTimeInput);
+
+  // Interval Slider
+  elements.inputInterval.addEventListener('input', (e) => {
+    state.intervalSec = parseInt(e.target.value, 10) || 0;
+    elements.intervalDisplay.textContent = state.intervalSec;
+    updateCalculation();
+    renderComparisonTable();
+  });
+
+  // Time Preset Chips
+  elements.presetChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      const totalSec = parseInt(chip.dataset.time, 10);
+      setTimeFromTotalSeconds(totalSec);
+      
+      elements.presetChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+
+  // Goal Honor Input
+  elements.inputTargetHonor.addEventListener('input', (e) => {
+    state.targetHonor = parseInt(e.target.value, 10) || 0;
+    elements.goalChips.forEach(c => c.classList.remove('active'));
+    updateGoalCalculation();
+  });
+
+  // Goal Preset Chips
+  elements.goalChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      const goalVal = parseInt(chip.dataset.goal, 10);
+      state.targetHonor = goalVal;
+      elements.inputTargetHonor.value = goalVal;
+      elements.goalChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      updateGoalCalculation();
+    });
+  });
+
+  // Copy Result Button
+  elements.btnCopyResult.addEventListener('click', copyResultToClipboard);
+}
+
+// Time input handlers
+function handleTimeInput() {
+  let min = parseInt(elements.inputMinutes.value, 10);
+  let sec = parseInt(elements.inputSeconds.value, 10);
+
+  if (isNaN(min) || min < 0) min = 0;
+  if (isNaN(sec) || sec < 0) sec = 0;
+
+  state.minutes = min;
+  state.seconds = sec;
+
+  // Clear active state of preset chips if custom time
+  const totalSec = min * 60 + sec;
+  let matchFound = false;
+  elements.presetChips.forEach(chip => {
+    if (parseInt(chip.dataset.time, 10) === totalSec) {
+      chip.classList.add('active');
+      matchFound = true;
+    } else {
+      chip.classList.remove('active');
+    }
+  });
+
+  updateCalculation();
+}
+
+function setTimeFromTotalSeconds(totalSec) {
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  state.minutes = min;
+  state.seconds = sec;
+  elements.inputMinutes.value = min;
+  elements.inputSeconds.value = sec;
+  updateCalculation();
+}
+
+// Format numbers to Japanese units (億 / 万)
+function formatHonorJapanese(honor) {
+  if (honor >= 100000000) {
+    const oku = (honor / 100000000).toFixed(2);
+    return { num: oku, unit: '億' };
+  } else if (honor >= 10000) {
+    const man = Math.round(honor / 10000).toLocaleString();
+    return { num: man, unit: '万' };
+  } else {
+    return { num: Math.round(honor).toLocaleString(), unit: '' };
+  }
+}
+
+// Main Calculation
+function updateCalculation() {
+  const currentHell = HELL_DATA[state.selectedHell];
+  const battleSec = Math.max(1, state.minutes * 60 + state.seconds);
+  const totalCycleSec = battleSec + state.intervalSec;
+
+  // Update time displays
+  elements.totalBattleSeconds.textContent = battleSec;
+  elements.cycleTotalTimeDisplay.textContent = totalCycleSec.toFixed(1);
+
+  // Hourly calculations
+  const clearsPerHour = 3600 / totalCycleSec;
+  const honorPerHour = clearsPerHour * currentHell.pt;
+  const meatPerHour = clearsPerHour * currentHell.meat;
+  const apPerHour = clearsPerHour * currentHell.ap;
+  const halfElixirPerHour = apPerHour / 50;
+
+  // Minute calculations
+  const clearsPerMin = 60 / totalCycleSec;
+  const honorPerMin = clearsPerMin * currentHell.pt;
+
+  // Update Main Result UI
+  elements.resHellLevel.textContent = currentHell.name;
+  elements.resSinglePt.textContent = formatHonorJapanese(currentHell.pt).num + formatHonorJapanese(currentHell.pt).unit;
+
+  // Hourly Honor (Big number)
+  const formattedHourly = formatHonorJapanese(honorPerHour);
+  elements.honorHourlyFormatted.textContent = formattedHourly.num;
+  elements.honorHourlyUnit.textContent = formattedHourly.unit;
+  elements.honorHourlyExact.textContent = `（約 ${Math.round(honorPerHour).toLocaleString()} pt / h）`;
+
+  // Secondary Metrics
+  elements.clearsHourly.textContent = clearsPerHour.toFixed(2);
+  elements.clearsPerMin.textContent = clearsPerMin.toFixed(2);
+  elements.meatHourly.textContent = Math.round(meatPerHour).toLocaleString();
+  elements.meatPerRun.textContent = currentHell.meat;
+  
+  // Minute Honor (in 万 pt)
+  elements.honorMinuteFormatted.textContent = Math.round(honorPerMin / 10000).toLocaleString();
+  
+  elements.apHourly.textContent = Math.round(apPerHour).toLocaleString();
+  elements.halfElixirHourly.textContent = Math.round(halfElixirPerHour).toLocaleString();
+
+  // Also update comparison state for current Hell
+  state.comparisonTimes[state.selectedHell] = battleSec;
+  renderComparisonTable();
+
+  // Update Goal
+  updateGoalCalculation();
+}
+
+// Goal Simulator Calculation
+function updateGoalCalculation() {
+  const currentHell = HELL_DATA[state.selectedHell];
+  const battleSec = Math.max(1, state.minutes * 60 + state.seconds);
+  const totalCycleSec = battleSec + state.intervalSec;
+  const targetPt = state.targetHonor || 0;
+
+  if (targetPt <= 0) {
+    elements.goalTotalRuns.textContent = '0';
+    elements.goalTotalTime.textContent = '0分';
+    elements.goalTotalMeat.textContent = '0';
+    return;
+  }
+
+  const requiredRuns = Math.ceil(targetPt / currentHell.pt);
+  const totalSecondsNeeded = requiredRuns * totalCycleSec;
+  const requiredMeat = requiredRuns * currentHell.meat;
+
+  // Format Time
+  const hours = Math.floor(totalSecondsNeeded / 3600);
+  const remainingSec = totalSecondsNeeded % 3600;
+  const minutes = Math.floor(remainingSec / 60);
+
+  let timeString = '';
+  if (hours > 0) {
+    timeString = `${hours}時間 ${minutes}分`;
+  } else {
+    timeString = `${minutes}分`;
+  }
+
+  elements.goalTotalRuns.textContent = requiredRuns.toLocaleString();
+  elements.goalTotalTime.textContent = timeString;
+  elements.goalTotalMeat.textContent = requiredMeat.toLocaleString();
+}
+
+// Render Comparison Matrix
+function renderComparisonTable() {
+  elements.comparisonTableBody.innerHTML = '';
+
+  const hellLevels = [90, 95, 100, 150, 200, 250];
+  
+  // Calculate max speed for progress bar scaling
+  let maxHonorPerHour = 0;
+  const computedData = hellLevels.map(lvl => {
+    const hell = HELL_DATA[lvl];
+    const time = state.comparisonTimes[lvl] || hell.defaultSec;
+    const cycleTime = time + state.intervalSec;
+    const clears = 3600 / cycleTime;
+    const honorH = clears * hell.pt;
+    const meatH = clears * hell.meat;
+    if (honorH > maxHonorPerHour) maxHonorPerHour = honorH;
+    return { hell, time, cycleTime, clears, honorH, meatH };
+  });
+
+  computedData.forEach(item => {
+    const { hell, time, cycleTime, clears, honorH, meatH } = item;
+    const isCurrent = hell.level === state.selectedHell;
+    const formattedHonor = formatHonorJapanese(honorH);
+    const pct = maxHonorPerHour > 0 ? ((honorH / maxHonorPerHour) * 100).toFixed(0) : 0;
+
+    const tr = document.createElement('tr');
+    if (isCurrent) tr.classList.add('current-selected');
+
+    tr.innerHTML = `
+      <td>
+        <span class="table-hell-name">${hell.name}</span>
+      </td>
+      <td>
+        <span class="table-speed-val" style="color: var(--cyan-primary);">${formatHonorJapanese(hell.pt).num}${formatHonorJapanese(hell.pt).unit}</span>
+      </td>
+      <td>
+        <span style="font-family: var(--font-numbers); color: var(--text-muted); font-size: 0.85rem;">肉 ${hell.meat}個</span>
+      </td>
+      <td>
+        <input type="number" min="1" max="999" class="table-time-input" value="${time}" data-hell="${hell.level}">
+        <span style="font-size: 0.75rem; color: var(--text-muted);">秒 (+${state.intervalSec}秒)</span>
+      </td>
+      <td>
+        <span style="font-family: var(--font-numbers); font-weight: 700;">${clears.toFixed(1)}</span> <span style="font-size:0.75rem; color:var(--text-muted);">周/h</span>
+      </td>
+      <td>
+        <span class="table-speed-val">${formattedHonor.num}</span><span style="font-size:0.85rem; font-weight:700; color:var(--gold-light);">${formattedHonor.unit}</span>
+      </td>
+      <td>
+        <div class="speed-bar-container">
+          <div class="speed-bar-track">
+            <div class="speed-bar-fill" style="width: ${pct}%;"></div>
+          </div>
+          <span class="speed-pct">${pct}%</span>
+        </div>
+      </td>
+    `;
+
+    // Row selection on click (except when typing in input)
+    tr.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT') {
+        selectHell(hell.level);
+      }
+    });
+
+    // Input change
+    const input = tr.querySelector('.table-time-input');
+    input.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10) || 1;
+      state.comparisonTimes[hell.level] = val;
+      if (hell.level === state.selectedHell) {
+        setTimeFromTotalSeconds(val);
+      } else {
+        renderComparisonTable();
+      }
+    });
+
+    elements.comparisonTableBody.appendChild(tr);
+  });
+}
+
+function highlightComparisonRow() {
+  const rows = elements.comparisonTableBody.querySelectorAll('tr');
+  const hellLevels = [90, 95, 100, 150, 200, 250];
+  rows.forEach((row, idx) => {
+    if (hellLevels[idx] === state.selectedHell) {
+      row.classList.add('current-selected');
+    } else {
+      row.classList.remove('current-selected');
+    }
+  });
+}
+
+function selectHell(level) {
+  state.selectedHell = level;
+  elements.hellCards.forEach(card => {
+    if (parseInt(card.dataset.level, 10) === level) {
+      card.classList.add('active');
+    } else {
+      card.classList.remove('active');
+    }
+  });
+  if (state.comparisonTimes[level]) {
+    setTimeFromTotalSeconds(state.comparisonTimes[level]);
+  } else {
+    updateCalculation();
+  }
+}
+
+// Copy Result Function
+function copyResultToClipboard() {
+  const currentHell = HELL_DATA[state.selectedHell];
+  const battleSec = state.minutes * 60 + state.seconds;
+  const totalCycleSec = battleSec + state.intervalSec;
+  const clearsPerHour = (3600 / totalCycleSec).toFixed(2);
+  const honorPerHour = (clearsPerHour * currentHell.pt);
+  const formattedHonor = formatHonorJapanese(honorPerHour);
+  const meatPerHour = Math.round(clearsPerHour * currentHell.meat);
+
+  const text = `【古戦場時速計算】${currentHell.name}
+・クリアタイム: ${state.minutes > 0 ? `${state.minutes}分` : ''}${state.seconds}秒 (+硬直${state.intervalSec}秒 / 実質${totalCycleSec}秒)
+・貢献度時速: ${formattedHonor.num}${formattedHonor.unit} pt/h (${Math.round(honorPerHour).toLocaleString()} pt)
+・周回ペース: ${clearsPerHour} 周/h
+・消費肉ペース: ${meatPerHour.toLocaleString()} 個/h
+#グラブル #星の古戦場`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('結果テキストをクリップボードにコピーしました！');
+  }).catch(err => {
+    console.error('Clipboard copy failed:', err);
+    showToast('コピーに失敗しました');
+  });
+}
+
+function showToast(msg) {
+  elements.toast.textContent = msg;
+  elements.toast.classList.add('show');
+  setTimeout(() => {
+    elements.toast.classList.remove('show');
+  }, 2400);
+}
+  </script>
+</body>
+</html>
