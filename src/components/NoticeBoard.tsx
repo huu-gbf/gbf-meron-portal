@@ -18,7 +18,7 @@ const INITIAL_NOTICES: Notice[] = [
     category: '古戦場',
     author: '',
     date: '',
-    content: `募集する時期などにより変動あり、現在は10万位以内`
+    content: `個人ランキング10万位以内`
   },
   {
     id: '3',
