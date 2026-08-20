@@ -1400,6 +1400,46 @@
     }
 
     // ==========================================================
+    //  端末識別＆本人投稿管理
+    // ==========================================================
+    const DEVICE_ID_KEY = 'gbf_my_device_id';
+    const MY_POSTS_KEY = 'gbf_my_post_ids';
+
+    function getMyDeviceId() {
+      let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+      if (!deviceId) {
+        deviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem(DEVICE_ID_KEY, deviceId);
+      }
+      return deviceId;
+    }
+
+    function getMyPostIds() {
+      try {
+        return JSON.parse(localStorage.getItem(MY_POSTS_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function recordMyPostId(postId) {
+      const ids = getMyPostIds();
+      if (!ids.includes(postId)) {
+        ids.push(postId);
+        localStorage.setItem(MY_POSTS_KEY, JSON.stringify(ids));
+      }
+    }
+
+    function isMyPost(post) {
+      if (!post) return false;
+      const myDeviceId = getMyDeviceId();
+      const myIds = getMyPostIds();
+      if (post.authorId && post.authorId === myDeviceId) return true;
+      if (post.id && myIds.includes(post.id)) return true;
+      return false;
+    }
+
+    // ==========================================================
     //  投稿処理（Firestoreへ確実に保存）
     // ==========================================================
     async function handleSubmit(e) {
@@ -1419,8 +1459,11 @@
         name,
         comment,
         images: [...selectedImages],
+        authorId: getMyDeviceId(),
         timestamp: new Date().toISOString()
       };
+
+      recordMyPostId(post.id);
 
       if (db) {
         const originalText = submitBtn.innerHTML;
@@ -1466,6 +1509,14 @@
     //  削除
     // ==========================================================
     async function deletePost(id) {
+      const posts = getPosts();
+      const target = posts.find(p => p.id === id);
+
+      if (target && !isMyPost(target)) {
+        alert('自分が投稿した編成のみ削除できます。');
+        return;
+      }
+
       if (!confirm('この投稿を削除しますか？')) return;
 
       if (db) {
@@ -1478,7 +1529,7 @@
         }
       }
 
-      savePosts(getPosts().filter(p => p.id !== id));
+      savePosts(posts.filter(p => p.id !== id));
       renderPosts();
     }
 
@@ -1551,6 +1602,8 @@
           `;
         }
 
+        const isMine = isMyPost(p);
+
         return `
           <div class="post-card${textOnlyClass}">
             <div class="post-card-header">
@@ -1563,7 +1616,12 @@
               </div>
               <div class="post-actions">
                 ${hasImages ? `<span class="post-img-badge">📷 ${images.length}枚</span>` : ''}
-                <button class="post-delete-btn" onclick="deletePost('${p.id}')" title="削除">🗑️</button>
+                ${isMine ? `
+                  <button class="post-delete-btn" onclick="deletePost('${p.id}')" title="自分の投稿を削除" style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: var(--rose-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px;">
+                    <span>🗑️</span>
+                    <span>削除</span>
+                  </button>
+                ` : ''}
               </div>
             </div>
             ${imagesHtml}

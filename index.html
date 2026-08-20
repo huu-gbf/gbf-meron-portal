@@ -1376,6 +1376,46 @@
     }
 
     // ==========================================================
+    //  端末識別＆本人投稿管理
+    // ==========================================================
+    const DEVICE_ID_KEY = 'gbf_my_device_id';
+    const MY_POSTS_KEY = 'gbf_my_post_ids';
+
+    function getMyDeviceId() {
+      let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+      if (!deviceId) {
+        deviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem(DEVICE_ID_KEY, deviceId);
+      }
+      return deviceId;
+    }
+
+    function getMyPostIds() {
+      try {
+        return JSON.parse(localStorage.getItem(MY_POSTS_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function recordMyPostId(postId) {
+      const ids = getMyPostIds();
+      if (!ids.includes(postId)) {
+        ids.push(postId);
+        localStorage.setItem(MY_POSTS_KEY, JSON.stringify(ids));
+      }
+    }
+
+    function isMyPost(formation) {
+      if (!formation) return false;
+      const myDeviceId = getMyDeviceId();
+      const myIds = getMyPostIds();
+      if (formation.authorId && formation.authorId === myDeviceId) return true;
+      if (formation.id && myIds.includes(formation.id)) return true;
+      return false;
+    }
+
+    // ==========================================================
     //  編成投稿処理（Firestoreへ確実に保存）
     // ==========================================================
     async function handleFormationSubmit(event) {
@@ -1395,8 +1435,12 @@
         name: name,
         comment: comment,
         images: [...selectedImages], // 複数枚配列
+        authorId: getMyDeviceId(),   // 投稿端末の識別ID
         timestamp: new Date().toISOString()
       };
+
+      // 自分の投稿IDとして端末に記録
+      recordMyPostId(formation.id);
 
       // 1. Firestore が有効な場合はクラウドへ保存
       if (db) {
@@ -1438,6 +1482,15 @@
     }
 
     async function deleteFormation(id) {
+      const formations = getFormations();
+      const target = formations.find(f => f.id === id);
+
+      // 本人チェック
+      if (target && !isMyPost(target)) {
+        alert('自分が投稿した編成のみ削除できます。');
+        return;
+      }
+
       if (!confirm('この投稿を削除しますか？')) return;
 
       if (db) {
@@ -1450,8 +1503,8 @@
         }
       }
 
-      const formations = getFormations().filter(f => f.id !== id);
-      saveFormations(formations);
+      const updatedFormations = formations.filter(f => f.id !== id);
+      saveFormations(updatedFormations);
       renderFormations();
     }
 
@@ -1545,6 +1598,8 @@
             </div>`;
         }
 
+        const isMine = isMyPost(f);
+
         return `
           <div class="glass-panel rounded-2xl overflow-hidden hover:border-violet-500/30 transition group">
             <div class="px-5 pt-4 pb-3 flex items-center justify-between">
@@ -1559,9 +1614,12 @@
               </div>
               <div class="flex items-center gap-2">
                 ${hasImages ? `<span class="text-[11px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">📷 ${images.length}枚</span>` : ''}
-                <button onclick="deleteFormation('${f.id}')" class="text-xs text-slate-600 hover:text-rose-400 transition px-2 py-1 rounded-lg hover:bg-rose-500/10" title="削除">
-                  🗑️
-                </button>
+                ${isMine ? `
+                  <button onclick="deleteFormation('${f.id}')" class="text-xs text-rose-400 hover:text-rose-300 transition px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 flex items-center gap-1" title="自分の投稿を削除">
+                    <span>🗑️</span>
+                    <span class="text-[11px]">削除</span>
+                  </button>
+                ` : ''}
               </div>
             </div>
             ${imageHtml}
