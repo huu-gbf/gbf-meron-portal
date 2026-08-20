@@ -600,29 +600,40 @@
               />
             </div>
 
-            <!-- 編成スクリーンショット -->
+            <!-- 編成スクリーンショット（複数枚対応） -->
             <div>
-              <label class="block text-xs font-semibold text-slate-300 mb-1.5">② 編成スクリーンショット <span class="text-slate-500 font-normal">（任意）</span></label>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-semibold text-slate-300">② 編成スクリーンショット <span class="text-slate-500 font-normal">（任意・最大4枚）</span></label>
+                <span id="imageCountBadge" class="hidden text-[11px] font-bold text-violet-300 bg-violet-500/20 px-2 py-0.5 rounded-full border border-violet-500/30">0/4枚</span>
+              </div>
               <div 
                 id="dropZone"
-                class="relative border-2 border-dashed border-slate-700 hover:border-violet-400 rounded-xl p-6 text-center cursor-pointer transition group bg-slate-900/40"
-                onclick="document.getElementById('formationImage').click()"
+                class="relative border-2 border-dashed border-slate-700 hover:border-violet-400 rounded-xl p-5 text-center cursor-pointer transition group bg-slate-900/40"
+                onclick="triggerFileInput(event)"
               >
                 <input 
                   type="file" 
                   id="formationImage" 
                   accept="image/*" 
+                  multiple
                   class="hidden"
                   onchange="handleImageSelect(event)"
                 />
-                <div id="dropZonePlaceholder" class="space-y-2">
+                <div id="dropZonePlaceholder" class="space-y-2 py-3">
                   <div class="text-4xl group-hover:scale-110 transition">🖼️</div>
-                  <p class="text-sm text-slate-400">クリックまたはドラッグ&ドロップで画像を選択</p>
-                  <p class="text-xs text-slate-500">PNG / JPG / WEBP（最大5MB）</p>
+                  <p class="text-sm text-slate-300 font-medium">クリックまたはドラッグ&ドロップで画像を選択</p>
+                  <p class="text-xs text-slate-500">複数選択可・最大4枚（PNG / JPG / WEBP）</p>
                 </div>
                 <div id="imagePreviewContainer" class="hidden">
-                  <img id="imagePreview" class="max-h-48 mx-auto rounded-lg shadow-lg" />
-                  <button type="button" onclick="clearImage(event)" class="mt-2 text-xs text-rose-400 hover:text-rose-300 transition">✕ 画像を削除</button>
+                  <div id="previewGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3"></div>
+                  <div class="flex items-center justify-center gap-3 pt-1 border-t border-slate-800">
+                    <button type="button" id="addMoreImagesBtn" onclick="triggerFileInput(event)" class="text-xs font-bold text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1">
+                      <span>＋</span><span>画像を追加</span>
+                    </button>
+                    <button type="button" onclick="clearAllImages(event)" class="text-xs text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-3 py-1.5 rounded-lg transition">
+                      ✕ 全て削除
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -692,9 +703,24 @@
           <!-- Timeline list -->
           <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
             
-            <!-- Log Item 4 -->
+            <!-- Log Item 5 -->
             <div class="relative">
               <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">機能改善</span>
+                  <strong class="text-sm font-bold text-white">編成共有：複数画像の同時投稿（最大4枚）に対応</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  スクリーンショットを最大4枚まで同時に選択・アップロードできるようになりました。投稿カード内にも枚数に応じた最適なグリッドレイアウトで綺麗に並んで表示されます。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 4 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
               <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
                 <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                   <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
@@ -870,12 +896,13 @@
     }
 
     // ==========================================================
-    //  編成共有掲示板ロジック
+    //  編成共有掲示板ロジック（複数画像対応・最大4枚）
     // ==========================================================
     const FORMATIONS_KEY = 'gbf_crew_formations';
-    let selectedImageBase64 = null;
+    const MAX_IMAGES = 4;
+    let selectedImages = []; // Array of base64 strings
 
-    // コメント文字数カウンター
+    // コメント文字数カウンター & D&Dセットアップ
     document.addEventListener('DOMContentLoaded', () => {
       const commentEl = document.getElementById('formationComment');
       if (commentEl) {
@@ -897,61 +924,133 @@
         dropZone.addEventListener('drop', (e) => {
           e.preventDefault();
           dropZone.classList.remove('border-violet-400', 'bg-violet-500/5');
-          const files = e.dataTransfer.files;
-          if (files.length > 0 && files[0].type.startsWith('image/')) {
-            processImageFile(files[0]);
+          const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+          if (files.length > 0) {
+            processImageFiles(files);
           }
         });
       }
     });
 
-    function handleImageSelect(event) {
-      const file = event.target.files[0];
-      if (file) processImageFile(file);
+    function triggerFileInput(event) {
+      if (event) event.stopPropagation();
+      document.getElementById('formationImage').click();
     }
 
-    function processImageFile(file) {
-      // 5MB制限
-      if (file.size > 5 * 1024 * 1024) {
-        alert('画像サイズは5MB以下にしてください。');
+    function handleImageSelect(event) {
+      const files = Array.from(event.target.files);
+      if (files.length > 0) {
+        processImageFiles(files);
+      }
+      // input をリセット（同一ファイル再選択を可能に）
+      event.target.value = '';
+    }
+
+    function processImageFiles(files) {
+      const remainingSlots = MAX_IMAGES - selectedImages.length;
+      if (remainingSlots <= 0) {
+        alert(`画像は最大${MAX_IMAGES}枚までです。`);
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        // リサイズ処理（横幅最大1200pxに圧縮してlocalStorage容量節約）
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 1200;
-          let w = img.width;
-          let h = img.height;
-          if (w > MAX_WIDTH) {
-            h = Math.round(h * MAX_WIDTH / w);
-            w = MAX_WIDTH;
-          }
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          selectedImageBase64 = canvas.toDataURL('image/jpeg', 0.85);
+      const filesToProcess = files.slice(0, remainingSlots);
+      if (files.length > remainingSlots) {
+        alert(`画像は最大${MAX_IMAGES}枚までのため、最初の${remainingSlots}枚のみ追加されます。`);
+      }
 
-          // プレビュー表示
-          document.getElementById('imagePreview').src = selectedImageBase64;
-          document.getElementById('dropZonePlaceholder').classList.add('hidden');
-          document.getElementById('imagePreviewContainer').classList.remove('hidden');
+      let processedCount = 0;
+      filesToProcess.forEach(file => {
+        if (file.size > 5 * 1024 * 1024) {
+          alert(`「${file.name}」のサイズが5MBを超えているためスキップしました。`);
+          processedCount++;
+          if (processedCount === filesToProcess.length) updatePreviewUI();
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 1000;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX_WIDTH) {
+              h = Math.round(h * MAX_WIDTH / w);
+              w = MAX_WIDTH;
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const base64 = canvas.toDataURL('image/jpeg', 0.82);
+
+            if (selectedImages.length < MAX_IMAGES) {
+              selectedImages.push(base64);
+            }
+
+            processedCount++;
+            if (processedCount === filesToProcess.length) {
+              updatePreviewUI();
+            }
+          };
+          img.src = e.target.result;
         };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+        reader.readAsDataURL(file);
+      });
     }
 
-    function clearImage(event) {
-      event.stopPropagation();
-      selectedImageBase64 = null;
+    function updatePreviewUI() {
+      const placeholder = document.getElementById('dropZonePlaceholder');
+      const container = document.getElementById('imagePreviewContainer');
+      const previewGrid = document.getElementById('previewGrid');
+      const countBadge = document.getElementById('imageCountBadge');
+      const addBtn = document.getElementById('addMoreImagesBtn');
+
+      if (selectedImages.length === 0) {
+        placeholder.classList.remove('hidden');
+        container.classList.add('hidden');
+        countBadge.classList.add('hidden');
+      } else {
+        placeholder.classList.add('hidden');
+        container.classList.remove('hidden');
+        countBadge.classList.remove('hidden');
+        countBadge.textContent = `${selectedImages.length}/${MAX_IMAGES}枚`;
+
+        if (selectedImages.length >= MAX_IMAGES) {
+          addBtn.classList.add('hidden');
+        } else {
+          addBtn.classList.remove('hidden');
+        }
+
+        previewGrid.innerHTML = selectedImages.map((imgSrc, idx) => `
+          <div class="relative group/item rounded-xl overflow-hidden border border-slate-700 bg-slate-950 aspect-[4/3]">
+            <img src="${imgSrc}" class="w-full h-full object-cover" />
+            <span class="absolute bottom-1 left-1 bg-black/70 text-[10px] text-white font-mono px-1.5 py-0.5 rounded">#${idx + 1}</span>
+            <button 
+              type="button" 
+              onclick="removeImageAt(${idx}, event)" 
+              class="absolute top-1 right-1 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow transition transform hover:scale-110"
+              title="削除"
+            >
+              ✕
+            </button>
+          </div>
+        `).join('');
+      }
+    }
+
+    function removeImageAt(index, event) {
+      if (event) event.stopPropagation();
+      selectedImages.splice(index, 1);
+      updatePreviewUI();
+    }
+
+    function clearAllImages(event) {
+      if (event) event.stopPropagation();
+      selectedImages = [];
       document.getElementById('formationImage').value = '';
-      document.getElementById('dropZonePlaceholder').classList.remove('hidden');
-      document.getElementById('imagePreviewContainer').classList.add('hidden');
+      updatePreviewUI();
     }
 
     function getFormations() {
@@ -966,7 +1065,6 @@
       try {
         localStorage.setItem(FORMATIONS_KEY, JSON.stringify(formations));
       } catch (e) {
-        // localStorageの容量制限に達した場合
         alert('保存容量の上限に達しました。古い投稿を削除してから再度お試しください。');
       }
     }
@@ -981,11 +1079,12 @@
         alert('ゲーム内の名前を入力してください。');
         return;
       }
+
       const formation = {
         id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
         name: name,
         comment: comment,
-        image: selectedImageBase64 || null,
+        images: [...selectedImages], // 複数枚配列
         timestamp: new Date().toISOString()
       };
 
@@ -995,7 +1094,7 @@
 
       // フォームリセット
       document.getElementById('formationForm').reset();
-      clearImage(new Event('click'));
+      clearAllImages(new Event('click'));
       document.getElementById('commentCharCount').textContent = '0';
 
       // 成功メッセージ
@@ -1023,7 +1122,6 @@
 
       if (formations.length === 0) {
         if (emptyState) emptyState.classList.remove('hidden');
-        // 空状態以外のカードを削除
         Array.from(listEl.children).forEach(child => {
           if (child.id !== 'formationEmptyState') child.remove();
         });
@@ -1034,25 +1132,70 @@
       listEl.innerHTML = formations.map(f => {
         const date = new Date(f.timestamp);
         const dateStr = `${date.getFullYear()}/${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
-        const hasImage = !!f.image;
+        
+        // 過去データ互換（image単数プロパティにも対応）
+        const images = (f.images && Array.isArray(f.images)) ? f.images : (f.image ? [f.image] : []);
+        const hasImages = images.length > 0;
         const hasComment = !!f.comment;
 
         let imageHtml = '';
-        if (hasImage) {
-          imageHtml = `
-            <div class="px-5 pb-3">
-              <img src="${f.image}" alt="${escapeHtml(f.name)}の編成" class="w-full rounded-xl cursor-pointer hover:opacity-90 transition shadow-lg" onclick="openImageModal('${f.image.replace(/'/g, "\\'")}')" />
-            </div>`;
+        if (hasImages) {
+          if (images.length === 1) {
+            // 1枚: 大きく表示
+            imageHtml = `
+              <div class="px-5 pb-3">
+                <img src="${images[0]}" alt="${escapeHtml(f.name)}の編成" class="w-full rounded-xl cursor-pointer hover:opacity-95 transition shadow-lg max-h-[480px] object-contain bg-slate-950/60" onclick="openImageModal('${images[0].replace(/'/g, "\\'")}')" />
+              </div>`;
+          } else if (images.length === 2) {
+            // 2枚: 2列グリッド
+            imageHtml = `
+              <div class="px-5 pb-3">
+                <div class="grid grid-cols-2 gap-2">
+                  ${images.map((src, i) => `
+                    <div class="relative group/img overflow-hidden rounded-xl bg-slate-950/60 aspect-[4/3] border border-slate-800">
+                      <img src="${src}" alt="${escapeHtml(f.name)}の編成 #${i+1}" class="w-full h-full object-cover cursor-pointer group-hover/img:scale-105 transition duration-300" onclick="openImageModal('${src.replace(/'/g, "\\'")}')" />
+                      <span class="absolute bottom-1.5 right-1.5 bg-black/75 text-[10px] text-white font-mono px-1.5 py-0.5 rounded backdrop-blur">${i+1}/${images.length}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`;
+          } else if (images.length === 3) {
+            // 3枚: 3列グリッド（スマホでも見やすく）
+            imageHtml = `
+              <div class="px-5 pb-3">
+                <div class="grid grid-cols-3 gap-2">
+                  ${images.map((src, i) => `
+                    <div class="relative group/img overflow-hidden rounded-xl bg-slate-950/60 aspect-[4/3] border border-slate-800">
+                      <img src="${src}" alt="${escapeHtml(f.name)}の編成 #${i+1}" class="w-full h-full object-cover cursor-pointer group-hover/img:scale-105 transition duration-300" onclick="openImageModal('${src.replace(/'/g, "\\'")}')" />
+                      <span class="absolute bottom-1.5 right-1.5 bg-black/75 text-[10px] text-white font-mono px-1.5 py-0.5 rounded backdrop-blur">${i+1}/${images.length}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`;
+          } else {
+            // 4枚: 2x2グリッド
+            imageHtml = `
+              <div class="px-5 pb-3">
+                <div class="grid grid-cols-2 gap-2">
+                  ${images.map((src, i) => `
+                    <div class="relative group/img overflow-hidden rounded-xl bg-slate-950/60 aspect-[4/3] border border-slate-800">
+                      <img src="${src}" alt="${escapeHtml(f.name)}の編成 #${i+1}" class="w-full h-full object-cover cursor-pointer group-hover/img:scale-105 transition duration-300" onclick="openImageModal('${src.replace(/'/g, "\\'")}')" />
+                      <span class="absolute bottom-1.5 right-1.5 bg-black/75 text-[10px] text-white font-mono px-1.5 py-0.5 rounded backdrop-blur">${i+1}/${images.length}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`;
+          }
         }
 
         let commentHtml = '';
         if (hasComment) {
-          const borderStyle = hasImage ? 'border-slate-800' : 'border-l-4 border-violet-500/40 border-slate-800';
+          const borderStyle = hasImages ? 'border-slate-800' : 'border-l-4 border-violet-500/40 border-slate-800';
           commentHtml = `
             <div class="px-5 pb-4">
               <p class="text-sm text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-lg border ${borderStyle}">${escapeHtml(f.comment)}</p>
             </div>`;
-        } else if (!hasImage) {
+        } else if (!hasImages) {
           commentHtml = `
             <div class="px-5 pb-4">
               <p class="text-sm text-slate-500 italic bg-slate-900/40 p-3 rounded-lg border border-slate-800">（コメントなし）</p>
@@ -1071,9 +1214,12 @@
                   <span class="block text-xs text-slate-500">${dateStr}</span>
                 </div>
               </div>
-              <button onclick="deleteFormation('${f.id}')" class="text-xs text-slate-600 hover:text-rose-400 transition px-2 py-1 rounded-lg hover:bg-rose-500/10" title="削除">
-                🗑️
-              </button>
+              <div class="flex items-center gap-2">
+                ${hasImages ? `<span class="text-[11px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">📷 ${images.length}枚</span>` : ''}
+                <button onclick="deleteFormation('${f.id}')" class="text-xs text-slate-600 hover:text-rose-400 transition px-2 py-1 rounded-lg hover:bg-rose-500/10" title="削除">
+                  🗑️
+                </button>
+              </div>
             </div>
             ${imageHtml}
             ${commentHtml}
