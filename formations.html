@@ -892,33 +892,105 @@
           <details class="form-group" style="border:1px solid rgba(245,158,11,0.3); border-radius:12px; background:linear-gradient(135deg, rgba(245,158,11,0.04), rgba(249,115,22,0.04)); overflow:hidden;">
             <summary style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:12px 16px; font-size:13px; font-weight:700; color:#fbbf24; list-style:none; user-select:none;" onclick="this.querySelector('.tmpl-arrow').style.transform = this.parentElement.open ? 'rotate(0deg)' : 'rotate(90deg)'">
               <span class="tmpl-arrow" style="font-size:14px; transition:transform 0.2s;">▶</span>
-              <span>📌</span>
-              <span>【重要】編成投稿の書き方・テンプレート（クリックして開く）</span>
+              <span>📌 編成投稿用テンプレートと記入例の2つ（クリックして開く）</span>
             </summary>
             <div style="border-top:1px solid rgba(245,158,11,0.2); padding:16px; display:flex; flex-direction:column; gap:12px;">
               <p style="font-size:11px; color:#cbd5e1; line-height:1.6;">
                 以下のテンプレートをコピーしてコメント欄に貼り付け、自分の編成に合わせて編集してください。<br>
                 画像と合わせて投稿すると、団員にとってより分かりやすい共有になります。
               </p>
-              <div style="position:relative;">
-                <button
-                  type="button"
-                  onclick="copyMoveTemplate()"
-                  id="templateCopyBtn"
-                  style="position:absolute; top:8px; right:8px; z-index:10; font-size:11px; font-weight:700; color:#c4b5fd; background:rgba(139,92,246,0.2); border:1px solid rgba(139,92,246,0.3); padding:6px 12px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:4px; transition:background 0.2s;"
-                >
-                  <span id="templateCopyIcon">📋</span>
-                  <span id="templateCopyLabel">コピー</span>
-                </button>
-                <pre id="moveTemplate" style="font-size:11px; color:#e2e8f0; line-height:1.7; background:rgba(2,6,23,0.8); border:1px solid rgba(51,65,85,0.8); border-radius:12px; padding:16px; padding-right:80px; overflow-x:auto; white-space:pre-wrap; font-family:'Courier New',monospace; tab-size:2;">【バトル名】250HELL
+
+              <!-- コピペ用 -->
+              <div>
+                <h4 style="font-size:12px; font-weight:700; color:#fcd34d; margin-bottom:8px;">▼ コピペ用テンプレート</h4>
+                <div style="position:relative;">
+                  <button
+                    type="button"
+                    onclick="copyMoveTemplate('moveTemplateCopy')"
+                    id="templateCopyBtn-moveTemplateCopy"
+                    style="position:absolute; top:8px; right:8px; z-index:10; font-size:11px; font-weight:700; color:#c4b5fd; background:rgba(139,92,246,0.2); border:1px solid rgba(139,92,246,0.3); padding:6px 12px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:4px; transition:background 0.2s;"
+                  >
+                    <span id="templateCopyIcon-moveTemplateCopy">📋</span>
+                    <span id="templateCopyLabel-moveTemplateCopy">コピー</span>
+                  </button>
+                  <pre id="moveTemplateCopy" style="font-size:11px; color:#e2e8f0; line-height:1.7; background:rgba(2,6,23,0.8); border:1px solid rgba(51,65,85,0.8); border-radius:12px; padding:16px; padding-right:80px; overflow-x:auto; white-space:pre-wrap; font-family:'Courier New',monospace; tab-size:2;">【バトル名】
 
 【前提・装備】
-・終末：極波アビダメ / 鑰環：神撃
+・終末： 
+・破壊武器：
+・オメガ武器：
+・フレンド：
+・キャラタイプ：
+・備考：
+・奥義ルール：次に指示がない限り、指定した奥義オン/オフ状態を次の指示まで継続
+
+【ムーブ手順】
+■ 1T目
+（奥義ON/OFF）攻撃
+
+■ 2T目
+
+■ 3T目
+
+■ 4T目
+
+■ 5T目
+
+■ 6T目
+
+■ 7T目
+
+■ 8T目
+
+■ 9T目
+
+■ 10T目
+
+■ 11T目
+
+■ 12T目
+
+■ 13T目
+
+■ 14T目
+
+■ 15T目
+
+■ 16T目
+
+■ 17T目
+
+■ 18T目
+
+■ 19T目
+
+■ 20T目</pre>
+                </div>
+              </div>
+
+              <!-- 記入例 -->
+              <div>
+                <h4 style="font-size:12px; font-weight:700; color:#fcd34d; margin-bottom:8px;">▼ 記入例（18T 250HELL）</h4>
+                <div style="position:relative;">
+                  <button
+                    type="button"
+                    onclick="copyMoveTemplate('moveTemplateExample')"
+                    id="templateCopyBtn-moveTemplateExample"
+                    style="position:absolute; top:8px; right:8px; z-index:10; font-size:11px; font-weight:700; color:#c4b5fd; background:rgba(139,92,246,0.2); border:1px solid rgba(139,92,246,0.3); padding:6px 12px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:4px; transition:background 0.2s;"
+                  >
+                    <span id="templateCopyIcon-moveTemplateExample">📋</span>
+                    <span id="templateCopyLabel-moveTemplateExample">コピー</span>
+                  </button>
+                  <pre id="moveTemplateExample" style="font-size:11px; color:#94a3b8; line-height:1.7; background:rgba(15,23,42,0.6); border:1px solid rgba(30,41,59,0.8); border-radius:12px; padding:16px; padding-right:80px; overflow-x:auto; white-space:pre-wrap; font-family:'Courier New',monospace; tab-size:2;">【バトル名】250HELL
+
+【前提・装備】
+・終末：極波アビダメ
+・破壊武器：神撃
 ・オメガ武器：渾身通常トリア
 ・フレンド：アグニス
 ・タイプ：全て連撃タイプ
 ・備考：バフなし、シルフ修羅AF
-・奥義ルール：次に指示がない限り、指定したオン/オフ状態を次の指示まで継続
+・奥義ルール：次に指示がない限り、指定した奥義オン/オフ状態を次の指示まで継続
 
 【ムーブ手順】
 ■ 1T目
@@ -992,6 +1064,7 @@ Qバブ召喚
 
 ■ 18T目
 討伐完了</pre>
+                </div>
               </div>
               <p style="font-size:10px; color:#64748b;">💡 テンプレートは自分の編成に合わせて自由に編集してOKです。バトル名・前提装備・ムーブ手順の3セクション構成で書くと伝わりやすくなります。</p>
             </div>
@@ -1305,13 +1378,13 @@ Qバブ召喚
       });
     }
 
-    function copyMoveTemplate() {
-      const templateEl = document.getElementById('moveTemplate');
+    function copyMoveTemplate(id) {
+      const templateEl = document.getElementById(id);
       if (!templateEl) return;
       const text = templateEl.textContent;
       navigator.clipboard.writeText(text).then(() => {
-        const icon = document.getElementById('templateCopyIcon');
-        const label = document.getElementById('templateCopyLabel');
+        const icon = document.getElementById('templateCopyIcon-' + id);
+        const label = document.getElementById('templateCopyLabel-' + id);
         icon.textContent = '✅';
         label.textContent = 'コピーしました！';
         setTimeout(() => {
