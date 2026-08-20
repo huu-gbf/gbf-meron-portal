@@ -892,9 +892,20 @@
           <span style="font-size:1.2rem">⚔️</span>
           <h3>みんなの編成一覧</h3>
           <span class="list-count" id="postCount">0件</span>
-          <span id="syncStatusBadge" style="display:none; font-size:0.65rem; padding: 2px 8px; border-radius: 12px; background: rgba(52, 211, 153, 0.15); color: var(--emerald-400); border: 1px solid rgba(52, 211, 153, 0.3); font-weight:700;">● リアルタイム同期中</span>
+          <span id="syncStatusBadge" style="font-size:0.65rem; padding: 2px 8px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); color: var(--amber-400); border: 1px solid rgba(245, 158, 11, 0.3); font-weight:700;">
+            <span id="syncStatusText">ローカル保存モード</span>
+          </span>
         </div>
-        <div>
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button 
+            type="button" 
+            onclick="openFirebaseConfigModal()"
+            style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(51, 65, 85, 0.8); color: var(--text-secondary); font-size: 0.75rem; font-weight: 700; padding: 6px 12px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"
+            title="Firebase接続設定"
+          >
+            <span>⚙️</span>
+            <span>Firebase設定</span>
+          </button>
           <button 
             type="button" 
             id="notifyToggleBtn" 
@@ -930,6 +941,70 @@
     </div>
   </div>
 
+  <!-- ========== Firebase 設定モーダル ========== -->
+  <div class="image-modal" id="firebaseModal" onclick="closeFirebaseConfigModal()" style="z-index: 250;">
+    <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px; background: rgba(18, 24, 41, 0.95); border: 1px solid var(--border-hover); border-radius: 16px; padding: 24px; text-align: left; display: block;">
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(51, 65, 85, 0.6); padding-bottom: 12px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.5rem;">🔥</span>
+          <div>
+            <h3 style="font-size: 1rem; color: #fff; font-weight: 700;">Firebase 接続設定</h3>
+            <p style="font-size: 0.7rem; color: var(--text-muted);">全端末でリアルタイム同期・プッシュ通知を行う設定</p>
+          </div>
+        </div>
+        <button onclick="closeFirebaseConfigModal()" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(71, 85, 105, 0.6); color: #fff; width: 32px; height: 32px; border-radius: 8px; cursor: pointer;">✕</button>
+      </div>
+
+      <div id="fbStatusBox" style="margin-bottom: 16px; padding: 10px 14px; border-radius: 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 8px; background: rgba(15, 18, 32, 0.8); border: 1px solid rgba(51, 65, 85, 0.8); color: var(--text-secondary);">
+        <span id="fbStatusDot" style="width: 10px; height: 10px; border-radius: 50%; background: var(--amber-400);"></span>
+        <span id="fbStatusMsg">状態: 未接続 (localStorageモード)</span>
+      </div>
+
+      <form id="firebaseSettingsForm" onsubmit="handleSaveFirebaseConfig(event)" style="font-size: 0.75rem; display: flex; flex-direction: column; gap: 12px;">
+        <div>
+          <label style="display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">API Key <span style="color: var(--rose-400);">*</span></label>
+          <input type="text" id="cfgApiKey" required placeholder="AIzaSy..." class="form-input" style="padding: 8px 12px; font-size: 0.8rem; font-family: monospace;" />
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">Project ID <span style="color: var(--rose-400);">*</span></label>
+          <input type="text" id="cfgProjectId" required placeholder="gbf-meron-portal" class="form-input" style="padding: 8px 12px; font-size: 0.8rem; font-family: monospace;" />
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">Auth Domain</label>
+            <input type="text" id="cfgAuthDomain" placeholder="xxx.firebaseapp.com" class="form-input" style="padding: 8px 12px; font-size: 0.8rem; font-family: monospace;" />
+          </div>
+          <div>
+            <label style="display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">Storage Bucket</label>
+            <input type="text" id="cfgStorageBucket" placeholder="xxx.appspot.com" class="form-input" style="padding: 8px 12px; font-size: 0.8rem; font-family: monospace;" />
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">Messaging Sender ID</label>
+            <input type="text" id="cfgSenderId" placeholder="123456789" class="form-input" style="padding: 8px 12px; font-size: 0.8rem; font-family: monospace;" />
+          </div>
+          <div>
+            <label style="display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">App ID</label>
+            <input type="text" id="cfgAppId" placeholder="1:123456:web:abc" class="form-input" style="padding: 8px 12px; font-size: 0.8rem; font-family: monospace;" />
+          </div>
+        </div>
+        <div>
+          <label style="display: block; font-weight: 700; color: var(--text-secondary); margin-bottom: 4px;">VAPID Key (Web Push公開鍵 / 任意)</label>
+          <input type="text" id="cfgVapidKey" placeholder="BEl5..." class="form-input" style="padding: 8px 12px; font-size: 0.8rem; font-family: monospace;" />
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px;">
+          <button type="button" onclick="handleClearFirebaseConfig()" style="background: none; border: none; color: var(--rose-400); font-size: 0.75rem; cursor: pointer;">設定を初期化</button>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" onclick="closeFirebaseConfigModal()" style="padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(71, 85, 105, 0.6); background: rgba(30, 41, 59, 0.8); color: #fff; cursor: pointer; font-size: 0.75rem;">キャンセル</button>
+            <button type="submit" style="padding: 8px 18px; border-radius: 10px; border: none; background: linear-gradient(135deg, var(--violet-500), var(--fuchsia-500)); color: #fff; font-weight: 700; cursor: pointer; font-size: 0.75rem;">保存して接続</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     // ==========================================================
     //  定数・状態
@@ -941,13 +1016,20 @@
     let messaging = null;
     let fcmToken = null;
     let isInitialLoadDone = false;
+    let unsubscribeFirestore = null;
 
     // Firebase 初期化
     function initFirebaseService() {
-      if (typeof firebase !== 'undefined' && typeof isFirebaseConfigured === 'function' && isFirebaseConfigured()) {
+      const isConfigured = typeof isFirebaseConfigured === 'function' ? isFirebaseConfigured() : false;
+      const statusBadge = document.getElementById('syncStatusBadge');
+      const statusText = document.getElementById('syncStatusText');
+
+      if (typeof firebase !== 'undefined' && isConfigured) {
         try {
-          if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+          const cfg = window.firebaseConfig || (typeof getActiveFirebaseConfig === 'function' ? getActiveFirebaseConfig() : null);
+
+          if (!firebase.apps.length && cfg) {
+            firebase.initializeApp(cfg);
           }
           db = firebase.firestore();
           
@@ -955,14 +1037,32 @@
             messaging = firebase.messaging();
           }
 
-          const badge = document.getElementById('syncStatusBadge');
-          if (badge) badge.style.display = 'inline-block';
+          if (statusBadge && statusText) {
+            statusBadge.style.background = 'rgba(52, 211, 153, 0.15)';
+            statusBadge.style.borderColor = 'rgba(52, 211, 153, 0.35)';
+            statusBadge.style.color = 'var(--emerald-400)';
+            statusText.textContent = '🟢 Firestore リアルタイム同期中';
+          }
 
           listenToFirestoreFormations();
           console.log('Firebase Firestore & Messaging が有効化されました。');
         } catch (e) {
-          console.warn('Firebase初期化エラー (localStorageモードへフォールバック):', e);
+          console.warn('Firebase初期化エラー:', e);
+          if (statusBadge && statusText) {
+            statusBadge.style.background = 'rgba(225, 29, 72, 0.15)';
+            statusBadge.style.borderColor = 'rgba(225, 29, 72, 0.35)';
+            statusBadge.style.color = 'var(--rose-400)';
+            statusText.textContent = '🔴 Firebase初期化エラー';
+          }
         }
+      } else {
+        if (statusBadge && statusText) {
+          statusBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+          statusBadge.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+          statusBadge.style.color = 'var(--amber-400)';
+          statusText.textContent = '🟡 未接続 (ローカル保存)';
+        }
+        console.log('Firebase設定が未入力のため、localStorageモードで動作します。');
       }
     }
 
@@ -970,10 +1070,7 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./firebase-messaging-sw.js')
         .then((registration) => {
-          console.log('Service Worker 登録成功:', registration.scope);
-          if (messaging) {
-            messaging.useServiceWorker(registration);
-          }
+          if (messaging) messaging.useServiceWorker(registration);
         })
         .catch((err) => {
           console.warn('Service Worker 登録失敗:', err);
@@ -1029,7 +1126,7 @@
     }
 
     // ==========================================================
-    //  画像選択・処理
+    //  画像選択・処理（Firestore 1MB上限対策: 750px/0.72品質）
     // ==========================================================
     function handleFileSelect(e) {
       const files = Array.from(e.target.files);
@@ -1053,8 +1150,8 @@
 
       let processed = 0;
       filesToProcess.forEach(file => {
-        if (file.size > 5 * 1024 * 1024) {
-          alert(`「${file.name}」のサイズが5MBを超えているためスキップしました。`);
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`「${file.name}」のサイズが10MBを超えているためスキップしました。`);
           processed++;
           if (processed === filesToProcess.length) updatePreviewUI();
           return;
@@ -1065,7 +1162,7 @@
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const MAX_W = 1000;
+            const MAX_W = 750; // Firestoreの1MB上限に余裕を持って収める
             let w = img.width, h = img.height;
             if (w > MAX_W) {
               h = Math.round(h * MAX_W / w);
@@ -1074,7 +1171,7 @@
             canvas.width = w;
             canvas.height = h;
             canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            const base64 = canvas.toDataURL('image/jpeg', 0.82);
+            const base64 = canvas.toDataURL('image/jpeg', 0.72); // 1枚あたり約40〜80KB
 
             if (selectedImages.length < MAX_IMAGES) {
               selectedImages.push(base64);
@@ -1151,8 +1248,8 @@
     function savePosts(posts) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
-      } catch {
-        alert('保存容量の上限に達しました。古い投稿を削除してからお試しください。');
+      } catch (e) {
+        console.warn('localStorage保存上限エラー:', e);
       }
     }
 
@@ -1213,18 +1310,15 @@
             body: '新着編成のプッシュ通知がONになりました！団員の投稿をリアルタイムでお知らせします。'
           });
 
-          if (messaging && typeof FIREBASE_VAPID_KEY !== 'undefined' && FIREBASE_VAPID_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
+          const vapidKey = window.FIREBASE_VAPID_KEY || (typeof getActiveVapidKey === 'function' ? getActiveVapidKey() : null);
+          if (messaging && vapidKey && vapidKey !== 'YOUR_VAPID_PUBLIC_KEY') {
             try {
-              const currentToken = await messaging.getToken({ vapidKey: FIREBASE_VAPID_KEY });
-              if (currentToken) {
-                console.log('FCM Device Token 取得:', currentToken);
-                fcmToken = currentToken;
-                if (db) {
-                  await db.collection('notification_tokens').doc(currentToken).set({
-                    token: currentToken,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                  });
-                }
+              const currentToken = await messaging.getToken({ vapidKey });
+              if (currentToken && db) {
+                await db.collection('notification_tokens').doc(currentToken).set({
+                  token: currentToken,
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
               }
             } catch (err) {
               console.warn('FCM Token 取得エラー:', err);
@@ -1257,19 +1351,24 @@
     }
 
     // ==========================================================
-    //  Firestore リアルタイム同期
+    //  Firestore リアルタイム同期 (onSnapshot)
     // ==========================================================
     function listenToFirestoreFormations() {
       if (!db) return;
 
-      db.collection('formations')
-        .orderBy('timestamp', 'desc')
-        .limit(50)
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+      }
+
+      unsubscribeFirestore = db.collection('formations')
         .onSnapshot((snapshot) => {
           const remoteFormations = [];
           snapshot.forEach((doc) => {
             remoteFormations.push({ id: doc.id, ...doc.data() });
           });
+
+          // クライアント側で確実に日付降順にソート
+          remoteFormations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
           if (isInitialLoadDone) {
             snapshot.docChanges().forEach((change) => {
@@ -1287,18 +1386,27 @@
           savePosts(remoteFormations);
           renderPosts();
         }, (error) => {
-          console.warn('Firestore同期エラー:', error);
+          console.error('Firestore同期エラー:', error);
+          const statusBadge = document.getElementById('syncStatusBadge');
+          const statusText = document.getElementById('syncStatusText');
+          if (statusBadge && statusText) {
+            statusBadge.style.background = 'rgba(225, 29, 72, 0.15)';
+            statusBadge.style.borderColor = 'rgba(225, 29, 72, 0.35)';
+            statusBadge.style.color = 'var(--rose-400)';
+            statusText.textContent = '🔴 同期エラー: ' + error.code;
+          }
         });
     }
 
     // ==========================================================
-    //  投稿処理
+    //  投稿処理（Firestoreへ確実に保存）
     // ==========================================================
     async function handleSubmit(e) {
       e.preventDefault();
 
       const name = document.getElementById('playerName').value.trim();
       const comment = document.getElementById('comment').value.trim();
+      const submitBtn = document.getElementById('submitBtn');
 
       if (!name) {
         alert('ゲーム内の名前を入力してください。');
@@ -1314,14 +1422,23 @@
       };
 
       if (db) {
+        const originalText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>⏳</span><span>クラウドへ同期送信中...</span>';
+
         try {
           await db.collection('formations').doc(post.id).set(post);
+          console.log('Firestoreへ投稿保存完了:', post.id);
         } catch (err) {
-          console.warn('Firestore保存失敗 (localStorageへフォールバック):', err);
-          const posts = getPosts();
-          posts.unshift(post);
-          savePosts(posts);
+          console.error('Firestore保存失敗:', err);
+          alert('Firebase Firestoreへの保存に失敗しました:\n' + err.message + '\n\n【解決策】\n1. Firestore Databaseが作成されているか確認してください\n2. Firestoreのルールが「テストモード (allow read, write: if true;)」になっているか確認してください。');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+          return;
         }
+
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
       } else {
         const posts = getPosts();
         posts.unshift(post);
@@ -1353,8 +1470,10 @@
       if (db) {
         try {
           await db.collection('formations').doc(id).delete();
+          console.log('Firestoreから削除完了:', id);
         } catch (err) {
-          console.warn('Firestore削除失敗:', err);
+          console.error('Firestore削除失敗:', err);
+          alert('削除に失敗しました: ' + err.message);
         }
       }
 
@@ -1467,8 +1586,78 @@
       document.body.style.overflow = '';
     }
 
+    // ==========================================================
+    //  Firebase 設定モーダル操作
+    // ==========================================================
+    function openFirebaseConfigModal() {
+      const modal = document.getElementById('firebaseModal');
+      const cfg = typeof getActiveFirebaseConfig === 'function' ? getActiveFirebaseConfig() : (window.firebaseConfig || {});
+      const vapid = typeof getActiveVapidKey === 'function' ? getActiveVapidKey() : (window.FIREBASE_VAPID_KEY || '');
+
+      document.getElementById('cfgApiKey').value = (cfg.apiKey && cfg.apiKey !== 'YOUR_API_KEY') ? cfg.apiKey : '';
+      document.getElementById('cfgProjectId').value = (cfg.projectId && cfg.projectId !== 'YOUR_PROJECT_ID') ? cfg.projectId : '';
+      document.getElementById('cfgAuthDomain').value = (cfg.authDomain && !cfg.authDomain.includes('YOUR_PROJECT_ID')) ? cfg.authDomain : '';
+      document.getElementById('cfgStorageBucket').value = (cfg.storageBucket && !cfg.storageBucket.includes('YOUR_PROJECT_ID')) ? cfg.storageBucket : '';
+      document.getElementById('cfgSenderId').value = (cfg.messagingSenderId && cfg.messagingSenderId !== 'YOUR_MESSAGING_SENDER_ID') ? cfg.messagingSenderId : '';
+      document.getElementById('cfgAppId').value = (cfg.appId && cfg.appId !== 'YOUR_APP_ID') ? cfg.appId : '';
+      document.getElementById('cfgVapidKey').value = (vapid && vapid !== 'YOUR_VAPID_PUBLIC_KEY') ? vapid : '';
+
+      const dot = document.getElementById('fbStatusDot');
+      const msg = document.getElementById('fbStatusMsg');
+      const isConfigured = typeof isFirebaseConfigured === 'function' ? isFirebaseConfigured() : false;
+
+      if (isConfigured && db) {
+        dot.style.background = 'var(--emerald-400)';
+        msg.textContent = '状態: 接続中 (Firestoreリアルタイム同期有効)';
+      } else {
+        dot.style.background = 'var(--amber-400)';
+        msg.textContent = '状態: 未設定 / ローカル保存モード';
+      }
+
+      modal.classList.add('visible');
+    }
+
+    function closeFirebaseConfigModal() {
+      const modal = document.getElementById('firebaseModal');
+      modal.classList.remove('visible');
+    }
+
+    function handleSaveFirebaseConfig(e) {
+      e.preventDefault();
+
+      const newConfig = {
+        apiKey: document.getElementById('cfgApiKey').value.trim(),
+        authDomain: document.getElementById('cfgAuthDomain').value.trim() || `${document.getElementById('cfgProjectId').value.trim()}.firebaseapp.com`,
+        projectId: document.getElementById('cfgProjectId').value.trim(),
+        storageBucket: document.getElementById('cfgStorageBucket').value.trim() || `${document.getElementById('cfgProjectId').value.trim()}.appspot.com`,
+        messagingSenderId: document.getElementById('cfgSenderId').value.trim(),
+        appId: document.getElementById('cfgAppId').value.trim()
+      };
+
+      const newVapid = document.getElementById('cfgVapidKey').value.trim();
+
+      localStorage.setItem('gbf_custom_firebase_config', JSON.stringify(newConfig));
+      if (newVapid) {
+        localStorage.setItem('gbf_custom_vapid_key', newVapid);
+      }
+
+      alert('Firebase設定を保存しました！ページを再読み込みして接続を開始します。');
+      window.location.reload();
+    }
+
+    function handleClearFirebaseConfig() {
+      if (!confirm('保存されたFirebase設定を初期化しますか？')) return;
+      localStorage.removeItem('gbf_custom_firebase_config');
+      localStorage.removeItem('gbf_custom_vapid_key');
+      alert('設定を初期化しました。ページを再読み込みします。');
+      window.location.reload();
+    }
+
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') {
+        closeModal();
+        closeFirebaseConfigModal();
+      }
     });
 
     // ==========================================================
