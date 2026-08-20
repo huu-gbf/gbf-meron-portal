@@ -888,6 +888,115 @@
             </div>
           </div>
 
+          <!-- 編成投稿テンプレート（アコーディオン） -->
+          <details class="form-group" style="border:1px solid rgba(245,158,11,0.3); border-radius:12px; background:linear-gradient(135deg, rgba(245,158,11,0.04), rgba(249,115,22,0.04)); overflow:hidden;">
+            <summary style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:12px 16px; font-size:13px; font-weight:700; color:#fbbf24; list-style:none; user-select:none;" onclick="this.querySelector('.tmpl-arrow').style.transform = this.parentElement.open ? 'rotate(0deg)' : 'rotate(90deg)'">
+              <span class="tmpl-arrow" style="font-size:14px; transition:transform 0.2s;">▶</span>
+              <span>📌</span>
+              <span>【重要】編成投稿の書き方・テンプレート（クリックして開く）</span>
+            </summary>
+            <div style="border-top:1px solid rgba(245,158,11,0.2); padding:16px; display:flex; flex-direction:column; gap:12px;">
+              <p style="font-size:11px; color:#cbd5e1; line-height:1.6;">
+                以下のテンプレートをコピーしてコメント欄に貼り付け、自分の編成に合わせて編集してください。<br>
+                画像と合わせて投稿すると、団員にとってより分かりやすい共有になります。
+              </p>
+              <div style="position:relative;">
+                <button
+                  type="button"
+                  onclick="copyMoveTemplate()"
+                  id="templateCopyBtn"
+                  style="position:absolute; top:8px; right:8px; z-index:10; font-size:11px; font-weight:700; color:#c4b5fd; background:rgba(139,92,246,0.2); border:1px solid rgba(139,92,246,0.3); padding:6px 12px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:4px; transition:background 0.2s;"
+                >
+                  <span id="templateCopyIcon">📋</span>
+                  <span id="templateCopyLabel">コピー</span>
+                </button>
+                <pre id="moveTemplate" style="font-size:11px; color:#e2e8f0; line-height:1.7; background:rgba(2,6,23,0.8); border:1px solid rgba(51,65,85,0.8); border-radius:12px; padding:16px; padding-right:80px; overflow-x:auto; white-space:pre-wrap; font-family:'Courier New',monospace; tab-size:2;">【バトル名】250HELL
+
+【前提・装備】
+・終末：極波アビダメ / 鑰環：神撃
+・オメガ武器：渾身通常トリア
+・フレンド：アグニス
+・タイプ：全て連撃タイプ
+・備考：バフなし、シルフ修羅AF
+・奥義ルール：次に指示がない限り、指定したオン/オフ状態を次の指示まで継続
+
+【ムーブ手順】
+■ 1T目
+主人公1, 2, 3
+シルフ1 → ゼタ
+シルフ2 → 主人公
+ゼタ1
+ルナ → シルフ
+（奥義ON）攻撃
+
+■ 2T目
+（奥義ON継続）攻撃
+
+■ 3T目
+（奥義ON継続）攻撃
+
+■ 4T目
+（奥義ON継続）奥義を打つ
+
+■ 5T目 (HP93%)
+（奥義OFF）攻撃
+
+■ 6T目 (HP92%)
+主人公1, 4, 3（アンリミ起動）
+ミカ2, 3
+（奥義OFF）攻撃
+
+■ 7T目
+ミカ2
+（奥義OFF）攻撃
+
+■ 8T目 (HP78%)
+オルポ使用
+（奥義OFF）攻撃
+
+■ 9T目 (HP71%)
+Qバブ召喚
+ルリア3
+（奥義OFF）攻撃
+
+■ 10T目 (HP63%)
+（奥義OFF）攻撃
+
+■ 11T目 (HP56%)
+主人公3、ミカ3
+（奥義OFF）攻撃
+
+■ 12T目 (HP49%)
+オルポ使用
+（奥義OFF）攻撃
+
+■ 13T目
+オルポ使用
+（奥義OFF）攻撃
+
+■ 14T目
+ミカ2、バブ召喚
+（奥義OFF）攻撃
+
+■ 15T目
+オルポ使用
+（奥義OFF）攻撃
+
+■ 16T目
+主人公3、ミカ3
+（奥義OFF）攻撃
+
+■ 17T目
+※残り7%なら確実、8%なら1アビポチ
+（奥義OFF）攻撃
+
+■ 18T目
+討伐完了</pre>
+              </div>
+              <p style="font-size:10px; color:#64748b;">💡 テンプレートは自分の編成に合わせて自由に編集してOKです。バトル名・前提装備・ムーブ手順の3セクション構成で書くと伝わりやすくなります。</p>
+            </div>
+          </details>
+
           <!-- ③ コメント -->
           <div class="form-group">
             <label class="form-label" for="comment">
@@ -896,11 +1005,11 @@
             <textarea 
               id="comment" 
               class="form-textarea" 
-              placeholder="例: 光古戦場250HELL用の編成です。&#10;・レスラー軸で時速○万くらい出ます。&#10;・フレ石はゼウスを選択してください。"
-              rows="4"
-              maxlength="500"
+              placeholder="例: 光古戦場250HELL用の編成です。&#10;・レスラー軸で時速○万くらい出ます。&#10;・フレ石はゼウスを選択してください。&#10;&#10;💡 上のテンプレートをコピーして貼り付けると、ムーブ手順を共有できます。"
+              rows="5"
+              maxlength="3000"
             ></textarea>
-            <div class="char-count"><span id="charCount">0</span> / 500</div>
+            <div class="char-count"><span id="charCount">0</span> / 3000</div>
           </div>
 
           <!-- 送信ボタン -->
@@ -1193,6 +1302,22 @@
       const el = document.getElementById('comment');
       el.addEventListener('input', () => {
         document.getElementById('charCount').textContent = el.value.length;
+      });
+    }
+
+    function copyMoveTemplate() {
+      const templateEl = document.getElementById('moveTemplate');
+      if (!templateEl) return;
+      const text = templateEl.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const icon = document.getElementById('templateCopyIcon');
+        const label = document.getElementById('templateCopyLabel');
+        icon.textContent = '✅';
+        label.textContent = 'コピーしました！';
+        setTimeout(() => {
+          icon.textContent = '📋';
+          label.textContent = 'コピー';
+        }, 2000);
       });
     }
 
