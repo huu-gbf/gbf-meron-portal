@@ -671,33 +671,105 @@
             <details class="group rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-orange-500/5 overflow-hidden">
               <summary class="flex items-center gap-2 cursor-pointer px-4 py-3 text-sm font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition select-none list-none [&::-webkit-details-marker]:hidden">
                 <span class="text-base transition-transform duration-200 group-open:rotate-90">▶</span>
-                <span>📌</span>
-                <span>【重要】編成投稿の書き方・テンプレート（クリックして開く）</span>
+                <span>📌 編成投稿用テンプレートと記入例の2つ（クリックして開く）</span>
               </summary>
-              <div class="border-t border-amber-500/20 px-4 py-4 space-y-3">
+              <div class="border-t border-amber-500/20 px-4 py-4 space-y-5">
                 <p class="text-xs text-slate-300 leading-relaxed">
                   以下のテンプレートをコピーしてコメント欄に貼り付け、自分の編成に合わせて編集してください。<br>
                   画像と合わせて投稿すると、団員にとってより分かりやすい共有になります。
                 </p>
-                <div class="relative">
-                  <button
-                    type="button"
-                    onclick="copyMoveTemplate()"
-                    id="templateCopyBtn"
-                    class="absolute top-2 right-2 z-10 text-[11px] font-bold text-violet-300 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"
-                  >
-                    <span id="templateCopyIcon">📋</span>
-                    <span id="templateCopyLabel">コピー</span>
-                  </button>
-                  <pre id="moveTemplate" class="text-xs text-slate-200 leading-[1.7] bg-slate-950/80 border border-slate-800 rounded-xl p-4 pr-20 overflow-x-auto whitespace-pre-wrap font-mono" style="tab-size:2;">【バトル名】250HELL
+
+                <!-- コピペ用 -->
+                <div>
+                  <h4 class="text-xs font-bold text-amber-300 mb-2">▼ コピペ用テンプレート</h4>
+                  <div class="relative">
+                    <button
+                      type="button"
+                      onclick="copyMoveTemplate('moveTemplateCopy')"
+                      id="templateCopyBtn-moveTemplateCopy"
+                      class="absolute top-2 right-2 z-10 text-[11px] font-bold text-violet-300 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"
+                    >
+                      <span id="templateCopyIcon-moveTemplateCopy">📋</span>
+                      <span id="templateCopyLabel-moveTemplateCopy">コピー</span>
+                    </button>
+                    <pre id="moveTemplateCopy" class="text-xs text-slate-200 leading-[1.7] bg-slate-950/80 border border-slate-800 rounded-xl p-4 pr-20 overflow-x-auto whitespace-pre-wrap font-mono" style="tab-size:2;">【バトル名】
 
 【前提・装備】
-・終末：極波アビダメ / 鑰環：神撃
+・終末： 
+・破壊武器：
+・オメガ武器：
+・フレンド：
+・キャラタイプ：
+・備考：
+・奥義ルール：次に指示がない限り、指定した奥義オン/オフ状態を次の指示まで継続
+
+【ムーブ手順】
+■ 1T目
+（奥義ON/OFF）攻撃
+
+■ 2T目
+
+■ 3T目
+
+■ 4T目
+
+■ 5T目
+
+■ 6T目
+
+■ 7T目
+
+■ 8T目
+
+■ 9T目
+
+■ 10T目
+
+■ 11T目
+
+■ 12T目
+
+■ 13T目
+
+■ 14T目
+
+■ 15T目
+
+■ 16T目
+
+■ 17T目
+
+■ 18T目
+
+■ 19T目
+
+■ 20T目</pre>
+                  </div>
+                </div>
+
+                <!-- 記入例 -->
+                <div>
+                  <h4 class="text-xs font-bold text-amber-300 mb-2">▼ 記入例（18T 250HELL）</h4>
+                  <div class="relative">
+                    <button
+                      type="button"
+                      onclick="copyMoveTemplate('moveTemplateExample')"
+                      id="templateCopyBtn-moveTemplateExample"
+                      class="absolute top-2 right-2 z-10 text-[11px] font-bold text-violet-300 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"
+                    >
+                      <span id="templateCopyIcon-moveTemplateExample">📋</span>
+                      <span id="templateCopyLabel-moveTemplateExample">コピー</span>
+                    </button>
+                    <pre id="moveTemplateExample" class="text-xs text-slate-400 leading-[1.7] bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 pr-20 overflow-x-auto whitespace-pre-wrap font-mono" style="tab-size:2;">【バトル名】250HELL
+
+【前提・装備】
+・終末：極波アビダメ
+・破壊武器：神撃
 ・オメガ武器：渾身通常トリア
 ・フレンド：アグニス
 ・タイプ：全て連撃タイプ
 ・備考：バフなし、シルフ修羅AF
-・奥義ルール：次に指示がない限り、指定したオン/オフ状態を次の指示まで継続
+・奥義ルール：次に指示がない限り、指定した奥義オン/オフ状態を次の指示まで継続
 
 【ムーブ手順】
 ■ 1T目
@@ -771,7 +843,9 @@ Qバブ召喚
 
 ■ 18T目
 討伐完了</pre>
+                  </div>
                 </div>
+
                 <p class="text-[11px] text-slate-500 mt-1">💡 テンプレートは自分の編成に合わせて自由に編集してOKです。バトル名・前提装備・ムーブ手順の3セクション構成で書くと伝わりやすくなります。</p>
               </div>
             </details>
@@ -1153,13 +1227,13 @@ Qバブ召喚
       });
     }
 
-    function copyMoveTemplate() {
-      const templateEl = document.getElementById('moveTemplate');
+    function copyMoveTemplate(id) {
+      const templateEl = document.getElementById(id);
       if (!templateEl) return;
       const text = templateEl.textContent;
       navigator.clipboard.writeText(text).then(() => {
-        const icon = document.getElementById('templateCopyIcon');
-        const label = document.getElementById('templateCopyLabel');
+        const icon = document.getElementById('templateCopyIcon-' + id);
+        const label = document.getElementById('templateCopyLabel-' + id);
         icon.textContent = '✅';
         label.textContent = 'コピーしました！';
         setTimeout(() => {
