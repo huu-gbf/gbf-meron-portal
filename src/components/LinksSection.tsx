@@ -8,7 +8,7 @@ const TOOLS: ExternalLink[] = [
     id: 'drop_calc',
     title: 'ドロップ率計算機',
     category: '新ツール',
-    description: '雫(Lv×CP) × トレハン × 風見鶏(1.2倍) × (1.0 + 装備/石/キャラ/大事なもの加算) の正確な計算式で最終倍率をリアルタイム算出。ヒヒイロカネや刻の流砂などのアイテム基礎確率を入力すると、1個ドロップに必要な平均周回数や95%確率ラインも逆算できます。',
+    description: '雫(Lv×CP) × トレハン × 風見鶏(1.2倍) × (1.0 + 装備/石/キャラ/大事なもの加算) の正確な計算式で最終倍率をリアルタイム算出。',
     url: 'drop-calculator.html',
     icon: '🎰',
     highlight: true
