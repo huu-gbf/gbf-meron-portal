@@ -32,10 +32,12 @@
       }
     }
   </script>
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+  <!-- Firebase SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
+  <script src="./firebase-config.js"></script>
   <style>
     body {
       background-color: #080b14;
@@ -669,11 +671,25 @@
         </div>
 
         <!-- 編成一覧ヘッダー -->
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-2 flex-wrap">
             <span class="text-lg">⚔️</span>
             <h3 class="text-lg font-bold text-white">みんなの編成一覧</h3>
             <span id="formationCount" class="text-xs px-2 py-0.5 bg-violet-500/20 text-violet-300 border border-violet-500/30 rounded-full font-bold">0件</span>
+            <span id="syncStatusBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">● リアルタイム同期中</span>
+          </div>
+
+          <!-- 通知登録ボタン -->
+          <div class="flex items-center gap-2">
+            <button 
+              type="button" 
+              id="notifyToggleBtn" 
+              onclick="toggleNotificationPermission()"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-slate-700 hover:text-white"
+            >
+              <span id="notifyIcon">🔔</span>
+              <span id="notifyLabel">新着通知をONにする</span>
+            </button>
           </div>
         </div>
 
@@ -896,14 +912,63 @@
     }
 
     // ==========================================================
-    //  編成共有掲示板ロジック（複数画像対応・最大4枚）
+    //  編成共有掲示板 ＆ Firebase Push通知/同期ロジック
     // ==========================================================
     const FORMATIONS_KEY = 'gbf_crew_formations';
     const MAX_IMAGES = 4;
     let selectedImages = []; // Array of base64 strings
+    let db = null;
+    let messaging = null;
+    let fcmToken = null;
+    let isInitialLoadDone = false;
 
-    // コメント文字数カウンター & D&Dセットアップ
+    // Firebase 初期化
+    function initFirebaseService() {
+      if (typeof firebase !== 'undefined' && typeof isFirebaseConfigured === 'function' && isFirebaseConfigured()) {
+        try {
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          db = firebase.firestore();
+          
+          if ('Notification' in window && firebase.messaging.isSupported()) {
+            messaging = firebase.messaging();
+          }
+
+          // リアルタイム同期バッジ表示
+          const badge = document.getElementById('syncStatusBadge');
+          if (badge) badge.classList.remove('hidden');
+
+          // Firestore リアルタイム同期開始
+          listenToFirestoreFormations();
+          console.log('Firebase Firestore & Messaging が有効化されました。');
+        } catch (e) {
+          console.warn('Firebase初期化エラー (localStorageモードへフォールバック):', e);
+        }
+      } else {
+        console.log('Firebase設定が未入力のため、localStorageモードで動作します。');
+      }
+    }
+
+    // Service Worker 登録 & FCMセットアップ
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./firebase-messaging-sw.js')
+        .then((registration) => {
+          console.log('Service Worker 登録成功:', registration.scope);
+          if (messaging) {
+            messaging.useServiceWorker(registration);
+          }
+        })
+        .catch((err) => {
+          console.warn('Service Worker 登録失敗:', err);
+        });
+    }
+
+    // コメント文字数カウンター & D&D & 通知UI初期化
     document.addEventListener('DOMContentLoaded', () => {
+      initFirebaseService();
+      updateNotificationButtonUI();
+
       const commentEl = document.getElementById('formationComment');
       if (commentEl) {
         commentEl.addEventListener('input', () => {
@@ -1069,7 +1134,140 @@
       }
     }
 
-    function handleFormationSubmit(event) {
+    // ==========================================================
+    //  通知許可 & トークン管理
+    // ==========================================================
+    function updateNotificationButtonUI() {
+      const btn = document.getElementById('notifyToggleBtn');
+      const icon = document.getElementById('notifyIcon');
+      const label = document.getElementById('notifyLabel');
+      if (!btn || !icon || !label) return;
+
+      if (!('Notification' in window)) {
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        label.textContent = '通知非対応ブラウザ';
+        return;
+      }
+
+      if (Notification.permission === 'granted') {
+        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-emerald-500/10 text-emerald-300 border-emerald-500/30';
+        icon.textContent = '🔔';
+        label.textContent = '新着通知: 受信中';
+      } else if (Notification.permission === 'denied') {
+        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-rose-500/10 text-rose-300 border-rose-500/30';
+        icon.textContent = '🔕';
+        label.textContent = '通知がブロックされています';
+      } else {
+        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border-violet-500/40';
+        icon.textContent = '🔔';
+        label.textContent = '新着プッシュ通知をONにする';
+      }
+    }
+
+    async function toggleNotificationPermission() {
+      if (!('Notification' in window)) {
+        alert('お使いのブラウザはプッシュ通知に対応していません。');
+        return;
+      }
+
+      if (Notification.permission === 'denied') {
+        alert('ブラウザの設定で通知がブロックされています。ブラウザのアドレスバーの鍵アイコンから通知を許可してください。');
+        return;
+      }
+
+      try {
+        const permission = await Notification.requestPermission();
+        updateNotificationButtonUI();
+
+        if (permission === 'granted') {
+          // テスト通知
+          showLocalNotification('めろ～ん王国 騎空団ポータル', {
+            body: '新着編成のプッシュ通知がONになりました！団員の投稿をリアルタイムでお知らせします。'
+          });
+
+          // FCM トークン取得 (Firebase設定時)
+          if (messaging && typeof FIREBASE_VAPID_KEY !== 'undefined' && FIREBASE_VAPID_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
+            try {
+              const currentToken = await messaging.getToken({ vapidKey: FIREBASE_VAPID_KEY });
+              if (currentToken) {
+                console.log('FCM Device Token 取得:', currentToken);
+                fcmToken = currentToken;
+                // Firestoreへトークンを保存
+                if (db) {
+                  await db.collection('notification_tokens').doc(currentToken).set({
+                    token: currentToken,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn('FCM Token 取得エラー:', err);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('通知許可リクエストエラー:', err);
+      }
+    }
+
+    function showLocalNotification(title, options) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, {
+              icon: './favicon.ico',
+              badge: './favicon.ico',
+              vibrate: [200, 100, 200],
+              ...options
+            });
+          });
+        } else {
+          new Notification(title, {
+            icon: './favicon.ico',
+            ...options
+          });
+        }
+      }
+    }
+
+    // ==========================================================
+    //  Firestore リアルタイム同期
+    // ==========================================================
+    function listenToFirestoreFormations() {
+      if (!db) return;
+
+      db.collection('formations')
+        .orderBy('timestamp', 'desc')
+        .limit(50)
+        .onSnapshot((snapshot) => {
+          const remoteFormations = [];
+          snapshot.forEach((doc) => {
+            remoteFormations.push({ id: doc.id, ...doc.data() });
+          });
+
+          // 新着投稿検知（初回読み込み以降）
+          if (isInitialLoadDone) {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === 'added') {
+                const newPost = change.doc.data();
+                // 自分が投稿したもの以外の場合、プッシュ通知を発火
+                showLocalNotification('【新着編成】' + (newPost.name || '団員') + 'さん', {
+                  body: newPost.comment || '新しい編成スクリーンショットが投稿されました！',
+                  data: { url: './formations.html' }
+                });
+              }
+            });
+          }
+
+          isInitialLoadDone = true;
+          saveFormations(remoteFormations);
+          renderFormations();
+        }, (error) => {
+          console.warn('Firestoreリアルタイム同期エラー (localStorageを使用):', error);
+        });
+    }
+
+    async function handleFormationSubmit(event) {
       event.preventDefault();
 
       const name = document.getElementById('formationName').value.trim();
@@ -1088,9 +1286,22 @@
         timestamp: new Date().toISOString()
       };
 
-      const formations = getFormations();
-      formations.unshift(formation);
-      saveFormations(formations);
+      // 1. Firestore が有効な場合はクラウドへ保存
+      if (db) {
+        try {
+          await db.collection('formations').doc(formation.id).set(formation);
+        } catch (e) {
+          console.warn('Firestoreへの保存失敗 (localStorageに保存します):', e);
+          const formations = getFormations();
+          formations.unshift(formation);
+          saveFormations(formations);
+        }
+      } else {
+        // 2. localStorage 保存
+        const formations = getFormations();
+        formations.unshift(formation);
+        saveFormations(formations);
+      }
 
       // フォームリセット
       document.getElementById('formationForm').reset();
@@ -1105,8 +1316,17 @@
       renderFormations();
     }
 
-    function deleteFormation(id) {
+    async function deleteFormation(id) {
       if (!confirm('この投稿を削除しますか？')) return;
+
+      if (db) {
+        try {
+          await db.collection('formations').doc(id).delete();
+        } catch (e) {
+          console.warn('Firestore削除失敗:', e);
+        }
+      }
+
       const formations = getFormations().filter(f => f.id !== id);
       saveFormations(formations);
       renderFormations();
