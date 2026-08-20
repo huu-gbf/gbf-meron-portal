@@ -1084,6 +1084,25 @@
     document.addEventListener('DOMContentLoaded', () => {
       initFirebaseService();
       updateNotificationButtonUI();
+
+      // 前回の名前を復元
+      const nameEl = document.getElementById('playerName');
+      if (nameEl) {
+        const lastName = localStorage.getItem('gbf_last_player_name');
+        if (lastName) {
+          nameEl.value = lastName;
+          recordMyName(lastName);
+        }
+        nameEl.addEventListener('input', () => {
+          const val = nameEl.value.trim();
+          if (val) {
+            recordMyName(val);
+            localStorage.setItem('gbf_last_player_name', val);
+            renderPosts();
+          }
+        });
+      }
+
       renderPosts();
       setupDragAndDrop();
       setupCharCounter();
@@ -1400,10 +1419,12 @@
     }
 
     // ==========================================================
-    //  端末識別＆本人投稿管理
+    //  端末識別＆本人投稿管理（過去データ救済マイグレーション対応）
     // ==========================================================
     const DEVICE_ID_KEY = 'gbf_my_device_id';
     const MY_POSTS_KEY = 'gbf_my_post_ids';
+    const MY_NAMES_KEY = 'gbf_my_player_names';
+    const LAST_NAME_KEY = 'gbf_last_player_name';
 
     function getMyDeviceId() {
       let deviceId = localStorage.getItem(DEVICE_ID_KEY);
@@ -1423,19 +1444,59 @@
     }
 
     function recordMyPostId(postId) {
+      if (!postId) return;
       const ids = getMyPostIds();
       if (!ids.includes(postId)) {
         ids.push(postId);
-        localStorage.setItem(MY_POSTS_KEY, JSON.stringify(ids));
+        try {
+          localStorage.setItem(MY_POSTS_KEY, JSON.stringify(ids));
+        } catch(e) {}
       }
+    }
+
+    function getMyNames() {
+      try {
+        const names = JSON.parse(localStorage.getItem(MY_NAMES_KEY)) || [];
+        const lastName = localStorage.getItem(LAST_NAME_KEY);
+        if (lastName && !names.includes(lastName)) names.push(lastName);
+        const inputName = document.getElementById('playerName')?.value?.trim();
+        if (inputName && !names.includes(inputName)) names.push(inputName);
+        return names;
+      } catch {
+        return [];
+      }
+    }
+
+    function recordMyName(name) {
+      if (!name) return;
+      try {
+        const names = getMyNames();
+        if (!names.includes(name)) {
+          names.push(name);
+          localStorage.setItem(MY_NAMES_KEY, JSON.stringify(names));
+        }
+      } catch(e) {}
     }
 
     function isMyPost(post) {
       if (!post) return false;
       const myDeviceId = getMyDeviceId();
       const myIds = getMyPostIds();
+      const myNames = getMyNames();
+
+      // 1. 新規方式: 端末ID（authorId）が一致
       if (post.authorId && post.authorId === myDeviceId) return true;
+
+      // 2. 自分が投稿したID履歴に存在
       if (post.id && myIds.includes(post.id)) return true;
+
+      // 3. 改修前の過去データ（authorId がないもの）のマイグレーション:
+      //    投稿者名が自分が使った名前と一致していれば本人と判定してIDを自動記憶
+      if (!post.authorId && post.name && myNames.includes(post.name)) {
+        recordMyPostId(post.id);
+        return true;
+      }
+
       return false;
     }
 
@@ -1453,6 +1514,10 @@
         alert('ゲーム内の名前を入力してください。');
         return;
       }
+
+      // 名前をローカルに記憶
+      recordMyName(name);
+      localStorage.setItem(LAST_NAME_KEY, name);
 
       const post = {
         id: Date.now().toString(36) + Math.random().toString(36).substring(2, 7),
