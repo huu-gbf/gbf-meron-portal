@@ -1968,8 +1968,8 @@ Qバブ召喚
       const formations = getFormations();
       const target = formations.find(f => f.id === id);
 
-      // 本人チェック
-      if (target && !isMyPost(target)) {
+      // 本人・管理者チェック
+      if (target && !isMyPost(target) && !window.isAdmin) {
         alert('自分が投稿した編成のみ削除できます。');
         return;
       }
