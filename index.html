@@ -590,16 +590,43 @@
 
           <form id="formationForm" onsubmit="handleFormationSubmit(event)" class="space-y-5">
             <!-- ゲーム内の名前 -->
-            <div>
-              <label for="formationName" class="block text-xs font-semibold text-slate-300 mb-1.5">① ゲーム内の名前 <span class="text-rose-400">*</span></label>
-              <input 
-                type="text" 
-                id="formationName" 
-                placeholder="例: ゆかり愛" 
-                required
-                maxlength="30"
-                class="w-full bg-slate-900/90 border border-slate-700 focus:border-violet-400 focus:ring-1 focus:ring-violet-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition text-sm"
-              />
+            <div id="nameWrapper">
+              <!-- 初回: 入力フォーム -->
+              <div id="nameInputArea">
+                <label for="formationNameInput" class="block text-xs font-semibold text-slate-300 mb-1.5">① ゲーム内の名前 <span class="text-rose-400">*</span></label>
+                <div class="flex gap-2 items-center">
+                  <input 
+                    type="text" 
+                    id="formationNameInput" 
+                    placeholder="例: ゆかり愛" 
+                    maxlength="30"
+                    class="flex-1 bg-slate-900/90 border border-slate-700 focus:border-violet-400 focus:ring-1 focus:ring-violet-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition text-sm"
+                  />
+                  <button
+                    type="button"
+                    onclick="saveAndLockName()"
+                    class="shrink-0 bg-violet-500 hover:bg-violet-400 text-white font-bold text-xs px-4 py-3 rounded-xl transition shadow-lg shadow-violet-500/25"
+                  >登録して固定</button>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1.5">ℹ️ 名前を登録するとこの端末で固定され、自分の投稿を正確に識別できます。</p>
+              </div>
+              <!-- 登録後: 固定表示 -->
+              <div id="nameLockedArea" class="hidden">
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">① ゲーム内の名前</label>
+                <div class="flex items-center gap-2 bg-slate-900/80 border border-violet-500/30 rounded-xl px-4 py-2.5">
+                  <span class="text-emerald-400 text-sm">✓</span>
+                  <span id="formationNameLocked" class="text-white font-bold text-sm flex-1"></span>
+                  <span class="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">登録済み</span>
+                  <button
+                    type="button"
+                    onclick="resetLockedName()"
+                    class="text-[11px] text-slate-400 hover:text-amber-300 transition px-2 py-1 rounded-lg hover:bg-amber-500/10"
+                    title="名前を変更する"
+                  >✏️ 変更</button>
+                </div>
+                <!-- form送信用の非表示input -->
+                <input type="hidden" id="formationName" />
+              </div>
             </div>
 
             <!-- 編成スクリーンショット（複数枚対応） -->
@@ -1006,6 +1033,7 @@
     //  編成共有掲示板 ＆ Firebase Push通知/同期ロジック
     // ==========================================================
     const FORMATIONS_KEY = 'gbf_crew_formations';
+    const LAST_NAME_KEY  = 'gbf_last_player_name';
     const MAX_IMAGES = 4;
     let selectedImages = []; // Array of base64 strings
     let db = null;
@@ -1072,23 +1100,10 @@
       initFirebaseService();
       updateNotificationButtonUI();
 
-      // 前回の名前を復元
-      const nameEl = document.getElementById('formationName');
-      if (nameEl) {
-        const lastName = localStorage.getItem('gbf_last_player_name');
-        if (lastName) {
-          nameEl.value = lastName;
-          recordMyName(lastName);
-        }
-        // 名前変更時にリアルタイムで過去の自分の投稿を照合・更新
-        nameEl.addEventListener('input', () => {
-          const val = nameEl.value.trim();
-          if (val) {
-            recordMyName(val);
-            localStorage.setItem('gbf_last_player_name', val);
-            renderFormations();
-          }
-        });
+      // 登録済み名前を復元・固定表示
+      const savedName = localStorage.getItem(LAST_NAME_KEY);
+      if (savedName) {
+        applyLockedName(savedName);
       }
 
       renderFormations();
@@ -1396,6 +1411,40 @@
     }
 
     // ==========================================================
+    //  名前固定 UI 制御
+    // ==========================================================
+    function applyLockedName(name) {
+      document.getElementById('nameInputArea').classList.add('hidden');
+      document.getElementById('nameLockedArea').classList.remove('hidden');
+      document.getElementById('formationNameLocked').textContent = name;
+      document.getElementById('formationName').value = name;
+      recordMyName(name);
+    }
+
+    function saveAndLockName() {
+      const inputEl = document.getElementById('formationNameInput');
+      const name = inputEl ? inputEl.value.trim() : '';
+      if (!name) {
+        alert('名前を入力してください。');
+        return;
+      }
+      localStorage.setItem(LAST_NAME_KEY, name);
+      recordMyName(name);
+      applyLockedName(name);
+    }
+
+    function resetLockedName() {
+      if (!confirm('登録した名前を変更しますか？\n変更後も過去の投稿は削除できます。')) return;
+      localStorage.removeItem(LAST_NAME_KEY);
+      document.getElementById('nameLockedArea').classList.add('hidden');
+      document.getElementById('nameInputArea').classList.remove('hidden');
+      const inputEl = document.getElementById('formationNameInput');
+      if (inputEl) inputEl.value = '';
+      document.getElementById('formationName').value = '';
+      renderFormations();
+    }
+
+    // ==========================================================
     //  端末識別＆本人投稿管理（過去データ救済マイグレーション対応）
     // ==========================================================
     const DEVICE_ID_KEY = 'gbf_my_device_id';
@@ -1534,10 +1583,15 @@
         saveFormations(formations);
       }
 
-      // フォームリセット
-      document.getElementById('formationForm').reset();
+      // フォームリセット（名前は保持）
+      document.getElementById('formationComment').value = '';
       clearAllImages(new Event('click'));
       document.getElementById('commentCharCount').textContent = '0';
+      // 名前固定を再適用
+      const currentLockedName = localStorage.getItem(LAST_NAME_KEY);
+      if (currentLockedName) {
+        applyLockedName(currentLockedName);
+      }
 
       // 成功メッセージ
       const successEl = document.getElementById('formationSuccess');

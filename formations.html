@@ -805,19 +805,48 @@
 
         <form id="postForm" onsubmit="handleSubmit(event)">
           <!-- ① ゲーム内の名前 -->
-          <div class="form-group">
-            <label class="form-label" for="playerName">
-              ① ゲーム内の名前<span class="required">*</span>
-            </label>
-            <input 
-              type="text" 
-              id="playerName" 
-              class="form-input" 
-              placeholder="例: ゆかり愛" 
-              required 
-              maxlength="30"
-              autocomplete="off"
-            />
+          <div class="form-group" id="nameWrapper">
+            <!-- 初回: 入力フォーム -->
+            <div id="nameInputArea">
+              <label class="form-label" for="playerNameInput">
+                ① ゲーム内の名前<span class="required">*</span>
+              </label>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <input 
+                  type="text" 
+                  id="playerNameInput" 
+                  class="form-input" 
+                  placeholder="例: ゆかり愛" 
+                  maxlength="30"
+                  autocomplete="off"
+                  style="flex:1;"
+                />
+                <button
+                  type="button"
+                  onclick="saveAndLockName()"
+                  style="flex-shrink:0; background:linear-gradient(135deg,#8b5cf6,#a855f7); color:#fff; font-weight:700; font-size:12px; padding:10px 16px; border-radius:12px; border:none; cursor:pointer; white-space:nowrap;"
+                >登録して固定</button>
+              </div>
+              <p style="font-size:11px; color:#64748b; margin-top:6px;">ℹ️ 名前を登録するとこの端末で固定され、自分の投稿を正確に識別できます。</p>
+            </div>
+            <!-- 登録後: 固定表示 -->
+            <div id="nameLockedArea" style="display:none;">
+              <label class="form-label">① ゲーム内の名前</label>
+              <div style="display:flex; align-items:center; gap:8px; background:rgba(15,23,42,0.8); border:1px solid rgba(139,92,246,0.3); border-radius:12px; padding:10px 14px;">
+                <span style="color:#34d399; font-size:14px;">✓</span>
+                <span id="playerNameLocked" style="color:#fff; font-weight:700; font-size:14px; flex:1;"></span>
+                <span style="font-size:10px; color:#34d399; background:rgba(52,211,153,0.1); border:1px solid rgba(52,211,153,0.2); padding:2px 8px; border-radius:999px;">登録済み</span>
+                <button
+                  type="button"
+                  onclick="resetLockedName()"
+                  style="font-size:11px; color:#94a3b8; background:transparent; border:none; cursor:pointer; padding:4px 8px; border-radius:8px;"
+                  title="名前を変更する"
+                  onmouseover="this.style.color='#fbbf24'" onmouseout="this.style.color='#94a3b8'"
+                >✏️ 変更</button>
+              </div>
+              <!-- form送信用の非表示input -->
+              <input type="hidden" id="playerName" />
+            </div>
           </div>
 
           <!-- ② 編成スクリーンショット（複数枚・任意） -->
@@ -1085,28 +1114,50 @@
       initFirebaseService();
       updateNotificationButtonUI();
 
-      // 前回の名前を復元
-      const nameEl = document.getElementById('playerName');
-      if (nameEl) {
-        const lastName = localStorage.getItem('gbf_last_player_name');
-        if (lastName) {
-          nameEl.value = lastName;
-          recordMyName(lastName);
-        }
-        nameEl.addEventListener('input', () => {
-          const val = nameEl.value.trim();
-          if (val) {
-            recordMyName(val);
-            localStorage.setItem('gbf_last_player_name', val);
-            renderPosts();
-          }
-        });
+      // 登録済み名前を復元・固定表示
+      const savedName = localStorage.getItem(LAST_NAME_KEY);
+      if (savedName) {
+        applyLockedName(savedName);
       }
 
       renderPosts();
       setupDragAndDrop();
       setupCharCounter();
     });
+
+    // ==========================================================
+    //  名前固定 UI 制御
+    // ==========================================================
+    function applyLockedName(name) {
+      document.getElementById('nameInputArea').style.display = 'none';
+      document.getElementById('nameLockedArea').style.display = 'block';
+      document.getElementById('playerNameLocked').textContent = name;
+      document.getElementById('playerName').value = name;
+      recordMyName(name);
+    }
+
+    function saveAndLockName() {
+      const inputEl = document.getElementById('playerNameInput');
+      const name = inputEl ? inputEl.value.trim() : '';
+      if (!name) {
+        alert('名前を入力してください。');
+        return;
+      }
+      localStorage.setItem(LAST_NAME_KEY, name);
+      recordMyName(name);
+      applyLockedName(name);
+    }
+
+    function resetLockedName() {
+      if (!confirm('登録した名前を変更しますか？\n変更後も過去の投稿は削除できます。')) return;
+      localStorage.removeItem(LAST_NAME_KEY);
+      document.getElementById('nameLockedArea').style.display = 'none';
+      document.getElementById('nameInputArea').style.display = 'block';
+      const inputEl = document.getElementById('playerNameInput');
+      if (inputEl) inputEl.value = '';
+      document.getElementById('playerName').value = '';
+      renderPosts();
+    }
 
     // ==========================================================
     //  ドラッグ&ドロップ
@@ -1554,10 +1605,15 @@
         savePosts(posts);
       }
 
-      // フォームリセット
-      document.getElementById('postForm').reset();
+      // フォームリセット（名前は保持）
+      document.getElementById('comment').value = '';
       clearAllImages(new Event('click'));
       document.getElementById('charCount').textContent = '0';
+      // 名前固定を再適用
+      const currentLockedName = localStorage.getItem(LAST_NAME_KEY);
+      if (currentLockedName) {
+        applyLockedName(currentLockedName);
+      }
 
       // 成功メッセージ
       const msg = document.getElementById('successMsg');
