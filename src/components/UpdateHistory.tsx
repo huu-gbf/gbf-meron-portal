@@ -13,6 +13,14 @@ const UPDATE_LOGS: UpdateHistoryItem[] = [
     author: ''
   },
   {
+    id: '2.5',
+    date: '2026/08/20',
+    category: 'ツール',
+    title: 'ドロップ率計算機実装を追加',
+    description: 'ドロップ率計算機をポータル内に実装しました。',
+    author: ''
+  },
+  {
     id: '2',
     date: '2026/08/20',
     category: '団ルール',
