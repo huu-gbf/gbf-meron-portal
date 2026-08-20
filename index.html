@@ -642,13 +642,13 @@
 
             <!-- コメント -->
             <div>
-              <label for="formationComment" class="block text-xs font-semibold text-slate-300 mb-1.5">③ コメント</label>
+              <label for="formationComment" class="block text-xs font-semibold text-slate-300 mb-1.5">③ コメント <span class="text-slate-500 font-normal">（任意・改行可）</span></label>
               <textarea 
                 id="formationComment" 
-                placeholder="例: 光古戦場250HELL用編成です。レスラー軸で時速○万くらい出ます。" 
-                rows="3"
+                placeholder="例: 光古戦場250HELL用編成です。&#10;・レスラー軸で時速○万くらい出ます。&#10;・フレ石はゼウスを選択してください。" 
+                rows="4"
                 maxlength="500"
-                class="w-full bg-slate-900/90 border border-slate-700 focus:border-violet-400 focus:ring-1 focus:ring-violet-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition text-sm resize-none"
+                class="w-full bg-slate-900/90 border border-slate-700 focus:border-violet-400 focus:ring-1 focus:ring-violet-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition text-sm resize-y min-h-[90px]"
               ></textarea>
               <p class="text-right text-xs text-slate-500 mt-1"><span id="commentCharCount">0</span> / 500</p>
             </div>
@@ -1536,7 +1536,7 @@
           const borderStyle = hasImages ? 'border-slate-800' : 'border-l-4 border-violet-500/40 border-slate-800';
           commentHtml = `
             <div class="px-5 pb-4">
-              <p class="text-sm text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-lg border ${borderStyle}">${escapeHtml(f.comment)}</p>
+              <p class="text-sm text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-lg border ${borderStyle} whitespace-pre-wrap break-words">${escapeHtml(f.comment)}</p>
             </div>`;
         } else if (!hasImages) {
           commentHtml = `
