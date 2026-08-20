@@ -862,12 +862,13 @@
           <!-- ③ コメント -->
           <div class="form-group">
             <label class="form-label" for="comment">
-              ③ コメント<span class="optional">（任意）</span>
+              ③ コメント<span class="optional">（任意・改行可）</span>
             </label>
             <textarea 
               id="comment" 
               class="form-textarea" 
-              placeholder="例: 光古戦場250HELL用の編成です。レスラー軸で時速○万くらい出ます。"
+              placeholder="例: 光古戦場250HELL用の編成です。&#10;・レスラー軸で時速○万くらい出ます。&#10;・フレ石はゼウスを選択してください。"
+              rows="4"
               maxlength="500"
             ></textarea>
             <div class="char-count"><span id="charCount">0</span> / 500</div>
