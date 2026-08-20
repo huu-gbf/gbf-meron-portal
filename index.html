@@ -877,8 +877,28 @@ Qバブ召喚
             </span>
           </div>
 
-          <!-- アクションボタン群（設定 & 通知） -->
+          <!-- アクションボタン群（フィルター & 設定 & 通知） -->
           <div class="flex items-center gap-2 flex-wrap">
+            <!-- 絞り込みフィルタータブ -->
+            <div class="inline-flex p-0.5 bg-slate-900/90 border border-slate-800 rounded-xl">
+              <button
+                type="button"
+                id="filterBtnAll"
+                onclick="setFormationFilter('all')"
+                class="px-2.5 py-1 text-xs font-bold rounded-lg transition bg-violet-600 text-white shadow-sm"
+              >すべて</button>
+              <button
+                type="button"
+                id="filterBtnFav"
+                onclick="setFormationFilter('favorites')"
+                class="px-2.5 py-1 text-xs font-bold rounded-lg transition text-slate-400 hover:text-amber-300 hover:bg-slate-800 flex items-center gap-1"
+              >
+                <span class="text-amber-400">★</span>
+                <span>お気に入り</span>
+                <span id="favCountBadge" class="text-[10px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded-full ml-0.5 hidden">0</span>
+              </button>
+            </div>
+
             <button 
               type="button" 
               onclick="openFirebaseConfigModal()"
@@ -886,7 +906,7 @@ Qバブ召喚
               title="Firebase接続設定"
             >
               <span>⚙️</span>
-              <span>Firebase設定</span>
+              <span class="hidden sm:inline">Firebase設定</span>
             </button>
             <button 
               type="button" 
@@ -895,7 +915,7 @@ Qバブ召喚
               class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-slate-800/90 hover:bg-slate-700 text-slate-300 border-slate-700 hover:text-white"
             >
               <span id="notifyIcon">🔔</span>
-              <span id="notifyLabel">新着通知をONにする</span>
+              <span id="notifyLabel" class="hidden sm:inline">新着通知をONにする</span>
             </button>
           </div>
         </div>
@@ -926,9 +946,24 @@ Qバブ召喚
           <!-- Timeline list -->
           <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
             
-            <!-- Log Item 7 -->
+            <!-- Log Item 8 -->
             <div class="relative">
               <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/21</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">機能追加</span>
+                  <strong class="text-sm font-bold text-white">テンプレと編成例を追加</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  編成共有フォームにワンクリックでコピーできる「コピペ用テンプレート」と「記入例」のアコーディオンを追加しました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 7 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
               <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
                 <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                   <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/21</span>
@@ -1649,6 +1684,43 @@ Qバブ召喚
     const DEVICE_ID_KEY = 'gbf_my_device_id';
     const MY_POSTS_KEY = 'gbf_my_post_ids';
     const MY_NAMES_KEY = 'gbf_my_player_names';
+    const FAVORITES_KEY = 'gbf_my_favorites';
+
+    let currentFormationFilter = 'all'; // 'all' | 'favorites'
+
+    function getMyFavorites() {
+      try {
+        return JSON.parse(localStorage.getItem(FAVORITES_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function isFavorite(postId) {
+      if (!postId) return false;
+      return getMyFavorites().includes(postId);
+    }
+
+    function toggleFavorite(postId) {
+      if (!postId) return;
+      let favs = getMyFavorites();
+      if (favs.includes(postId)) {
+        favs = favs.filter(id => id !== postId);
+      } else {
+        favs.push(postId);
+      }
+      try {
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs));
+      } catch (e) {
+        console.warn('お気に入り保存エラー:', e);
+      }
+      renderFormations();
+    }
+
+    function setFormationFilter(filter) {
+      currentFormationFilter = filter;
+      renderFormations();
+    }
 
     function getMyDeviceId() {
       let deviceId = localStorage.getItem(DEVICE_ID_KEY);
@@ -1827,18 +1899,63 @@ Qバブ召喚
     }
 
     function renderFormations() {
-      const formations = getFormations();
+      const allFormations = getFormations();
       const listEl = document.getElementById('formationList');
       const countEl = document.getElementById('formationCount');
       const emptyState = document.getElementById('formationEmptyState');
+      const favs = getMyFavorites();
+
+      // フィルターボタンとバッジのUI更新
+      const filterBtnAll = document.getElementById('filterBtnAll');
+      const filterBtnFav = document.getElementById('filterBtnFav');
+      const favCountBadge = document.getElementById('favCountBadge');
+
+      if (filterBtnAll && filterBtnFav) {
+        if (currentFormationFilter === 'all') {
+          filterBtnAll.className = 'px-2.5 py-1 text-xs font-bold rounded-lg transition bg-violet-600 text-white shadow-sm';
+          filterBtnFav.className = 'px-2.5 py-1 text-xs font-bold rounded-lg transition text-slate-400 hover:text-amber-300 hover:bg-slate-800 flex items-center gap-1';
+        } else {
+          filterBtnAll.className = 'px-2.5 py-1 text-xs font-bold rounded-lg transition text-slate-400 hover:text-white hover:bg-slate-800';
+          filterBtnFav.className = 'px-2.5 py-1 text-xs font-bold rounded-lg transition bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm flex items-center gap-1';
+        }
+      }
+
+      // お気に入り数カウントバッジ
+      const matchingFavCount = allFormations.filter(f => favs.includes(f.id)).length;
+      if (favCountBadge) {
+        if (matchingFavCount > 0) {
+          favCountBadge.textContent = matchingFavCount;
+          favCountBadge.classList.remove('hidden');
+        } else {
+          favCountBadge.classList.add('hidden');
+        }
+      }
+
+      // フィルター適用
+      const formations = currentFormationFilter === 'favorites'
+        ? allFormations.filter(f => favs.includes(f.id))
+        : allFormations;
 
       countEl.textContent = `${formations.length}件`;
 
       if (formations.length === 0) {
-        if (emptyState) emptyState.classList.remove('hidden');
-        Array.from(listEl.children).forEach(child => {
-          if (child.id !== 'formationEmptyState') child.remove();
-        });
+        if (currentFormationFilter === 'favorites') {
+          listEl.innerHTML = `
+            <div class="glass-panel rounded-2xl p-10 text-center">
+              <div class="text-5xl mb-3 opacity-60">⭐</div>
+              <p class="text-slate-300 text-sm font-bold">お気に入りの編成はまだありません</p>
+              <p class="text-slate-500 text-xs mt-1">編成カードの「☆ お気に入り」ボタンを押して登録しましょう！</p>
+              <button onclick="setFormationFilter('all')" class="mt-4 px-4 py-2 text-xs font-bold bg-violet-600 hover:bg-violet-500 text-white rounded-xl transition">
+                すべての編成を表示
+              </button>
+            </div>
+          `;
+        } else {
+          if (emptyState) emptyState.classList.remove('hidden');
+          Array.from(listEl.children).forEach(child => {
+            if (child.id !== 'formationEmptyState') child.remove();
+          });
+        }
         return;
       }
 
@@ -1917,21 +2034,38 @@ Qバブ召喚
         }
 
         const isMine = isMyPost(f);
+        const isFav = isFavorite(f.id);
 
         return `
           <div class="glass-panel rounded-2xl overflow-hidden hover:border-violet-500/30 transition group">
-            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-violet-500/20">
+            <div class="px-5 pt-4 pb-3 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 shrink-0 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-violet-500/20">
                   ${escapeHtml(f.name.charAt(0))}
                 </div>
-                <div>
-                  <strong class="text-white text-sm font-bold">${escapeHtml(f.name)}</strong>
+                <div class="min-w-0">
+                  <strong class="text-white text-sm font-bold truncate block">${escapeHtml(f.name)}</strong>
                   <span class="block text-xs text-slate-500">${dateStr}</span>
                 </div>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1.5 shrink-0">
                 ${hasImages ? `<span class="text-[11px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">📷 ${images.length}枚</span>` : ''}
+                
+                <!-- お気に入りボタン -->
+                <button
+                  type="button"
+                  onclick="toggleFavorite('${f.id}')"
+                  class="text-xs transition px-2.5 py-1 rounded-lg border flex items-center gap-1 ${
+                    isFav 
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 shadow-sm' 
+                      : 'bg-slate-800/80 text-slate-400 hover:text-amber-300 hover:bg-slate-700 border-slate-700'
+                  }"
+                  title="${isFav ? 'お気に入りを解除' : 'お気に入りに追加'}"
+                >
+                  <span>${isFav ? '★' : '☆'}</span>
+                  <span class="text-[11px] hidden xs:inline">${isFav ? '登録済' : 'お気に入り'}</span>
+                </button>
+
                 ${isMine ? `
                   <button onclick="deleteFormation('${f.id}')" class="text-xs text-rose-400 hover:text-rose-300 transition px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 flex items-center gap-1" title="自分の投稿を削除">
                     <span>🗑️</span>
