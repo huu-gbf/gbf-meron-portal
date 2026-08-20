@@ -193,12 +193,16 @@
     .form-group {
       margin-bottom: 20px;
     }
+    .form-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
     .form-label {
-      display: block;
       font-size: 0.75rem;
       font-weight: 700;
       color: var(--text-secondary);
-      margin-bottom: 6px;
     }
     .form-label .required {
       color: var(--rose-400);
@@ -209,6 +213,15 @@
       font-weight: 500;
       margin-left: 4px;
       font-size: 0.7rem;
+    }
+    .img-count-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--violet-400);
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      padding: 1px 8px;
+      border-radius: 12px;
     }
 
     .form-input,
@@ -249,7 +262,7 @@
       position: relative;
       border: 2px dashed rgba(51, 65, 85, 0.7);
       border-radius: 14px;
-      padding: 28px 16px;
+      padding: 20px 16px;
       text-align: center;
       cursor: pointer;
       transition: all 0.25s;
@@ -261,7 +274,7 @@
       background: rgba(139, 92, 246, 0.04);
     }
     .dropzone-icon {
-      font-size: 2.5rem;
+      font-size: 2.3rem;
       transition: transform 0.2s;
     }
     .dropzone:hover .dropzone-icon {
@@ -270,43 +283,111 @@
     .dropzone-text {
       font-size: 0.85rem;
       color: var(--text-secondary);
-      margin-top: 8px;
+      margin-top: 6px;
+      font-weight: 500;
     }
     .dropzone-hint {
       font-size: 0.7rem;
       color: var(--text-muted);
-      margin-top: 4px;
+      margin-top: 3px;
     }
     .dropzone input[type="file"] {
       display: none;
     }
 
-    .image-preview-wrap {
+    /* プレビューグリッド */
+    .preview-container {
       display: none;
     }
-    .image-preview-wrap.visible {
+    .preview-container.visible {
       display: block;
     }
-    .image-preview-wrap img {
-      max-height: 200px;
-      max-width: 100%;
-      margin: 0 auto;
-      display: block;
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .preview-item {
+      position: relative;
       border-radius: 10px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      overflow: hidden;
+      background: #020617;
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      aspect-ratio: 4 / 3;
     }
-    .image-remove-btn {
-      display: inline-block;
-      margin-top: 8px;
-      font-size: 0.75rem;
-      color: var(--rose-400);
-      background: none;
+    .preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .preview-item-badge {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fff;
+      font-size: 0.65rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .preview-item-del {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      background: rgba(225, 29, 72, 0.9);
       border: none;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 0.7rem;
       cursor: pointer;
-      transition: color 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s, background 0.15s;
     }
-    .image-remove-btn:hover {
-      color: #fda4af;
+    .preview-item-del:hover {
+      background: #f43f5e;
+      transform: scale(1.15);
+    }
+    .preview-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(36, 47, 76, 0.6);
+    }
+    .preview-btn-add {
+      background: rgba(139, 92, 246, 0.15);
+      color: var(--violet-400);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .preview-btn-add:hover {
+      background: rgba(139, 92, 246, 0.25);
+    }
+    .preview-btn-clear {
+      background: rgba(225, 29, 72, 0.1);
+      color: var(--rose-400);
+      border: 1px solid rgba(225, 29, 72, 0.3);
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .preview-btn-clear:hover {
+      background: rgba(225, 29, 72, 0.2);
     }
 
     /* 送信ボタン */
@@ -465,6 +546,20 @@
       color: var(--text-muted);
       margin-top: 1px;
     }
+    .post-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .post-img-badge {
+      font-size: 0.7rem;
+      font-family: monospace;
+      color: var(--text-secondary);
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--border-default);
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
     .post-delete-btn {
       background: none;
       border: none;
@@ -480,19 +575,74 @@
       background: rgba(251, 113, 133, 0.08);
     }
 
-    /* カード画像 */
-    .post-card-image {
+    /* カード画像グリッド */
+    .post-card-images {
       padding: 0 20px 8px;
     }
-    .post-card-image img {
+    /* 1枚 */
+    .img-grid-1 img {
       width: 100%;
+      max-height: 480px;
+      object-fit: contain;
+      background: rgba(2, 6, 23, 0.6);
       border-radius: 12px;
       cursor: pointer;
       transition: opacity 0.2s;
       box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      display: block;
     }
-    .post-card-image img:hover {
-      opacity: 0.92;
+    .img-grid-1 img:hover {
+      opacity: 0.94;
+    }
+    /* 2枚 */
+    .img-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    /* 3枚 */
+    .img-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    /* 4枚 */
+    .img-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .grid-img-item {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      aspect-ratio: 4 / 3;
+      background: rgba(2, 6, 23, 0.6);
+      border: 1px solid rgba(36, 47, 76, 0.8);
+    }
+    .grid-img-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      cursor: pointer;
+      transition: transform 0.3s;
+      display: block;
+    }
+    .grid-img-item img:hover {
+      transform: scale(1.05);
+    }
+    .grid-img-counter {
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      color: #fff;
+      font-size: 0.65rem;
+      font-family: monospace;
+      padding: 1px 6px;
+      border-radius: 4px;
+      pointer-events: none;
     }
 
     /* カードコメント */
@@ -511,7 +661,7 @@
       word-break: break-word;
     }
 
-    /* 画像なしカード用のアクセント */
+    /* 画像なしカード用 */
     .post-card-text-only .post-card-comment {
       padding-top: 0;
     }
@@ -612,10 +762,11 @@
     }
 
     /* ===== レスポンシブ ===== */
-    @media (max-width: 480px) {
+    @media (max-width: 540px) {
+      .preview-grid { grid-template-columns: repeat(2, 1fr); }
       .form-card { padding: 18px; }
       .post-card-header { padding: 14px 16px 10px; }
-      .post-card-image { padding: 0 16px 6px; }
+      .post-card-images { padding: 0 16px 6px; }
       .post-card-comment { padding: 0 16px 14px; }
       .header-back { display: none; }
     }
@@ -645,7 +796,7 @@
           <div class="form-header-icon">✏️</div>
           <div class="form-header-text">
             <h2>編成を投稿する</h2>
-            <p>名前とコメントだけでもOK！画像があれば添付できます</p>
+            <p>名前とコメントだけでもOK！画像は最大4枚まで添付できます</p>
           </div>
         </div>
 
@@ -666,30 +817,41 @@
             />
           </div>
 
-          <!-- ② 編成スクリーンショット（任意） -->
+          <!-- ② 編成スクリーンショット（複数枚・任意） -->
           <div class="form-group">
-            <label class="form-label">
-              ② 編成スクリーンショット<span class="optional">（任意）</span>
-            </label>
+            <div class="form-label-row">
+              <label class="form-label">
+                ② 編成スクリーンショット<span class="optional">（任意・最大4枚）</span>
+              </label>
+              <span class="img-count-badge" id="imgCountBadge" style="display:none;">0/4枚</span>
+            </div>
             <div 
               class="dropzone" 
               id="dropZone" 
-              onclick="document.getElementById('fileInput').click()"
+              onclick="triggerFileInput(event)"
             >
               <input 
                 type="file" 
                 id="fileInput" 
                 accept="image/*" 
+                multiple
                 onchange="handleFileSelect(event)"
               />
               <div id="dropPlaceholder">
                 <div class="dropzone-icon">🖼️</div>
                 <p class="dropzone-text">クリックまたはドラッグ&ドロップで画像を選択</p>
-                <p class="dropzone-hint">PNG / JPG / WEBP（最大5MB）</p>
+                <p class="dropzone-hint">複数選択可・最大4枚（PNG / JPG / WEBP）</p>
               </div>
-              <div class="image-preview-wrap" id="previewWrap">
-                <img id="previewImg" alt="プレビュー" />
-                <button type="button" class="image-remove-btn" onclick="clearSelectedImage(event)">✕ 画像を削除</button>
+              <div class="preview-container" id="previewContainer">
+                <div class="preview-grid" id="previewGrid"></div>
+                <div class="preview-actions">
+                  <button type="button" class="preview-btn-add" id="previewAddBtn" onclick="triggerFileInput(event)">
+                    ＋ 画像を追加
+                  </button>
+                  <button type="button" class="preview-btn-clear" onclick="clearAllImages(event)">
+                    ✕ 全て削除
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -757,8 +919,9 @@
     // ==========================================================
     //  定数・状態
     // ==========================================================
-    const STORAGE_KEY = 'gbf_formation_posts';
-    let pendingImageBase64 = null;
+    const STORAGE_KEY = 'gbf_crew_formations'; // index.htmlとストレージキーを共通化
+    const MAX_IMAGES = 4;
+    let selectedImages = []; // Array of base64 strings
 
     // ==========================================================
     //  初期化
@@ -784,11 +947,16 @@
       zone.addEventListener('drop', (e) => {
         e.preventDefault();
         zone.classList.remove('drag-over');
-        const files = e.dataTransfer.files;
-        if (files.length > 0 && files[0].type.startsWith('image/')) {
-          processFile(files[0]);
+        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+        if (files.length > 0) {
+          processFiles(files);
         }
       });
+    }
+
+    function triggerFileInput(e) {
+      if (e) e.stopPropagation();
+      document.getElementById('fileInput').click();
     }
 
     // ==========================================================
@@ -805,48 +973,109 @@
     //  画像選択・処理
     // ==========================================================
     function handleFileSelect(e) {
-      const file = e.target.files[0];
-      if (file) processFile(file);
+      const files = Array.from(e.target.files);
+      if (files.length > 0) {
+        processFiles(files);
+      }
+      e.target.value = '';
     }
 
-    function processFile(file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('画像サイズは5MB以下にしてください。');
+    function processFiles(files) {
+      const remaining = MAX_IMAGES - selectedImages.length;
+      if (remaining <= 0) {
+        alert(`画像は最大${MAX_IMAGES}枚までです。`);
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_W = 1200;
-          let w = img.width, h = img.height;
-          if (w > MAX_W) {
-            h = Math.round(h * MAX_W / w);
-            w = MAX_W;
-          }
-          canvas.width = w;
-          canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          pendingImageBase64 = canvas.toDataURL('image/jpeg', 0.82);
+      const filesToProcess = files.slice(0, remaining);
+      if (files.length > remaining) {
+        alert(`画像は最大${MAX_IMAGES}枚までのため、最初の${remaining}枚のみ追加されます。`);
+      }
 
-          // プレビュー表示
-          document.getElementById('previewImg').src = pendingImageBase64;
-          document.getElementById('dropPlaceholder').style.display = 'none';
-          document.getElementById('previewWrap').classList.add('visible');
+      let processed = 0;
+      filesToProcess.forEach(file => {
+        if (file.size > 5 * 1024 * 1024) {
+          alert(`「${file.name}」のサイズが5MBを超えているためスキップしました。`);
+          processed++;
+          if (processed === filesToProcess.length) updatePreviewUI();
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_W = 1000;
+            let w = img.width, h = img.height;
+            if (w > MAX_W) {
+              h = Math.round(h * MAX_W / w);
+              w = MAX_W;
+            }
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            const base64 = canvas.toDataURL('image/jpeg', 0.82);
+
+            if (selectedImages.length < MAX_IMAGES) {
+              selectedImages.push(base64);
+            }
+
+            processed++;
+            if (processed === filesToProcess.length) {
+              updatePreviewUI();
+            }
+          };
+          img.src = e.target.result;
         };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+        reader.readAsDataURL(file);
+      });
     }
 
-    function clearSelectedImage(e) {
-      e.stopPropagation();
-      pendingImageBase64 = null;
+    function updatePreviewUI() {
+      const placeholder = document.getElementById('dropPlaceholder');
+      const container = document.getElementById('previewContainer');
+      const grid = document.getElementById('previewGrid');
+      const badge = document.getElementById('imgCountBadge');
+      const addBtn = document.getElementById('previewAddBtn');
+
+      if (selectedImages.length === 0) {
+        placeholder.style.display = '';
+        container.classList.remove('visible');
+        badge.style.display = 'none';
+      } else {
+        placeholder.style.display = 'none';
+        container.classList.add('visible');
+        badge.style.display = 'inline-block';
+        badge.textContent = `${selectedImages.length}/${MAX_IMAGES}枚`;
+
+        if (selectedImages.length >= MAX_IMAGES) {
+          addBtn.style.display = 'none';
+        } else {
+          addBtn.style.display = '';
+        }
+
+        grid.innerHTML = selectedImages.map((src, idx) => `
+          <div class="preview-item">
+            <img src="${src}" alt="プレビュー #${idx+1}" />
+            <span class="preview-item-badge">#${idx+1}</span>
+            <button type="button" class="preview-item-del" onclick="removeImageAt(${idx}, event)" title="削除">✕</button>
+          </div>
+        `).join('');
+      }
+    }
+
+    function removeImageAt(idx, e) {
+      if (e) e.stopPropagation();
+      selectedImages.splice(idx, 1);
+      updatePreviewUI();
+    }
+
+    function clearAllImages(e) {
+      if (e) e.stopPropagation();
+      selectedImages = [];
       document.getElementById('fileInput').value = '';
-      document.getElementById('dropPlaceholder').style.display = '';
-      document.getElementById('previewWrap').classList.remove('visible');
+      updatePreviewUI();
     }
 
     // ==========================================================
@@ -886,7 +1115,7 @@
         id: Date.now().toString(36) + Math.random().toString(36).substring(2, 7),
         name,
         comment,
-        image: pendingImageBase64 || null,
+        images: [...selectedImages],
         timestamp: new Date().toISOString()
       };
 
@@ -896,7 +1125,7 @@
 
       // フォームリセット
       document.getElementById('postForm').reset();
-      clearSelectedImage(new Event('click'));
+      clearAllImages(new Event('click'));
       document.getElementById('charCount').textContent = '0';
 
       // 成功メッセージ
@@ -943,17 +1172,34 @@
       listEl.innerHTML = posts.map(p => {
         const d = new Date(p.timestamp);
         const dateStr = `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        const hasImage = !!p.image;
+        
+        // 過去データ互換
+        const images = (p.images && Array.isArray(p.images)) ? p.images : (p.image ? [p.image] : []);
+        const hasImages = images.length > 0;
         const hasComment = !!p.comment;
-        const textOnlyClass = !hasImage ? ' post-card-text-only' : '';
+        const textOnlyClass = !hasImages ? ' post-card-text-only' : '';
 
-        let imageHtml = '';
-        if (hasImage) {
-          imageHtml = `
-            <div class="post-card-image">
-              <img src="${p.image}" alt="${esc(p.name)}の編成" onclick="openModal(this.src)" />
-            </div>
-          `;
+        let imagesHtml = '';
+        if (hasImages) {
+          if (images.length === 1) {
+            imagesHtml = `
+              <div class="post-card-images img-grid-1">
+                <img src="${images[0]}" alt="${esc(p.name)}の編成" onclick="openModal(this.src)" />
+              </div>
+            `;
+          } else {
+            const gridClass = `img-grid-${images.length}`;
+            imagesHtml = `
+              <div class="post-card-images ${gridClass}">
+                ${images.map((src, i) => `
+                  <div class="grid-img-item">
+                    <img src="${src}" alt="${esc(p.name)}の編成 #${i+1}" onclick="openModal(this.src)" />
+                    <span class="grid-img-counter">${i+1}/${images.length}</span>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }
         }
 
         let commentHtml = '';
@@ -963,10 +1209,7 @@
               <p>${esc(p.comment)}</p>
             </div>
           `;
-        }
-
-        // 画像もコメントもない場合のフォールバック
-        if (!hasImage && !hasComment) {
+        } else if (!hasImages) {
           commentHtml = `
             <div class="post-card-comment">
               <p style="color: var(--text-muted); font-style: italic;">（コメントなし）</p>
@@ -984,9 +1227,12 @@
                   <div class="post-user-date">${dateStr}</div>
                 </div>
               </div>
-              <button class="post-delete-btn" onclick="deletePost('${p.id}')" title="削除">🗑️</button>
+              <div class="post-actions">
+                ${hasImages ? `<span class="post-img-badge">📷 ${images.length}枚</span>` : ''}
+                <button class="post-delete-btn" onclick="deletePost('${p.id}')" title="削除">🗑️</button>
+              </div>
             </div>
-            ${imageHtml}
+            ${imagesHtml}
             ${commentHtml}
           </div>
         `;
