@@ -1696,10 +1696,12 @@ Qバブ召喚
       return getMyFavorites().includes(postId);
     }
 
-    function toggleFavorite(postId) {
+    function toggleFavorite(postId, btnEl) {
       if (!postId) return;
       let favs = getMyFavorites();
-      if (favs.includes(postId)) {
+      const isFavNow = favs.includes(postId);
+      
+      if (isFavNow) {
         favs = favs.filter(id => id !== postId);
       } else {
         favs.push(postId);
@@ -1709,7 +1711,26 @@ Qバブ召喚
       } catch (e) {
         console.warn('お気に入り保存エラー:', e);
       }
-      renderPosts();
+      
+      if (btnEl) {
+        const isFavNew = !isFavNow;
+        if (isFavNew) {
+          btnEl.className = "text-xs transition px-2.5 py-1 rounded-lg border flex items-center gap-1 bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 shadow-sm";
+          btnEl.title = "お気に入りを解除";
+          btnEl.innerHTML = `<span>★</span><span class="text-[11px] hidden xs:inline">登録済</span>`;
+        } else {
+          btnEl.className = "text-xs transition px-2.5 py-1 rounded-lg border flex items-center gap-1 bg-slate-800/80 text-slate-400 hover:text-amber-300 hover:bg-slate-700 border-slate-700";
+          btnEl.title = "お気に入りに追加";
+          btnEl.innerHTML = `<span>☆</span><span class="text-[11px] hidden xs:inline">お気に入り</span>`;
+          
+          if (currentFormationFilter === 'favorites') {
+            const card = btnEl.closest('.glass-panel');
+            if (card) card.style.display = 'none';
+          }
+        }
+      } else {
+        renderPosts();
+      }
     }
 
     function setFormationFilter(filter) {
@@ -2031,7 +2052,7 @@ Qバブ召喚
                 <!-- お気に入りボタン -->
                 <button
                   type="button"
-                  onclick="toggleFavorite('${p.id}')"
+                  onclick="toggleFavorite('${p.id}', this)"
                   style="font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 3px; border: 1px solid ${isFav ? 'rgba(245, 158, 11, 0.4)' : 'rgba(51, 65, 85, 0.8)'}; background: ${isFav ? 'rgba(245, 158, 11, 0.15)' : 'rgba(30, 41, 59, 0.8)'}; color: ${isFav ? '#fbbf24' : '#94a3b8'};"
                   title="${isFav ? 'お気に入りを解除' : 'お気に入りに追加'}"
                 >
