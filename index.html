@@ -42,6 +42,7 @@
       background-color: #080b14;
       color: #f1f5f9;
       font-family: 'Noto Sans JP', sans-serif;
+      overflow-x: clip;
     }
     .stars-bg {
       position: fixed;
@@ -82,7 +83,7 @@
   <!-- =========================================================
        1. パスワード認証画面（未認証時に表示）
   ========================================================= -->
-  <div id="authScreen" class="relative z-10 min-h-screen flex items-center justify-center p-4 overflow-x-hidden">
+  <div id="authScreen" class="relative z-10 min-h-screen flex items-center justify-center p-4">
     <div class="glass-panel w-full max-w-md p-8 rounded-2xl glow-effect text-center relative overflow-hidden">
       <!-- Top Decorative Emblem -->
       <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 p-0.5 flex items-center justify-center shadow-lg shadow-amber-500/20">
@@ -130,7 +131,7 @@
   <!-- =========================================================
        2. メインポータル画面（認証後に表示）
   ========================================================= -->
-  <div id="portalScreen" class="hidden relative z-10 overflow-x-hidden">
+  <div id="portalScreen" class="hidden relative z-10">
     <!-- Navigation Bar -->
     <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
       <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
