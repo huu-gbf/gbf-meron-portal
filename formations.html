@@ -1094,6 +1094,26 @@ Qバブ召喚
           </span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <!-- フィルタータブ -->
+          <div style="display:inline-flex; padding:2px; background:rgba(15,23,42,0.9); border:1px solid rgba(51,65,85,0.8); border-radius:10px;">
+            <button
+              type="button"
+              id="filterBtnAll"
+              onclick="setFormationFilter('all')"
+              style="padding:4px 10px; font-size:0.75rem; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:var(--violet-600, #7c3aed); color:#fff;"
+            >すべて</button>
+            <button
+              type="button"
+              id="filterBtnFav"
+              onclick="setFormationFilter('favorites')"
+              style="padding:4px 10px; font-size:0.75rem; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:transparent; color:#94a3b8; display:flex; align-items:center; gap:4px;"
+            >
+              <span style="color:#fbbf24">★</span>
+              <span>お気に入り</span>
+              <span id="favCountBadge" style="font-size:0.65rem; padding:1px 6px; border-radius:10px; background:rgba(245,158,11,0.2); color:#fbbf24; display:none;">0</span>
+            </button>
+          </div>
+
           <button 
             type="button" 
             onclick="openFirebaseConfigModal()"
@@ -1659,6 +1679,43 @@ Qバブ召喚
     const MY_POSTS_KEY = 'gbf_my_post_ids';
     const MY_NAMES_KEY = 'gbf_my_player_names';
     const LAST_NAME_KEY = 'gbf_last_player_name';
+    const FAVORITES_KEY = 'gbf_my_favorites';
+
+    let currentFormationFilter = 'all'; // 'all' | 'favorites'
+
+    function getMyFavorites() {
+      try {
+        return JSON.parse(localStorage.getItem(FAVORITES_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function isFavorite(postId) {
+      if (!postId) return false;
+      return getMyFavorites().includes(postId);
+    }
+
+    function toggleFavorite(postId) {
+      if (!postId) return;
+      let favs = getMyFavorites();
+      if (favs.includes(postId)) {
+        favs = favs.filter(id => id !== postId);
+      } else {
+        favs.push(postId);
+      }
+      try {
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs));
+      } catch (e) {
+        console.warn('お気に入り保存エラー:', e);
+      }
+      renderPosts();
+    }
+
+    function setFormationFilter(filter) {
+      currentFormationFilter = filter;
+      renderPosts();
+    }
 
     function getMyDeviceId() {
       let deviceId = localStorage.getItem(DEVICE_ID_KEY);
@@ -1841,20 +1898,69 @@ Qバブ召喚
     //  一覧描画
     // ==========================================================
     function renderPosts() {
-      const posts = getPosts();
+      const allPosts = getPosts();
       const listEl = document.getElementById('postList');
       const countEl = document.getElementById('postCount');
+      const favs = getMyFavorites();
+
+      // フィルターUI更新
+      const filterBtnAll = document.getElementById('filterBtnAll');
+      const filterBtnFav = document.getElementById('filterBtnFav');
+      const favCountBadge = document.getElementById('favCountBadge');
+
+      if (filterBtnAll && filterBtnFav) {
+        if (currentFormationFilter === 'all') {
+          filterBtnAll.style.background = 'var(--violet-600, #7c3aed)';
+          filterBtnAll.style.color = '#fff';
+          filterBtnFav.style.background = 'transparent';
+          filterBtnFav.style.color = '#94a3b8';
+        } else {
+          filterBtnAll.style.background = 'transparent';
+          filterBtnAll.style.color = '#94a3b8';
+          filterBtnFav.style.background = 'rgba(245, 158, 11, 0.2)';
+          filterBtnFav.style.color = '#fbbf24';
+        }
+      }
+
+      // お気に入り数バッジ
+      const matchingFavCount = allPosts.filter(p => favs.includes(p.id)).length;
+      if (favCountBadge) {
+        if (matchingFavCount > 0) {
+          favCountBadge.textContent = matchingFavCount;
+          favCountBadge.style.display = 'inline-block';
+        } else {
+          favCountBadge.style.display = 'none';
+        }
+      }
+
+      // フィルター適用
+      const posts = currentFormationFilter === 'favorites'
+        ? allPosts.filter(p => favs.includes(p.id))
+        : allPosts;
 
       countEl.textContent = `${posts.length}件`;
 
       if (posts.length === 0) {
-        listEl.innerHTML = `
-          <div class="glass-panel empty-state" id="emptyState">
-            <div class="empty-state-icon">📭</div>
-            <p>まだ編成が投稿されていません</p>
-            <p class="sub">上のフォームから最初の編成を共有しましょう！</p>
-          </div>
-        `;
+        if (currentFormationFilter === 'favorites') {
+          listEl.innerHTML = `
+            <div class="glass-panel empty-state" style="padding: 40px 20px; text-align: center;">
+              <div class="empty-state-icon" style="font-size: 3rem; margin-bottom: 12px;">⭐</div>
+              <p style="font-weight: 700; color: #f1f5f9;">お気に入りの編成はまだありません</p>
+              <p class="sub" style="color: #64748b; font-size: 0.8rem; margin-top: 4px;">編成カードの「☆ お気に入り」ボタンを押して登録しましょう！</p>
+              <button onclick="setFormationFilter('all')" style="margin-top: 16px; padding: 8px 16px; font-size: 0.75rem; font-weight: 700; background: var(--violet-600, #7c3aed); color: #fff; border: none; border-radius: 10px; cursor: pointer;">
+                すべての編成を表示
+              </button>
+            </div>
+          `;
+        } else {
+          listEl.innerHTML = `
+            <div class="glass-panel empty-state" id="emptyState">
+              <div class="empty-state-icon">📭</div>
+              <p>まだ編成が投稿されていません</p>
+              <p class="sub">上のフォームから最初の編成を共有しましょう！</p>
+            </div>
+          `;
+        }
         return;
       }
 
@@ -1907,6 +2013,7 @@ Qバブ召喚
         }
 
         const isMine = isMyPost(p);
+        const isFav = isFavorite(p.id);
 
         return `
           <div class="post-card${textOnlyClass}">
@@ -1918,10 +2025,22 @@ Qバブ召喚
                   <div class="post-user-date">${dateStr}</div>
                 </div>
               </div>
-              <div class="post-actions">
+              <div class="post-actions" style="display: flex; align-items: center; gap: 6px;">
                 ${hasImages ? `<span class="post-img-badge">📷 ${images.length}枚</span>` : ''}
+                
+                <!-- お気に入りボタン -->
+                <button
+                  type="button"
+                  onclick="toggleFavorite('${p.id}')"
+                  style="font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 3px; border: 1px solid ${isFav ? 'rgba(245, 158, 11, 0.4)' : 'rgba(51, 65, 85, 0.8)'}; background: ${isFav ? 'rgba(245, 158, 11, 0.15)' : 'rgba(30, 41, 59, 0.8)'}; color: ${isFav ? '#fbbf24' : '#94a3b8'};"
+                  title="${isFav ? 'お気に入りを解除' : 'お気に入りに追加'}"
+                >
+                  <span>${isFav ? '★' : '☆'}</span>
+                  <span>${isFav ? '登録済' : 'お気に入り'}</span>
+                </button>
+
                 ${isMine ? `
-                  <button class="post-delete-btn" onclick="deletePost('${p.id}')" title="自分の投稿を削除" style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: var(--rose-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px;">
+                  <button class="post-delete-btn" onclick="deletePost('${p.id}')" title="自分の投稿を削除" style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: var(--rose-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px; cursor: pointer;">
                     <span>🗑️</span>
                     <span>削除</span>
                   </button>
