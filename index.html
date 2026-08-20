@@ -33,10 +33,10 @@
     }
   </script>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-  <!-- Firebase SDK (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
   <script src="./firebase-config.js"></script>
   <style>
     body {
@@ -1797,7 +1797,7 @@ Qバブ召喚
     }
 
     // ==========================================================
-    //  編成投稿処理（Firestoreへ確実に保存）
+    //  編成投稿処理（Firebase Storage経由でFirestoreへ保存）
     // ==========================================================
     async function handleFormationSubmit(event) {
       event.preventDefault();
@@ -1815,11 +1815,41 @@ Qバブ召喚
       recordMyName(name);
       localStorage.setItem(LAST_NAME_KEY, name);
 
+      const postId = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+      const originalText = submitBtn.innerHTML;
+
+      let uploadedImageUrls = [];
+
+      // 1. Storageへの画像アップロード (Firebase有効時)
+      if (db && firebase.storage && selectedImages.length > 0) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>⏳</span><span>画像をアップロード中...</span>';
+        try {
+          const storage = firebase.storage();
+          for (let i = 0; i < selectedImages.length; i++) {
+            const base64Str = selectedImages[i];
+            const imageRef = storage.ref(`formations/${postId}/image_${i}.jpg`);
+            await imageRef.putString(base64Str, 'data_url');
+            const downloadURL = await imageRef.getDownloadURL();
+            uploadedImageUrls.push(downloadURL);
+          }
+        } catch (e) {
+          console.error('Storageアップロード失敗:', e);
+          alert('画像のアップロードに失敗しました:\n' + e.message + '\n\n【解決策】Firebase Storageの設定・ルールを確認してください。');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+          return;
+        }
+      } else {
+        // Firebaseが無効な場合（ローカル動作時など）は従来のBase64を使用
+        uploadedImageUrls = [...selectedImages];
+      }
+
       const formation = {
-        id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+        id: postId,
         name: name,
         comment: comment,
-        images: [...selectedImages], // 複数枚配列
+        images: uploadedImageUrls, // Storage URL配列（またはBase64）
         authorId: getMyDeviceId(),   // 投稿端末の識別ID
         timestamp: new Date().toISOString()
       };
@@ -1827,9 +1857,8 @@ Qバブ召喚
       // 自分の投稿IDとして端末に記録
       recordMyPostId(formation.id);
 
-      // 1. Firestore が有効な場合はクラウドへ保存
+      // 2. Firestore が有効な場合はクラウドへ保存
       if (db) {
-        const originalText = submitBtn.innerHTML;
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span>⏳</span><span>クラウドへ同期送信中...</span>';
 
@@ -1847,7 +1876,7 @@ Qバブ召喚
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
       } else {
-        // 2. localStorage 保存 (Firebase未接続時)
+        // 3. localStorage 保存 (Firebase未接続時)
         const formations = getFormations();
         formations.unshift(formation);
         saveFormations(formations);
