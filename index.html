@@ -676,11 +676,23 @@
             <span class="text-lg">⚔️</span>
             <h3 class="text-lg font-bold text-white">みんなの編成一覧</h3>
             <span id="formationCount" class="text-xs px-2 py-0.5 bg-violet-500/20 text-violet-300 border border-violet-500/30 rounded-full font-bold">0件</span>
-            <span id="syncStatusBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">● リアルタイム同期中</span>
+            <span id="syncStatusBadge" class="text-[10px] px-2.5 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+              <span id="syncStatusText">ローカル保存モード</span>
+            </span>
           </div>
 
-          <!-- 通知登録ボタン -->
-          <div class="flex items-center gap-2">
+          <!-- アクションボタン群（設定 & 通知） -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <button 
+              type="button" 
+              onclick="openFirebaseConfigModal()"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-slate-900/90 hover:bg-slate-800 text-slate-300 border-slate-700 hover:text-white"
+              title="Firebase接続設定"
+            >
+              <span>⚙️</span>
+              <span>Firebase設定</span>
+            </button>
             <button 
               type="button" 
               id="notifyToggleBtn" 
@@ -797,6 +809,70 @@
           </div>
         </div>
       </section>
+
+      <!-- Firebase 設定モーダル -->
+      <div id="firebaseModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/85 backdrop-blur-sm p-4 overflow-y-auto" onclick="closeFirebaseConfigModal()">
+        <div class="glass-panel w-full max-w-lg p-6 sm:p-7 rounded-2xl glow-effect text-left relative" onclick="event.stopPropagation()">
+          <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
+            <div class="flex items-center gap-2.5">
+              <span class="text-2xl">🔥</span>
+              <div>
+                <h3 class="text-base font-bold text-white">Firebase 接続設定</h3>
+                <p class="text-xs text-slate-400">全端末でリアルタイム同期・プッシュ通知を行う設定</p>
+              </div>
+            </div>
+            <button onclick="closeFirebaseConfigModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition">✕</button>
+          </div>
+
+          <div id="fbStatusBox" class="mb-4 p-3 rounded-xl text-xs flex items-center gap-2 bg-slate-900/80 border border-slate-700 text-slate-300">
+            <span id="fbStatusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <span id="fbStatusMsg">状態: 未接続 (localStorageモード)</span>
+          </div>
+
+          <form id="firebaseSettingsForm" onsubmit="handleSaveFirebaseConfig(event)" class="space-y-3.5 text-xs">
+            <div>
+              <label class="block font-semibold text-slate-300 mb-1">API Key <span class="text-rose-400">*</span></label>
+              <input type="text" id="cfgApiKey" required placeholder="AIzaSy..." class="w-full bg-slate-900 border border-slate-700 focus:border-violet-400 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-300 mb-1">Project ID <span class="text-rose-400">*</span></label>
+              <input type="text" id="cfgProjectId" required placeholder="gbf-meron-portal" class="w-full bg-slate-900 border border-slate-700 focus:border-violet-400 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block font-semibold text-slate-300 mb-1">Auth Domain</label>
+                <input type="text" id="cfgAuthDomain" placeholder="xxx.firebaseapp.com" class="w-full bg-slate-900 border border-slate-700 focus:border-violet-400 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+              </div>
+              <div>
+                <label class="block font-semibold text-slate-300 mb-1">Storage Bucket</label>
+                <input type="text" id="cfgStorageBucket" placeholder="xxx.appspot.com" class="w-full bg-slate-900 border border-slate-700 focus:border-violet-400 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block font-semibold text-slate-300 mb-1">Messaging Sender ID</label>
+                <input type="text" id="cfgSenderId" placeholder="123456789" class="w-full bg-slate-900 border border-slate-700 focus:border-violet-400 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+              </div>
+              <div>
+                <label class="block font-semibold text-slate-300 mb-1">App ID</label>
+                <input type="text" id="cfgAppId" placeholder="1:123456:web:abc" class="w-full bg-slate-900 border border-slate-700 focus:border-violet-400 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+              </div>
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-300 mb-1">VAPID Key (Web Push公開鍵 / 任意)</label>
+              <input type="text" id="cfgVapidKey" placeholder="BEl5..." class="w-full bg-slate-900 border border-slate-700 focus:border-violet-400 rounded-lg px-3 py-2 text-white font-mono outline-none" />
+            </div>
+
+            <div class="pt-2 flex items-center justify-between gap-3">
+              <button type="button" onclick="handleClearFirebaseConfig()" class="text-xs text-rose-400 hover:text-rose-300 px-3 py-2">設定を初期化</button>
+              <div class="flex items-center gap-2">
+                <button type="button" onclick="closeFirebaseConfigModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl font-bold transition">キャンセル</button>
+                <button type="submit" class="bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-400 hover:to-fuchsia-400 text-white px-5 py-2 rounded-xl font-bold shadow-lg shadow-violet-500/25 transition">保存して接続</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <!-- 画像拡大モーダル -->
       <div id="imageModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="closeImageModal()">
@@ -921,13 +997,20 @@
     let messaging = null;
     let fcmToken = null;
     let isInitialLoadDone = false;
+    let unsubscribeFirestore = null;
 
     // Firebase 初期化
     function initFirebaseService() {
-      if (typeof firebase !== 'undefined' && typeof isFirebaseConfigured === 'function' && isFirebaseConfigured()) {
+      const isConfigured = typeof isFirebaseConfigured === 'function' ? isFirebaseConfigured() : false;
+      const statusBadge = document.getElementById('syncStatusBadge');
+      const statusText = document.getElementById('syncStatusText');
+
+      if (typeof firebase !== 'undefined' && isConfigured) {
         try {
-          if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
+          const cfg = window.firebaseConfig || (typeof getActiveFirebaseConfig === 'function' ? getActiveFirebaseConfig() : null);
+          
+          if (!firebase.apps.length && cfg) {
+            firebase.initializeApp(cfg);
           }
           db = firebase.firestore();
           
@@ -935,29 +1018,34 @@
             messaging = firebase.messaging();
           }
 
-          // リアルタイム同期バッジ表示
-          const badge = document.getElementById('syncStatusBadge');
-          if (badge) badge.classList.remove('hidden');
+          if (statusBadge && statusText) {
+            statusBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1';
+            statusText.textContent = '🟢 Firestore リアルタイム同期中';
+          }
 
-          // Firestore リアルタイム同期開始
           listenToFirestoreFormations();
           console.log('Firebase Firestore & Messaging が有効化されました。');
         } catch (e) {
           console.warn('Firebase初期化エラー (localStorageモードへフォールバック):', e);
+          if (statusBadge && statusText) {
+            statusBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/30 flex items-center gap-1';
+            statusText.textContent = '🔴 Firebase初期化エラー';
+          }
         }
       } else {
+        if (statusBadge && statusText) {
+          statusBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1';
+          statusText.textContent = '🟡 未接続 (ローカル保存)';
+        }
         console.log('Firebase設定が未入力のため、localStorageモードで動作します。');
       }
     }
 
-    // Service Worker 登録 & FCMセットアップ
+    // Service Worker 登録
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./firebase-messaging-sw.js')
         .then((registration) => {
-          console.log('Service Worker 登録成功:', registration.scope);
-          if (messaging) {
-            messaging.useServiceWorker(registration);
-          }
+          if (messaging) messaging.useServiceWorker(registration);
         })
         .catch((err) => {
           console.warn('Service Worker 登録失敗:', err);
@@ -968,6 +1056,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       initFirebaseService();
       updateNotificationButtonUI();
+      renderFormations();
 
       const commentEl = document.getElementById('formationComment');
       if (commentEl) {
@@ -1007,10 +1096,10 @@
       if (files.length > 0) {
         processImageFiles(files);
       }
-      // input をリセット（同一ファイル再選択を可能に）
       event.target.value = '';
     }
 
+    // 画像処理（Firestore 1MBドキュメントサイズ上限対策: 幅最大750px、品質0.72に圧縮）
     function processImageFiles(files) {
       const remainingSlots = MAX_IMAGES - selectedImages.length;
       if (remainingSlots <= 0) {
@@ -1025,8 +1114,8 @@
 
       let processedCount = 0;
       filesToProcess.forEach(file => {
-        if (file.size > 5 * 1024 * 1024) {
-          alert(`「${file.name}」のサイズが5MBを超えているためスキップしました。`);
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`「${file.name}」のサイズが10MBを超えているためスキップしました。`);
           processedCount++;
           if (processedCount === filesToProcess.length) updatePreviewUI();
           return;
@@ -1037,7 +1126,7 @@
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 1000;
+            const MAX_WIDTH = 750; // Firestoreの1MB上限に余裕を持って収める
             let w = img.width;
             let h = img.height;
             if (w > MAX_WIDTH) {
@@ -1048,7 +1137,7 @@
             canvas.height = h;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, w, h);
-            const base64 = canvas.toDataURL('image/jpeg', 0.82);
+            const base64 = canvas.toDataURL('image/jpeg', 0.72); // 1枚あたり約40〜80KB
 
             if (selectedImages.length < MAX_IMAGES) {
               selectedImages.push(base64);
@@ -1130,7 +1219,7 @@
       try {
         localStorage.setItem(FORMATIONS_KEY, JSON.stringify(formations));
       } catch (e) {
-        alert('保存容量の上限に達しました。古い投稿を削除してから再度お試しください。');
+        console.warn('localStorage保存上限エラー:', e);
       }
     }
 
@@ -1180,25 +1269,19 @@
         updateNotificationButtonUI();
 
         if (permission === 'granted') {
-          // テスト通知
           showLocalNotification('めろ～ん王国 騎空団ポータル', {
             body: '新着編成のプッシュ通知がONになりました！団員の投稿をリアルタイムでお知らせします。'
           });
 
-          // FCM トークン取得 (Firebase設定時)
-          if (messaging && typeof FIREBASE_VAPID_KEY !== 'undefined' && FIREBASE_VAPID_KEY !== 'YOUR_VAPID_PUBLIC_KEY') {
+          const vapidKey = window.FIREBASE_VAPID_KEY || (typeof getActiveVapidKey === 'function' ? getActiveVapidKey() : null);
+          if (messaging && vapidKey && vapidKey !== 'YOUR_VAPID_PUBLIC_KEY') {
             try {
-              const currentToken = await messaging.getToken({ vapidKey: FIREBASE_VAPID_KEY });
-              if (currentToken) {
-                console.log('FCM Device Token 取得:', currentToken);
-                fcmToken = currentToken;
-                // Firestoreへトークンを保存
-                if (db) {
-                  await db.collection('notification_tokens').doc(currentToken).set({
-                    token: currentToken,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                  });
-                }
+              const currentToken = await messaging.getToken({ vapidKey });
+              if (currentToken && db) {
+                await db.collection('notification_tokens').doc(currentToken).set({
+                  token: currentToken,
+                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
               }
             } catch (err) {
               console.warn('FCM Token 取得エラー:', err);
@@ -1231,26 +1314,30 @@
     }
 
     // ==========================================================
-    //  Firestore リアルタイム同期
+    //  Firestore リアルタイム同期 (onSnapshot)
     // ==========================================================
     function listenToFirestoreFormations() {
       if (!db) return;
 
-      db.collection('formations')
-        .orderBy('timestamp', 'desc')
-        .limit(50)
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+      }
+
+      unsubscribeFirestore = db.collection('formations')
         .onSnapshot((snapshot) => {
           const remoteFormations = [];
           snapshot.forEach((doc) => {
             remoteFormations.push({ id: doc.id, ...doc.data() });
           });
 
-          // 新着投稿検知（初回読み込み以降）
+          // クライアント側で確実に日付降順にソート
+          remoteFormations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+          // 新着検知と通知発火
           if (isInitialLoadDone) {
             snapshot.docChanges().forEach((change) => {
               if (change.type === 'added') {
                 const newPost = change.doc.data();
-                // 自分が投稿したもの以外の場合、プッシュ通知を発火
                 showLocalNotification('【新着編成】' + (newPost.name || '団員') + 'さん', {
                   body: newPost.comment || '新しい編成スクリーンショットが投稿されました！',
                   data: { url: './formations.html' }
@@ -1263,15 +1350,25 @@
           saveFormations(remoteFormations);
           renderFormations();
         }, (error) => {
-          console.warn('Firestoreリアルタイム同期エラー (localStorageを使用):', error);
+          console.error('Firestoreリアルタイム同期エラー:', error);
+          const statusBadge = document.getElementById('syncStatusBadge');
+          const statusText = document.getElementById('syncStatusText');
+          if (statusBadge && statusText) {
+            statusBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/30 flex items-center gap-1';
+            statusText.textContent = '🔴 同期エラー: ' + error.code;
+          }
         });
     }
 
+    // ==========================================================
+    //  編成投稿処理（Firestoreへ確実に保存）
+    // ==========================================================
     async function handleFormationSubmit(event) {
       event.preventDefault();
 
       const name = document.getElementById('formationName').value.trim();
       const comment = document.getElementById('formationComment').value.trim();
+      const submitBtn = document.getElementById('formationSubmitBtn');
 
       if (!name) {
         alert('ゲーム内の名前を入力してください。');
@@ -1288,16 +1385,25 @@
 
       // 1. Firestore が有効な場合はクラウドへ保存
       if (db) {
+        const originalText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>⏳</span><span>クラウドへ同期送信中...</span>';
+
         try {
           await db.collection('formations').doc(formation.id).set(formation);
+          console.log('Firestoreへ投稿保存完了:', formation.id);
         } catch (e) {
-          console.warn('Firestoreへの保存失敗 (localStorageに保存します):', e);
-          const formations = getFormations();
-          formations.unshift(formation);
-          saveFormations(formations);
+          console.error('Firestore保存失敗:', e);
+          alert('Firebase Firestoreへの保存に失敗しました:\n' + e.message + '\n\n【解決策】\n1. Firestore Databaseが作成されているか確認してください\n2. Firestoreのルールが「テストモード (allow read, write: if true;)」になっているか確認してください。');
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = originalText;
+          return;
         }
+
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
       } else {
-        // 2. localStorage 保存
+        // 2. localStorage 保存 (Firebase未接続時)
         const formations = getFormations();
         formations.unshift(formation);
         saveFormations(formations);
@@ -1322,8 +1428,10 @@
       if (db) {
         try {
           await db.collection('formations').doc(id).delete();
+          console.log('Firestoreから削除完了:', id);
         } catch (e) {
-          console.warn('Firestore削除失敗:', e);
+          console.error('Firestore削除失敗:', e);
+          alert('削除に失敗しました: ' + e.message);
         }
       }
 
@@ -1469,9 +1577,81 @@
       document.body.style.overflow = '';
     }
 
+    // ==========================================================
+    //  Firebase 設定モーダル操作
+    // ==========================================================
+    function openFirebaseConfigModal() {
+      const modal = document.getElementById('firebaseModal');
+      const cfg = typeof getActiveFirebaseConfig === 'function' ? getActiveFirebaseConfig() : (window.firebaseConfig || {});
+      const vapid = typeof getActiveVapidKey === 'function' ? getActiveVapidKey() : (window.FIREBASE_VAPID_KEY || '');
+
+      document.getElementById('cfgApiKey').value = (cfg.apiKey && cfg.apiKey !== 'YOUR_API_KEY') ? cfg.apiKey : '';
+      document.getElementById('cfgProjectId').value = (cfg.projectId && cfg.projectId !== 'YOUR_PROJECT_ID') ? cfg.projectId : '';
+      document.getElementById('cfgAuthDomain').value = (cfg.authDomain && !cfg.authDomain.includes('YOUR_PROJECT_ID')) ? cfg.authDomain : '';
+      document.getElementById('cfgStorageBucket').value = (cfg.storageBucket && !cfg.storageBucket.includes('YOUR_PROJECT_ID')) ? cfg.storageBucket : '';
+      document.getElementById('cfgSenderId').value = (cfg.messagingSenderId && cfg.messagingSenderId !== 'YOUR_MESSAGING_SENDER_ID') ? cfg.messagingSenderId : '';
+      document.getElementById('cfgAppId').value = (cfg.appId && cfg.appId !== 'YOUR_APP_ID') ? cfg.appId : '';
+      document.getElementById('cfgVapidKey').value = (vapid && vapid !== 'YOUR_VAPID_PUBLIC_KEY') ? vapid : '';
+
+      const dot = document.getElementById('fbStatusDot');
+      const msg = document.getElementById('fbStatusMsg');
+      const isConfigured = typeof isFirebaseConfigured === 'function' ? isFirebaseConfigured() : false;
+
+      if (isConfigured && db) {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        msg.textContent = '状態: 接続中 (Firestoreリアルタイム同期有効)';
+      } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400';
+        msg.textContent = '状態: 未設定 / ローカル保存モード';
+      }
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeFirebaseConfigModal() {
+      const modal = document.getElementById('firebaseModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function handleSaveFirebaseConfig(e) {
+      e.preventDefault();
+
+      const newConfig = {
+        apiKey: document.getElementById('cfgApiKey').value.trim(),
+        authDomain: document.getElementById('cfgAuthDomain').value.trim() || `${document.getElementById('cfgProjectId').value.trim()}.firebaseapp.com`,
+        projectId: document.getElementById('cfgProjectId').value.trim(),
+        storageBucket: document.getElementById('cfgStorageBucket').value.trim() || `${document.getElementById('cfgProjectId').value.trim()}.appspot.com`,
+        messagingSenderId: document.getElementById('cfgSenderId').value.trim(),
+        appId: document.getElementById('cfgAppId').value.trim()
+      };
+
+      const newVapid = document.getElementById('cfgVapidKey').value.trim();
+
+      localStorage.setItem('gbf_custom_firebase_config', JSON.stringify(newConfig));
+      if (newVapid) {
+        localStorage.setItem('gbf_custom_vapid_key', newVapid);
+      }
+
+      alert('Firebase設定を保存しました！ページを再読み込みして接続を開始します。');
+      window.location.reload();
+    }
+
+    function handleClearFirebaseConfig() {
+      if (!confirm('保存されたFirebase設定を初期化しますか？')) return;
+      localStorage.removeItem('gbf_custom_firebase_config');
+      localStorage.removeItem('gbf_custom_vapid_key');
+      alert('設定を初期化しました。ページを再読み込みします。');
+      window.location.reload();
+    }
+
     // ESCキーでモーダルを閉じる
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeImageModal();
+      if (e.key === 'Escape') {
+        closeImageModal();
+        closeFirebaseConfigModal();
+      }
     });
   </script>
 </body>
