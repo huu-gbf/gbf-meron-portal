@@ -198,6 +198,10 @@
           <span>🔄</span>
           <span>更新履歴</span>
         </button>
+        <button onclick="switchTab('formations')" id="tabBtn-formations" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
+          <span>📸</span>
+          <span>編成共有</span>
+        </button>
       </div>
 
       <!-- =========================================================
@@ -608,6 +612,120 @@
         </div>
       </section>
 
+      <!-- =========================================================
+           TAB 6: 📸 編成共有掲示板
+      ========================================================= -->
+      <section id="tab-formations" class="hidden space-y-6">
+        <!-- 投稿フォーム -->
+        <div class="glass-panel rounded-2xl p-6 sm:p-8 glow-effect">
+          <div class="flex items-center gap-3 mb-6 pb-4 border-b border-slate-800">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-2xl shadow-lg shadow-violet-500/20">
+              📸
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">編成を共有する</h3>
+              <p class="text-xs text-slate-400">スクリーンショットを貼って団員と編成を共有しましょう！</p>
+            </div>
+          </div>
+
+          <form id="formationForm" onsubmit="handleFormationSubmit(event)" class="space-y-5">
+            <!-- ゲーム内の名前 -->
+            <div>
+              <label for="formationName" class="block text-xs font-semibold text-slate-300 mb-1.5">① ゲーム内の名前 <span class="text-rose-400">*</span></label>
+              <input 
+                type="text" 
+                id="formationName" 
+                placeholder="例: ゆかり愛" 
+                required
+                maxlength="30"
+                class="w-full bg-slate-900/90 border border-slate-700 focus:border-violet-400 focus:ring-1 focus:ring-violet-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition text-sm"
+              />
+            </div>
+
+            <!-- 編成スクリーンショット -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1.5">② 編成スクリーンショット <span class="text-rose-400">*</span></label>
+              <div 
+                id="dropZone"
+                class="relative border-2 border-dashed border-slate-700 hover:border-violet-400 rounded-xl p-6 text-center cursor-pointer transition group bg-slate-900/40"
+                onclick="document.getElementById('formationImage').click()"
+              >
+                <input 
+                  type="file" 
+                  id="formationImage" 
+                  accept="image/*" 
+                  class="hidden"
+                  onchange="handleImageSelect(event)"
+                />
+                <div id="dropZonePlaceholder" class="space-y-2">
+                  <div class="text-4xl group-hover:scale-110 transition">🖼️</div>
+                  <p class="text-sm text-slate-400">クリックまたはドラッグ&ドロップで画像を選択</p>
+                  <p class="text-xs text-slate-500">PNG / JPG / WEBP（最大5MB）</p>
+                </div>
+                <div id="imagePreviewContainer" class="hidden">
+                  <img id="imagePreview" class="max-h-48 mx-auto rounded-lg shadow-lg" />
+                  <button type="button" onclick="clearImage(event)" class="mt-2 text-xs text-rose-400 hover:text-rose-300 transition">✕ 画像を削除</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- コメント -->
+            <div>
+              <label for="formationComment" class="block text-xs font-semibold text-slate-300 mb-1.5">③ コメント</label>
+              <textarea 
+                id="formationComment" 
+                placeholder="例: 光古戦場250HELL用編成です。レスラー軸で時速○万くらい出ます。" 
+                rows="3"
+                maxlength="500"
+                class="w-full bg-slate-900/90 border border-slate-700 focus:border-violet-400 focus:ring-1 focus:ring-violet-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition text-sm resize-none"
+              ></textarea>
+              <p class="text-right text-xs text-slate-500 mt-1"><span id="commentCharCount">0</span> / 500</p>
+            </div>
+
+            <!-- 送信ボタン -->
+            <button 
+              type="submit" 
+              id="formationSubmitBtn"
+              class="w-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-purple-500 hover:from-violet-400 hover:via-fuchsia-400 hover:to-purple-400 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-violet-500/25 transition transform active:scale-95 flex items-center justify-center gap-2 text-sm"
+            >
+              <span>📤</span>
+              <span>編成を投稿する</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- 投稿成功メッセージ -->
+        <div id="formationSuccess" class="hidden bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-xl p-4 text-sm font-semibold text-center animate-pulse">
+          ✅ 編成を投稿しました！
+        </div>
+
+        <!-- 編成一覧ヘッダー -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">⚔️</span>
+            <h3 class="text-lg font-bold text-white">みんなの編成一覧</h3>
+            <span id="formationCount" class="text-xs px-2 py-0.5 bg-violet-500/20 text-violet-300 border border-violet-500/30 rounded-full font-bold">0件</span>
+          </div>
+        </div>
+
+        <!-- 編成カード一覧 -->
+        <div id="formationList" class="space-y-4">
+          <div id="formationEmptyState" class="glass-panel rounded-2xl p-10 text-center">
+            <div class="text-5xl mb-3 opacity-60">📭</div>
+            <p class="text-slate-400 text-sm">まだ編成が投稿されていません</p>
+            <p class="text-slate-500 text-xs mt-1">上のフォームから最初の編成を共有しましょう！</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 画像拡大モーダル -->
+      <div id="imageModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="closeImageModal()">
+        <div class="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
+          <img id="modalImage" class="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain" onclick="event.stopPropagation()" />
+          <button onclick="closeImageModal()" class="absolute -top-3 -right-3 w-10 h-10 bg-slate-800 hover:bg-slate-700 text-white rounded-full flex items-center justify-center text-lg border border-slate-600 transition shadow-lg">✕</button>
+        </div>
+      </div>
+
     </main>
   </div>
 
@@ -676,7 +794,7 @@
 
     function switchTab(tabId) {
       // Hide all tabs
-      ['schedule', 'notices', 'recruit', 'links', 'history'].forEach(id => {
+      ['schedule', 'notices', 'recruit', 'links', 'history', 'formations'].forEach(id => {
         const tabEl = document.getElementById(`tab-${id}`);
         if (tabEl) tabEl.classList.add('hidden');
         const btn = document.getElementById(`tabBtn-${id}`);
@@ -694,6 +812,11 @@
         activeBtn.classList.remove('text-slate-400');
         activeBtn.classList.add('bg-amber-500', 'text-slate-950');
       }
+
+      // 編成タブが開かれた時に一覧をリフレッシュ
+      if (tabId === 'formations') {
+        renderFormations();
+      }
     }
 
     function copyRecruitText() {
@@ -707,6 +830,232 @@
         }, 2000);
       });
     }
+
+    // ==========================================================
+    //  編成共有掲示板ロジック
+    // ==========================================================
+    const FORMATIONS_KEY = 'gbf_crew_formations';
+    let selectedImageBase64 = null;
+
+    // コメント文字数カウンター
+    document.addEventListener('DOMContentLoaded', () => {
+      const commentEl = document.getElementById('formationComment');
+      if (commentEl) {
+        commentEl.addEventListener('input', () => {
+          document.getElementById('commentCharCount').textContent = commentEl.value.length;
+        });
+      }
+
+      // ドラッグ&ドロップ対応
+      const dropZone = document.getElementById('dropZone');
+      if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          dropZone.classList.add('border-violet-400', 'bg-violet-500/5');
+        });
+        dropZone.addEventListener('dragleave', () => {
+          dropZone.classList.remove('border-violet-400', 'bg-violet-500/5');
+        });
+        dropZone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          dropZone.classList.remove('border-violet-400', 'bg-violet-500/5');
+          const files = e.dataTransfer.files;
+          if (files.length > 0 && files[0].type.startsWith('image/')) {
+            processImageFile(files[0]);
+          }
+        });
+      }
+    });
+
+    function handleImageSelect(event) {
+      const file = event.target.files[0];
+      if (file) processImageFile(file);
+    }
+
+    function processImageFile(file) {
+      // 5MB制限
+      if (file.size > 5 * 1024 * 1024) {
+        alert('画像サイズは5MB以下にしてください。');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // リサイズ処理（横幅最大1200pxに圧縮してlocalStorage容量節約）
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1200;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX_WIDTH) {
+            h = Math.round(h * MAX_WIDTH / w);
+            w = MAX_WIDTH;
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          selectedImageBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+          // プレビュー表示
+          document.getElementById('imagePreview').src = selectedImageBase64;
+          document.getElementById('dropZonePlaceholder').classList.add('hidden');
+          document.getElementById('imagePreviewContainer').classList.remove('hidden');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearImage(event) {
+      event.stopPropagation();
+      selectedImageBase64 = null;
+      document.getElementById('formationImage').value = '';
+      document.getElementById('dropZonePlaceholder').classList.remove('hidden');
+      document.getElementById('imagePreviewContainer').classList.add('hidden');
+    }
+
+    function getFormations() {
+      try {
+        return JSON.parse(localStorage.getItem(FORMATIONS_KEY)) || [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveFormations(formations) {
+      try {
+        localStorage.setItem(FORMATIONS_KEY, JSON.stringify(formations));
+      } catch (e) {
+        // localStorageの容量制限に達した場合
+        alert('保存容量の上限に達しました。古い投稿を削除してから再度お試しください。');
+      }
+    }
+
+    function handleFormationSubmit(event) {
+      event.preventDefault();
+
+      const name = document.getElementById('formationName').value.trim();
+      const comment = document.getElementById('formationComment').value.trim();
+
+      if (!name) {
+        alert('ゲーム内の名前を入力してください。');
+        return;
+      }
+      if (!selectedImageBase64) {
+        alert('編成のスクリーンショットを選択してください。');
+        return;
+      }
+
+      const formation = {
+        id: Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
+        name: name,
+        comment: comment,
+        image: selectedImageBase64,
+        timestamp: new Date().toISOString()
+      };
+
+      const formations = getFormations();
+      formations.unshift(formation);
+      saveFormations(formations);
+
+      // フォームリセット
+      document.getElementById('formationForm').reset();
+      clearImage(new Event('click'));
+      document.getElementById('commentCharCount').textContent = '0';
+
+      // 成功メッセージ
+      const successEl = document.getElementById('formationSuccess');
+      successEl.classList.remove('hidden');
+      setTimeout(() => successEl.classList.add('hidden'), 3000);
+
+      renderFormations();
+    }
+
+    function deleteFormation(id) {
+      if (!confirm('この投稿を削除しますか？')) return;
+      const formations = getFormations().filter(f => f.id !== id);
+      saveFormations(formations);
+      renderFormations();
+    }
+
+    function renderFormations() {
+      const formations = getFormations();
+      const listEl = document.getElementById('formationList');
+      const countEl = document.getElementById('formationCount');
+      const emptyState = document.getElementById('formationEmptyState');
+
+      countEl.textContent = `${formations.length}件`;
+
+      if (formations.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        // 空状態以外のカードを削除
+        Array.from(listEl.children).forEach(child => {
+          if (child.id !== 'formationEmptyState') child.remove();
+        });
+        return;
+      }
+
+      // 一覧を再描画
+      listEl.innerHTML = formations.map(f => {
+        const date = new Date(f.timestamp);
+        const dateStr = `${date.getFullYear()}/${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+        const commentHtml = f.comment ? `<p class="text-sm text-slate-300 leading-relaxed mt-3 bg-slate-900/60 p-3 rounded-lg border border-slate-800">${escapeHtml(f.comment)}</p>` : '';
+
+        return `
+          <div class="glass-panel rounded-2xl overflow-hidden hover:border-violet-500/30 transition group">
+            <!-- カードヘッダー -->
+            <div class="px-5 pt-4 pb-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-violet-500/20">
+                  ${escapeHtml(f.name.charAt(0))}
+                </div>
+                <div>
+                  <strong class="text-white text-sm font-bold">${escapeHtml(f.name)}</strong>
+                  <span class="block text-xs text-slate-500">${dateStr}</span>
+                </div>
+              </div>
+              <button onclick="deleteFormation('${f.id}')" class="text-xs text-slate-600 hover:text-rose-400 transition px-2 py-1 rounded-lg hover:bg-rose-500/10" title="削除">
+                🗑️
+              </button>
+            </div>
+            <!-- 画像 -->
+            <div class="px-5 pb-3">
+              <img src="${f.image}" alt="${escapeHtml(f.name)}の編成" class="w-full rounded-xl cursor-pointer hover:opacity-90 transition shadow-lg" onclick="openImageModal('${f.image.replace(/'/g, "\\'")}')" />
+            </div>
+            <!-- コメント -->
+            ${commentHtml ? `<div class="px-5 pb-4">${commentHtml}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function openImageModal(imageSrc) {
+      const modal = document.getElementById('imageModal');
+      document.getElementById('modalImage').src = imageSrc;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeImageModal() {
+      const modal = document.getElementById('imageModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      document.body.style.overflow = '';
+    }
+
+    // ESCキーでモーダルを閉じる
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeImageModal();
+    });
   </script>
 </body>
 </html>
