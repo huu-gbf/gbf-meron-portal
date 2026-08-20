@@ -69,6 +69,13 @@
       -webkit-backdrop-filter: blur(12px);
       border: 1px solid rgba(212, 175, 55, 0.2);
     }
+    html { scroll-behavior: smooth; }
+    .section-nav-link.active {
+      background: rgba(245, 200, 66, 0.15);
+      color: #fbbf24;
+    }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body class="min-h-screen relative pb-16">
@@ -149,6 +156,61 @@
       </div>
     </header>
 
+    <!-- Sticky Section Navigation -->
+    <nav id="sectionNav" class="sticky top-16 z-40 bg-slate-950/95 backdrop-blur-xl border-b border-amber-500/10 shadow-lg shadow-black/20">
+      <div class="max-w-6xl mx-auto px-4">
+        <!-- PC: horizontal menu bar -->
+        <div class="hidden md:flex items-center gap-1 py-2 overflow-x-auto scrollbar-hide">
+          <a href="#sec-schedule" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+            <span>📅</span><span>イベント予定</span>
+          </a>
+          <a href="#sec-notices" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+            <span>📜</span><span>団規約等</span>
+          </a>
+          <a href="#sec-recruit" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+            <span>📝</span><span>団員募集内容</span>
+          </a>
+          <a href="#sec-links" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+            <span>🔗</span><span>ツール</span>
+          </a>
+          <a href="#sec-formations" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+            <span>📸</span><span>編成共有</span>
+          </a>
+          <a href="#sec-history" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+            <span>🔄</span><span>更新履歴</span>
+          </a>
+        </div>
+        <!-- Mobile: hamburger toggle button -->
+        <div class="md:hidden flex items-center justify-between py-2.5">
+          <span class="text-sm text-slate-300 font-semibold flex items-center gap-1.5"><span>📋</span> セクション一覧</span>
+          <button onclick="toggleMobileMenu()" id="hamburgerBtn" class="w-10 h-10 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xl border border-slate-700 transition-all">
+            <span id="hamburgerIcon">☰</span>
+          </button>
+        </div>
+        <!-- Mobile: expandable dropdown menu -->
+        <div id="mobileMenu" class="hidden md:hidden pb-3 space-y-1 border-t border-slate-800/60 pt-2">
+          <a href="#sec-schedule" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+            <span>📅</span><span>古戦場・イベント予定</span>
+          </a>
+          <a href="#sec-notices" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+            <span>📜</span><span>団規約等</span>
+          </a>
+          <a href="#sec-recruit" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+            <span>📝</span><span>現在の団員募集内容</span>
+          </a>
+          <a href="#sec-links" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+            <span>🔗</span><span>ツール</span>
+          </a>
+          <a href="#sec-formations" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+            <span>📸</span><span>編成共有</span>
+          </a>
+          <a href="#sec-history" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+            <span>🔄</span><span>更新履歴</span>
+          </a>
+        </div>
+      </div>
+    </nav>
+
     <!-- Main Container -->
     <main class="max-w-6xl mx-auto px-4 pt-8">
       
@@ -178,38 +240,18 @@
         </div>
       </div>
 
-      <!-- Navigation Tabs -->
-      <div class="flex items-center gap-2 border-b border-slate-800 mb-6 pb-2 overflow-x-auto">
-        <button onclick="switchTab('schedule')" id="tabBtn-schedule" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 bg-amber-500 text-slate-950 whitespace-nowrap">
-          <span>📅</span>
-          <span>古戦場・イベント予定</span>
-        </button>
-        <button onclick="switchTab('notices')" id="tabBtn-notices" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
-          <span>📜</span>
-          <span>団規約等</span>
-        </button>
-        <button onclick="switchTab('recruit')" id="tabBtn-recruit" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
-          <span>📝</span>
-          <span>現在の団員募集内容</span>
-        </button>
-        <button onclick="switchTab('links')" id="tabBtn-links" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
-          <span>🔗</span>
-          <span>ツール</span>
-        </button>
-        <button onclick="switchTab('formations')" id="tabBtn-formations" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
-          <span>📸</span>
-          <span>編成共有</span>
-        </button>
-        <button onclick="switchTab('history')" id="tabBtn-history" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
-          <span>🔄</span>
-          <span>更新履歴</span>
-        </button>
-      </div>
+
 
       <!-- =========================================================
-           TAB 1: 古戦場・イベントスケジュール
+           SECTION: 古戦場・イベント予定
       ========================================================= -->
-      <section id="tab-schedule" class="space-y-6">
+      <section id="sec-schedule" class="space-y-6 scroll-mt-32">
+        <!-- Section Header -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-lg">📅</div>
+          <h2 class="text-xl font-bold text-white">古戦場・イベント予定</h2>
+          <div class="flex-1 h-px bg-gradient-to-r from-cyan-500/30 to-transparent"></div>
+        </div>
         <!-- Next UNF Schedule Timeline -->
         <div class="glass-panel rounded-2xl p-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 pb-3 border-b border-slate-800">
@@ -322,9 +364,15 @@
       </section>
 
       <!-- =========================================================
-           TAB 2: 団規約等
+           SECTION: 団規約等
       ========================================================= -->
-      <section id="tab-notices" class="hidden space-y-4">
+      <section id="sec-notices" class="space-y-4 scroll-mt-32 pt-16">
+        <!-- Section Header -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-lg">📜</div>
+          <h2 class="text-xl font-bold text-white">団規約等</h2>
+          <div class="flex-1 h-px bg-gradient-to-r from-amber-500/30 to-transparent"></div>
+        </div>
         <!-- Normal Notice 1: 古戦場 -->
         <div class="glass-panel rounded-2xl p-5 hover:border-slate-700 transition">
           <div class="flex items-start justify-between gap-4 mb-2">
@@ -395,9 +443,15 @@
       </section>
 
       <!-- =========================================================
-           TAB 3: 現在の団員募集内容
+           SECTION: 現在の団員募集内容
       ========================================================= -->
-      <section id="tab-recruit" class="hidden space-y-6">
+      <section id="sec-recruit" class="space-y-6 scroll-mt-32 pt-16">
+        <!-- Section Header -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-lg">📝</div>
+          <h2 class="text-xl font-bold text-white">現在の団員募集内容</h2>
+          <div class="flex-1 h-px bg-gradient-to-r from-emerald-500/30 to-transparent"></div>
+        </div>
         <div class="glass-panel rounded-2xl p-6 sm:p-8">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
             <div>
@@ -497,9 +551,15 @@
       </section>
 
       <!-- =========================================================
-           TAB 4: ツール（外部リンク集）
+           SECTION: ツール
       ========================================================= -->
-      <section id="tab-links" class="hidden">
+      <section id="sec-links" class="scroll-mt-32 pt-16">
+        <!-- Section Header -->
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-lg">🔗</div>
+          <h2 class="text-xl font-bold text-white">ツール</h2>
+          <div class="flex-1 h-px bg-gradient-to-r from-amber-500/30 to-transparent"></div>
+        </div>
         <div class="max-w-2xl mx-auto space-y-4">
           <!-- Drop Rate Calculator -->
           <a href="drop-calculator.html" target="_blank" rel="noopener noreferrer" class="glass-panel rounded-2xl p-6 sm:p-8 hover:border-amber-400 transition group border-amber-500/40 block shadow-xl shadow-amber-500/5 hover:shadow-amber-500/15">
@@ -550,9 +610,15 @@
       </section>
 
       <!-- =========================================================
-           TAB 5: 📸 編成共有掲示板
+           SECTION: 編成共有掲示板
       ========================================================= -->
-      <section id="tab-formations" class="hidden space-y-6">
+      <section id="sec-formations" class="space-y-6 scroll-mt-32 pt-16">
+        <!-- Section Header -->
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center text-lg">📸</div>
+          <h2 class="text-xl font-bold text-white">編成共有</h2>
+          <div class="flex-1 h-px bg-gradient-to-r from-violet-500/30 to-transparent"></div>
+        </div>
         <!-- 投稿フォーム -->
         <div class="glass-panel rounded-2xl p-6 sm:p-8 glow-effect">
           <div class="flex items-center gap-3 mb-6 pb-4 border-b border-slate-800">
@@ -908,9 +974,15 @@ Qバブ召喚
       </section>
 
       <!-- =========================================================
-           TAB 6: 🔄 更新履歴 (Changelog)
+           SECTION: 更新履歴
       ========================================================= -->
-      <section id="tab-history" class="hidden space-y-4">
+      <section id="sec-history" class="space-y-4 scroll-mt-32 pt-16">
+        <!-- Section Header -->
+        <div class="flex items-center gap-3 mb-2">
+          <div class="w-10 h-10 rounded-xl bg-slate-500/15 border border-slate-500/30 flex items-center justify-center text-lg">🔄</div>
+          <h2 class="text-xl font-bold text-white">更新履歴</h2>
+          <div class="flex-1 h-px bg-gradient-to-r from-slate-500/30 to-transparent"></div>
+        </div>
         <div class="glass-panel rounded-2xl p-6">
           <div class="flex items-center justify-between mb-6 pb-3 border-b border-slate-800">
             <div class="flex items-center gap-2">
@@ -1207,6 +1279,7 @@ Qバブ召喚
     function showPortal() {
       document.getElementById('authScreen').classList.add('hidden');
       document.getElementById('portalScreen').classList.remove('hidden');
+      initNavObserver();
     }
 
     function showAuth() {
@@ -1215,31 +1288,44 @@ Qバブ召喚
       document.getElementById('crewPassword').value = '';
     }
 
+    // セクションへのスムーズスクロール（後方互換用）
     function switchTab(tabId) {
-      // Hide all tabs
-      ['schedule', 'notices', 'recruit', 'links', 'formations', 'history'].forEach(id => {
-        const tabEl = document.getElementById(`tab-${id}`);
-        if (tabEl) tabEl.classList.add('hidden');
-        const btn = document.getElementById(`tabBtn-${id}`);
-        if (btn) {
-          btn.classList.remove('bg-amber-500', 'text-slate-950');
-          btn.classList.add('text-slate-400');
-        }
-      });
+      const section = document.getElementById(`sec-${tabId}`);
+      if (section) section.scrollIntoView({ behavior: 'smooth' });
+    }
 
-      // Show selected tab
-      const selectedTabEl = document.getElementById(`tab-${tabId}`);
-      if (selectedTabEl) selectedTabEl.classList.remove('hidden');
-      const activeBtn = document.getElementById(`tabBtn-${tabId}`);
-      if (activeBtn) {
-        activeBtn.classList.remove('text-slate-400');
-        activeBtn.classList.add('bg-amber-500', 'text-slate-950');
-      }
+    // ハンバーガーメニュー開閉
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const icon = document.getElementById('hamburgerIcon');
+      menu.classList.toggle('hidden');
+      icon.textContent = menu.classList.contains('hidden') ? '☰' : '✕';
+    }
 
-      // 編成タブが開かれた時に一覧をリフレッシュ
-      if (tabId === 'formations') {
-        renderFormations();
-      }
+    function closeMobileMenu() {
+      const menu = document.getElementById('mobileMenu');
+      const icon = document.getElementById('hamburgerIcon');
+      menu.classList.add('hidden');
+      icon.textContent = '☰';
+    }
+
+    // IntersectionObserver で現在表示中のセクションのナビリンクをハイライト
+    function initNavObserver() {
+      const sections = document.querySelectorAll('section[id^="sec-"]');
+      if (!sections.length) return;
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const id = entry.target.id;
+            document.querySelectorAll('.section-nav-link').forEach(link => {
+              link.classList.toggle('active', link.getAttribute('href') === `#${id}`);
+            });
+          }
+        });
+      }, { rootMargin: '-20% 0px -60% 0px', threshold: 0 });
+
+      sections.forEach(section => observer.observe(section));
     }
 
     function copyRecruitText() {
