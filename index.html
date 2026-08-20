@@ -194,13 +194,13 @@
           <span>🔗</span>
           <span>ツール</span>
         </button>
-        <button onclick="switchTab('history')" id="tabBtn-history" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
-          <span>🔄</span>
-          <span>更新履歴</span>
-        </button>
         <button onclick="switchTab('formations')" id="tabBtn-formations" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
           <span>📸</span>
           <span>編成共有</span>
+        </button>
+        <button onclick="switchTab('history')" id="tabBtn-history" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold text-slate-400 hover:text-white transition flex items-center gap-2 whitespace-nowrap">
+          <span>🔄</span>
+          <span>更新履歴</span>
         </button>
       </div>
 
@@ -571,87 +571,7 @@
       </section>
 
       <!-- =========================================================
-           TAB 4: 🔄 更新履歴 (Changelog)
-      ========================================================= -->
-      <section id="tab-history" class="hidden space-y-4">
-        <div class="glass-panel rounded-2xl p-6">
-          <div class="flex items-center justify-between mb-6 pb-3 border-b border-slate-800">
-            <div class="flex items-center gap-2">
-              <span class="text-xl">🔄</span>
-              <h3 class="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
-            </div>
-            <span class="text-xs text-slate-400">最終更新: 2026/08/20</span>
-          </div>
-
-          <!-- Timeline list -->
-          <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
-            
-            <!-- Log Item 4 -->
-            <div class="relative">
-              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
-              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
-                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">機能追加</span>
-                  <strong class="text-sm font-bold text-white">編成共有ページを追加</strong>
-                </div>
-                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
-                  団員同士で編成スクリーンショットやコメントを気軽に共有できる「編成共有掲示板」を追加しました。
-                </p>
-              </div>
-            </div>
-
-            <!-- Log Item 3 -->
-            <div class="relative">
-              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
-              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
-                  <span class="text-xs font-bold px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded">ツール</span>
-                  <strong class="text-sm font-bold text-white">古戦場周回効率計算機を統合</strong>
-                </div>
-                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
-                  ポータル内から古戦場周回効率計算機（貢献度時速・必要肉数・目標逆算）へアクセスできるようツールを統合しました。
-                </p>
-              </div>
-            </div>
-
-            <!-- Log Item 2 -->
-            <div class="relative">
-              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
-              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
-                  <span class="text-xs font-bold px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded">団ルール</span>
-                  <strong class="text-sm font-bold text-white">団規則に傭兵の項目追加</strong>
-                </div>
-                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
-                  団規約等の欄に「傭兵 ノルマ（募集する時期などにより変動あり、現在は10万位以内）」を追加しました。
-                </p>
-              </div>
-            </div>
-
-            <!-- Log Item 1 (Today Start) -->
-            <div class="relative">
-              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
-              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-1.5">
-                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/19</span>
-                  <span class="text-xs font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">運用開始</span>
-                  <strong class="text-sm font-bold text-white">めろ～ん王国 ポータルサイト運用開始</strong>
-                </div>
-                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
-                  本日より騎空団専用ポータルサイトの運用を開始しました。
-                </p>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </section>
-
-      <!-- =========================================================
-           TAB 6: 📸 編成共有掲示板
+           TAB 5: 📸 編成共有掲示板
       ========================================================= -->
       <section id="tab-formations" class="hidden space-y-6">
         <!-- 投稿フォーム -->
@@ -756,6 +676,86 @@
         </div>
       </section>
 
+      <!-- =========================================================
+           TAB 6: 🔄 更新履歴 (Changelog)
+      ========================================================= -->
+      <section id="tab-history" class="hidden space-y-4">
+        <div class="glass-panel rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-6 pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+              <span class="text-xl">🔄</span>
+              <h3 class="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
+            </div>
+            <span class="text-xs text-slate-400">最終更新: 2026/08/20</span>
+          </div>
+
+          <!-- Timeline list -->
+          <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
+            
+            <!-- Log Item 4 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">機能追加</span>
+                  <strong class="text-sm font-bold text-white">編成共有ページを追加</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  団員同士で編成スクリーンショットやコメントを気軽に共有できる「編成共有掲示板」を追加しました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 3 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded">ツール</span>
+                  <strong class="text-sm font-bold text-white">古戦場周回効率計算機を統合</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  ポータル内から古戦場周回効率計算機（貢献度時速・必要肉数・目標逆算）へアクセスできるようツールを統合しました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 2 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/20</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-cyan-500/20 text-cyan-300 rounded">団ルール</span>
+                  <strong class="text-sm font-bold text-white">団規則に傭兵の項目追加</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  団規約等の欄に「傭兵 ノルマ（募集する時期などにより変動あり、現在は10万位以内）」を追加しました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 1 (Today Start) -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-slate-500 border-4 border-slate-950"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/19</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">運用開始</span>
+                  <strong class="text-sm font-bold text-white">めろ～ん王国 ポータルサイト運用開始</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  本日より騎空団専用ポータルサイトの運用を開始しました。
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       <!-- 画像拡大モーダル -->
       <div id="imageModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="closeImageModal()">
         <div class="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
@@ -832,7 +832,7 @@
 
     function switchTab(tabId) {
       // Hide all tabs
-      ['schedule', 'notices', 'recruit', 'links', 'history', 'formations'].forEach(id => {
+      ['schedule', 'notices', 'recruit', 'links', 'formations', 'history'].forEach(id => {
         const tabEl = document.getElementById(`tab-${id}`);
         if (tabEl) tabEl.classList.add('hidden');
         const btn = document.getElementById(`tabBtn-${id}`);
