@@ -667,17 +667,126 @@
               </div>
             </div>
 
+            <!-- 編成投稿テンプレート（アコーディオン） -->
+            <details class="group rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 to-orange-500/5 overflow-hidden">
+              <summary class="flex items-center gap-2 cursor-pointer px-4 py-3 text-sm font-bold text-amber-300 hover:text-amber-200 hover:bg-amber-500/10 transition select-none list-none [&::-webkit-details-marker]:hidden">
+                <span class="text-base transition-transform duration-200 group-open:rotate-90">▶</span>
+                <span>📌</span>
+                <span>【重要】編成投稿の書き方・テンプレート（クリックして開く）</span>
+              </summary>
+              <div class="border-t border-amber-500/20 px-4 py-4 space-y-3">
+                <p class="text-xs text-slate-300 leading-relaxed">
+                  以下のテンプレートをコピーしてコメント欄に貼り付け、自分の編成に合わせて編集してください。<br>
+                  画像と合わせて投稿すると、団員にとってより分かりやすい共有になります。
+                </p>
+                <div class="relative">
+                  <button
+                    type="button"
+                    onclick="copyMoveTemplate()"
+                    id="templateCopyBtn"
+                    class="absolute top-2 right-2 z-10 text-[11px] font-bold text-violet-300 bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 px-3 py-1.5 rounded-lg transition flex items-center gap-1"
+                  >
+                    <span id="templateCopyIcon">📋</span>
+                    <span id="templateCopyLabel">コピー</span>
+                  </button>
+                  <pre id="moveTemplate" class="text-xs text-slate-200 leading-[1.7] bg-slate-950/80 border border-slate-800 rounded-xl p-4 pr-20 overflow-x-auto whitespace-pre-wrap font-mono" style="tab-size:2;">【バトル名】250HELL
+
+【前提・装備】
+・終末：極波アビダメ / 鑰環：神撃
+・オメガ武器：渾身通常トリア
+・フレンド：アグニス
+・タイプ：全て連撃タイプ
+・備考：バフなし、シルフ修羅AF
+・奥義ルール：次に指示がない限り、指定したオン/オフ状態を次の指示まで継続
+
+【ムーブ手順】
+■ 1T目
+主人公1, 2, 3
+シルフ1 → ゼタ
+シルフ2 → 主人公
+ゼタ1
+ルナ → シルフ
+（奥義ON）攻撃
+
+■ 2T目
+（奥義ON継続）攻撃
+
+■ 3T目
+（奥義ON継続）攻撃
+
+■ 4T目
+（奥義ON継続）奥義を打つ
+
+■ 5T目 (HP93%)
+（奥義OFF）攻撃
+
+■ 6T目 (HP92%)
+主人公1, 4, 3（アンリミ起動）
+ミカ2, 3
+（奥義OFF）攻撃
+
+■ 7T目
+ミカ2
+（奥義OFF）攻撃
+
+■ 8T目 (HP78%)
+オルポ使用
+（奥義OFF）攻撃
+
+■ 9T目 (HP71%)
+Qバブ召喚
+ルリア3
+（奥義OFF）攻撃
+
+■ 10T目 (HP63%)
+（奥義OFF）攻撃
+
+■ 11T目 (HP56%)
+主人公3、ミカ3
+（奥義OFF）攻撃
+
+■ 12T目 (HP49%)
+オルポ使用
+（奥義OFF）攻撃
+
+■ 13T目
+オルポ使用
+（奥義OFF）攻撃
+
+■ 14T目
+ミカ2、バブ召喚
+（奥義OFF）攻撃
+
+■ 15T目
+オルポ使用
+（奥義OFF）攻撃
+
+■ 16T目
+主人公3、ミカ3
+（奥義OFF）攻撃
+
+■ 17T目
+※残り7%なら確実、8%なら1アビポチ
+（奥義OFF）攻撃
+
+■ 18T目
+討伐完了</pre>
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">💡 テンプレートは自分の編成に合わせて自由に編集してOKです。バトル名・前提装備・ムーブ手順の3セクション構成で書くと伝わりやすくなります。</p>
+              </div>
+            </details>
+
             <!-- コメント -->
             <div>
               <label for="formationComment" class="block text-xs font-semibold text-slate-300 mb-1.5">③ コメント <span class="text-slate-500 font-normal">（任意・改行可）</span></label>
               <textarea 
                 id="formationComment" 
-                placeholder="例: 光古戦場250HELL用編成です。&#10;・レスラー軸で時速○万くらい出ます。&#10;・フレ石はゼウスを選択してください。" 
-                rows="4"
-                maxlength="500"
+                placeholder="例: 光古戦場250HELL用編成です。&#10;・レスラー軸で時速○万くらい出ます。&#10;・フレ石はゼウスを選択してください。&#10;&#10;💡 上のテンプレートをコピーして貼り付けると、ムーブ手順を共有できます。" 
+                rows="5"
+                maxlength="3000"
                 class="w-full bg-slate-900/90 border border-slate-700 focus:border-violet-400 focus:ring-1 focus:ring-violet-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition text-sm resize-y min-h-[90px]"
               ></textarea>
-              <p class="text-right text-xs text-slate-500 mt-1"><span id="commentCharCount">0</span> / 500</p>
+              <p class="text-right text-xs text-slate-500 mt-1"><span id="commentCharCount">0</span> / 3000</p>
             </div>
 
             <!-- 送信ボタン -->
@@ -1040,6 +1149,22 @@
         label.innerText = 'コピーしました！✨';
         setTimeout(() => {
           label.innerText = originalText;
+        }, 2000);
+      });
+    }
+
+    function copyMoveTemplate() {
+      const templateEl = document.getElementById('moveTemplate');
+      if (!templateEl) return;
+      const text = templateEl.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const icon = document.getElementById('templateCopyIcon');
+        const label = document.getElementById('templateCopyLabel');
+        icon.textContent = '✅';
+        label.textContent = 'コピーしました！';
+        setTimeout(() => {
+          icon.textContent = '📋';
+          label.textContent = 'コピー';
         }, 2000);
       });
     }
