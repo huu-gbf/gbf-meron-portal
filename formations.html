@@ -260,6 +260,83 @@
       margin-top: 4px;
     }
 
+    /* ゲーム内の名前 レスポンシブ */
+    .name-input-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+    }
+    .name-submit-btn {
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #8b5cf6, #a855f7);
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 11px 16px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .name-submit-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    @media (min-width: 541px) {
+      .name-input-row {
+        flex-direction: row;
+        align-items: center;
+      }
+      .name-input-row .form-input {
+        flex: 1;
+        min-width: 0;
+      }
+    }
+    @media (max-width: 540px) {
+      .name-submit-btn {
+        width: 100%;
+      }
+    }
+    .name-locked-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: rgba(15,23,42,0.8);
+      border: 1px solid rgba(139,92,246,0.3);
+      border-radius: 12px;
+      padding: 10px 14px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    .name-locked-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+    .name-locked-left #playerNameLocked {
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .name-locked-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
     /* ドロップゾーン */
     .dropzone {
       position: relative;
@@ -811,7 +888,7 @@
               <label class="form-label" for="playerNameInput">
                 ① ゲーム内の名前<span class="required">*</span>
               </label>
-              <div style="display:flex; gap:8px; align-items:center;">
+              <div class="name-input-row">
                 <input 
                   type="text" 
                   id="playerNameInput" 
@@ -819,12 +896,11 @@
                   placeholder="例: ゆかり愛" 
                   maxlength="30"
                   autocomplete="off"
-                  style="flex:1;"
                 />
                 <button
                   type="button"
                   onclick="saveAndLockName()"
-                  style="flex-shrink:0; background:linear-gradient(135deg,#8b5cf6,#a855f7); color:#fff; font-weight:700; font-size:12px; padding:10px 16px; border-radius:12px; border:none; cursor:pointer; white-space:nowrap;"
+                  class="name-submit-btn"
                 >登録して固定</button>
               </div>
               <p style="font-size:11px; color:#64748b; margin-top:6px;">ℹ️ 名前を登録するとこの端末で固定され、自分の投稿を正確に識別できます。</p>
@@ -832,17 +908,21 @@
             <!-- 登録後: 固定表示 -->
             <div id="nameLockedArea" style="display:none;">
               <label class="form-label">① ゲーム内の名前</label>
-              <div style="display:flex; align-items:center; gap:8px; background:rgba(15,23,42,0.8); border:1px solid rgba(139,92,246,0.3); border-radius:12px; padding:10px 14px;">
-                <span style="color:#34d399; font-size:14px;">✓</span>
-                <span id="playerNameLocked" style="color:#fff; font-weight:700; font-size:14px; flex:1;"></span>
-                <span style="font-size:10px; color:#34d399; background:rgba(52,211,153,0.1); border:1px solid rgba(52,211,153,0.2); padding:2px 8px; border-radius:999px;">登録済み</span>
-                <button
-                  type="button"
-                  onclick="resetLockedName()"
-                  style="font-size:11px; color:#94a3b8; background:transparent; border:none; cursor:pointer; padding:4px 8px; border-radius:8px;"
-                  title="名前を変更する"
-                  onmouseover="this.style.color='#fbbf24'" onmouseout="this.style.color='#94a3b8'"
-                >✏️ 変更</button>
+              <div class="name-locked-box">
+                <div class="name-locked-left">
+                  <span style="color:#34d399; font-size:14px; flex-shrink:0;">✓</span>
+                  <span id="playerNameLocked"></span>
+                </div>
+                <div class="name-locked-right">
+                  <span style="font-size:10px; color:#34d399; background:rgba(52,211,153,0.1); border:1px solid rgba(52,211,153,0.2); padding:2px 8px; border-radius:999px; white-space:nowrap; flex-shrink:0;">登録済み</span>
+                  <button
+                    type="button"
+                    onclick="resetLockedName()"
+                    style="font-size:11px; color:#94a3b8; background:transparent; border:none; cursor:pointer; padding:4px 8px; border-radius:8px; white-space:nowrap; flex-shrink:0;"
+                    title="名前を変更する"
+                    onmouseover="this.style.color='#fbbf24'" onmouseout="this.style.color='#94a3b8'"
+                  >✏️ 変更</button>
+                </div>
               </div>
               <!-- form送信用の非表示input -->
               <input type="hidden" id="playerName" />
