@@ -252,9 +252,14 @@
           <div class="flex-1 h-px bg-gradient-to-r from-cyan-500/30 to-transparent"></div>
         </div>
         <!-- Next UNF Schedule Timeline -->
-        <div class="glass-panel rounded-2xl p-6">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 pb-3 border-b border-slate-800">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <details class="glass-panel rounded-2xl group overflow-hidden">
+          <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
+            <span class="text-base transition-transform duration-200 group-open:rotate-90 text-cyan-400">▶</span>
+            <span>スケジュール詳細を表示</span>
+          </summary>
+          <div class="px-5 sm:px-6 pb-6 border-t border-slate-800">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 pb-3 border-b border-slate-800 pt-4">
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
               <span>⚔️</span> 次回「決戦！星の古戦場（光属性有利）」日程表
             </h3>
             <span class="text-xs px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-semibold font-mono">
@@ -360,6 +365,7 @@
             </div>
           </div>
         </div>
+        </details>
       </section>
 
       <!-- =========================================================
@@ -974,12 +980,17 @@ Qバブ召喚
           <h2 class="text-xl font-bold text-white">更新履歴</h2>
           <div class="flex-1 h-px bg-gradient-to-r from-slate-500/30 to-transparent"></div>
         </div>
-        <div class="glass-panel rounded-2xl p-6">
-          <div class="flex items-center justify-between mb-6 pb-3 border-b border-slate-800">
-            <div class="flex items-center gap-2">
-              <span class="text-xl">🔄</span>
-              <h3 class="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
-            </div>
+        <details class="glass-panel rounded-2xl group overflow-hidden">
+          <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
+            <span class="text-base transition-transform duration-200 group-open:rotate-90 text-slate-400">▶</span>
+            <span>更新履歴詳細を表示</span>
+          </summary>
+          <div class="px-5 sm:px-6 pb-6 border-t border-slate-800">
+            <div class="flex items-center justify-between mb-6 pb-3 border-b border-slate-800 pt-4">
+              <div class="flex items-center gap-2">
+                <span class="text-xl">🔄</span>
+                <h3 class="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
+              </div>
             <span class="text-xs text-slate-400">最終更新: 2026/08/21</span>
           </div>
 
@@ -1138,6 +1149,7 @@ Qバブ召喚
 
           </div>
         </div>
+        </details>
       </section>
 
 
