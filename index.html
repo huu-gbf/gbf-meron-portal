@@ -1766,6 +1766,7 @@ Qバブ召喚
     const FAVORITES_KEY = 'gbf_my_favorites';
 
     let currentFormationFilter = 'all'; // 'all' | 'favorites'
+    let displayCount = 5;
 
     function getMyFavorites() {
       try {
@@ -1822,6 +1823,7 @@ Qバブ召喚
 
     function setFormationFilter(filter) {
       currentFormationFilter = filter;
+      displayCount = 5;
       renderFormations();
     }
 
@@ -2092,7 +2094,8 @@ Qバブ召喚
       }
 
       // 一覧を再描画
-      listEl.innerHTML = formations.map(f => {
+      const displayFormations = formations.slice(0, displayCount);
+      listEl.innerHTML = displayFormations.map(f => {
         const date = new Date(f.timestamp);
         const dateStr = `${date.getFullYear()}/${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
         
@@ -2211,6 +2214,23 @@ Qバブ召喚
           </div>
         `;
       }).join('');
+
+      // もっと見るボタンの追加
+      if (formations.length > displayCount) {
+        listEl.innerHTML += `
+          <div class="mt-6 text-center">
+            <button type="button" onclick="loadMoreFormations()" class="px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-sm font-bold rounded-xl border border-slate-700 transition shadow-lg inline-flex items-center justify-center gap-2">
+              <span>⬇️ もっと見る</span>
+              <span class="text-xs text-slate-400 font-normal">（残り${formations.length - displayCount}件）</span>
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    function loadMoreFormations() {
+      displayCount += 5;
+      renderFormations();
     }
 
     function escapeHtml(text) {
