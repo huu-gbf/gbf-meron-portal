@@ -1304,9 +1304,37 @@ Qバブ召喚
 
   <script>
     // ==========================================================
-    //  定数・状態
+    //  定数・状態・カテゴリ管理
     // ==========================================================
-    const STORAGE_KEY = 'gbf_crew_formations';
+    const urlParams = new URLSearchParams(window.location.search);
+    const category = urlParams.get('category') || 'gw'; // default is gw
+    
+    let categoryName = '古戦場用';
+    let firestoreCollection = 'formations_gw';
+    let STORAGE_KEY = 'gbf_crew_formations_gw';
+    let LAST_NAME_KEY = 'gbf_my_last_name_gw';
+    
+    if (category === 'multi') {
+      categoryName = '他マルチ';
+      firestoreCollection = 'formations_multi';
+      STORAGE_KEY = 'gbf_crew_formations_multi';
+      LAST_NAME_KEY = 'gbf_my_last_name_multi';
+    } else if (category === 'high') {
+      categoryName = '高難易度';
+      firestoreCollection = 'formations_high';
+      STORAGE_KEY = 'gbf_crew_formations_high';
+      LAST_NAME_KEY = 'gbf_my_last_name_high';
+    }
+
+    // ページロード時にタイトル変更
+    document.addEventListener('DOMContentLoaded', () => {
+      document.title = `編成共有掲示板 (${categoryName}) | めろ～ん王国`;
+      const headerTitle = document.querySelector('.header-title');
+      if (headerTitle) {
+        headerTitle.textContent = `編成共有掲示板 (${categoryName})`;
+      }
+    });
+
     const MAX_IMAGES = 4;
     let selectedImages = []; // Array of base64 strings
     let db = null;
@@ -1714,7 +1742,7 @@ Qバブ召喚
         unsubscribeFirestore();
       }
 
-      unsubscribeFirestore = db.collection('formations')
+      unsubscribeFirestore = db.collection(firestoreCollection)
         .onSnapshot((snapshot) => {
           const remoteFormations = [];
           snapshot.forEach((doc) => {
@@ -1928,7 +1956,7 @@ Qバブ召喚
         submitBtn.innerHTML = '<span>⏳</span><span>クラウドへ同期送信中...</span>';
 
         try {
-          await db.collection('formations').doc(post.id).set(post);
+          await db.collection(firestoreCollection).doc(post.id).set(post);
           console.log('Firestoreへ投稿保存完了:', post.id);
         } catch (err) {
           console.error('Firestore保存失敗:', err);
@@ -1983,7 +2011,7 @@ Qバブ召喚
 
       if (db) {
         try {
-          await db.collection('formations').doc(id).delete();
+          await db.collection(firestoreCollection).doc(id).delete();
           console.log('Firestoreから削除完了:', id);
         } catch (err) {
           console.error('Firestore削除失敗:', err);
