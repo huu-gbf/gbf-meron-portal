@@ -378,8 +378,14 @@
           <h2 class="text-xl font-bold text-white">団規約等</h2>
           <div class="flex-1 h-px bg-gradient-to-r from-amber-500/30 to-transparent"></div>
         </div>
-        <!-- Normal Notice 1: 古戦場 -->
-        <div class="glass-panel rounded-2xl p-5 hover:border-slate-700 transition">
+        <details class="glass-panel rounded-2xl group overflow-hidden">
+          <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
+            <span class="text-base transition-transform duration-200 group-open:rotate-90 text-amber-400">▶</span>
+            <span>団規約等を表示</span>
+          </summary>
+          <div class="px-5 sm:px-6 pb-6 border-t border-slate-800 pt-4 space-y-4">
+            <!-- Normal Notice 1: 古戦場 -->
+            <div class="glass-panel rounded-2xl p-5 hover:border-slate-700 transition">
           <div class="flex items-start justify-between gap-4 mb-2">
             <div class="flex items-center gap-2 flex-wrap">
               <span class="px-2 py-0.5 bg-cyan-500/20 text-cyan-300 text-xs font-bold rounded-md">古戦場</span>
@@ -445,6 +451,8 @@
             <p>団に救援を流す際は、他参戦者が戦闘不能or動けなくなる場合、自身が戦闘不能となるまでは行動し、外部救援も活用し速やかな討伐に努め放置しないこと</p>
           </div>
         </div>
+          </div>
+        </details>
       </section>
 
       <!-- =========================================================
@@ -457,8 +465,13 @@
           <h2 class="text-xl font-bold text-white">現在の団員募集内容</h2>
           <div class="flex-1 h-px bg-gradient-to-r from-emerald-500/30 to-transparent"></div>
         </div>
-        <div class="glass-panel rounded-2xl p-6 sm:p-8">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
+        <details class="glass-panel rounded-2xl group overflow-hidden">
+          <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
+            <span class="text-base transition-transform duration-200 group-open:rotate-90 text-emerald-400">▶</span>
+            <span>現在の団員募集内容を表示</span>
+          </summary>
+          <div class="px-5 sm:px-6 pb-6 sm:pb-8 border-t border-slate-800 pt-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-800">
             <div>
               <div class="flex items-center gap-2 mb-1">
                 <span class="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full text-xs font-bold">騎空団員募集</span>
@@ -552,7 +565,8 @@
 
 以上です。ご質問などあればお気軽にどうぞ。
 ご連絡お待ちしておりますm(_ _)m</div>
-        </div>
+          </div>
+        </details>
       </section>
 
       <!-- =========================================================
@@ -565,7 +579,12 @@
           <h2 class="text-xl font-bold text-white">ツール</h2>
           <div class="flex-1 h-px bg-gradient-to-r from-amber-500/30 to-transparent"></div>
         </div>
-        <div class="max-w-2xl mx-auto space-y-4">
+        <details class="glass-panel rounded-2xl group overflow-hidden max-w-2xl mx-auto">
+          <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
+            <span class="text-base transition-transform duration-200 group-open:rotate-90 text-amber-400">▶</span>
+            <span>ツールを表示</span>
+          </summary>
+          <div class="px-5 sm:px-6 pb-6 border-t border-slate-800 pt-4 space-y-4">
           <!-- Drop Rate Calculator -->
           <a href="drop-calculator.html" target="_blank" rel="noopener noreferrer" class="glass-panel rounded-2xl p-6 sm:p-8 hover:border-amber-400 transition group border-amber-500/40 block shadow-xl shadow-amber-500/5 hover:shadow-amber-500/15">
             <div class="flex items-center gap-4 mb-4">
@@ -611,7 +630,8 @@
               <span>→</span>
             </div>
           </a>
-        </div>
+          </div>
+        </details>
       </section>
 
       <!-- =========================================================
@@ -624,8 +644,14 @@
           <h2 class="text-xl font-bold text-white">編成共有</h2>
           <div class="flex-1 h-px bg-gradient-to-r from-violet-500/30 to-transparent"></div>
         </div>
-        <!-- 投稿フォーム -->
-        <div class="glass-panel rounded-2xl p-6 sm:p-8 glow-effect">
+        <details class="glass-panel rounded-2xl group overflow-hidden">
+          <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
+            <span class="text-base transition-transform duration-200 group-open:rotate-90 text-violet-400">▶</span>
+            <span>編成共有を表示</span>
+          </summary>
+          <div class="px-5 sm:px-6 pb-6 border-t border-slate-800 pt-4 space-y-6">
+            <!-- 投稿フォーム -->
+            <div class="glass-panel rounded-2xl p-6 sm:p-8 glow-effect">
           <div class="flex items-center gap-3 mb-6 pb-4 border-b border-slate-800">
             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-2xl shadow-lg shadow-violet-500/20">
               📸
@@ -967,7 +993,8 @@ Qバブ召喚
             <p class="text-slate-400 text-sm">まだ編成が投稿されていません</p>
             <p class="text-slate-500 text-xs mt-1">上のフォームから最初の編成を共有しましょう！</p>
           </div>
-        </div>
+          </div>
+        </details>
       </section>
 
       <!-- =========================================================
