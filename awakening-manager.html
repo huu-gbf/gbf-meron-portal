@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>アーティファクト整理ツール | 騎空団ポータル</title>
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="グラブルの覚醒・カスタム効果（1枠目〜4枠目）のデータを管理・整理するツール。">
+
+  <!-- Google Fonts & Tailwind CSS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Noto+Sans+JP:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans JP"', 'Outfit', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            gbf: {
+              gold: '#f5c842',
+              dark: '#080c14',
+              card: '#121829',
+              border: '#242f4c',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #080c14;
+      background-image: 
+        radial-gradient(circle at 10% 15%, rgba(245, 200, 66, 0.04) 0%, transparent 45%),
+        radial-gradient(circle at 90% 80%, rgba(56, 189, 248, 0.04) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.03) 0%, transparent 60%);
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    .stars-bg {
+      position: fixed;
+      inset: 0;
+      background-image: 
+        radial-gradient(1.5px 1.5px at 25px 35px, #ffffff, rgba(0,0,0,0)),
+        radial-gradient(1px 1px at 45px 75px, #fde047, rgba(0,0,0,0)),
+        radial-gradient(2px 2px at 95px 45px, #38bdf8, rgba(0,0,0,0)),
+        radial-gradient(1.5px 1.5px at 165px 125px, #ffffff, rgba(0,0,0,0)),
+        radial-gradient(1px 1px at 235px 195px, #fde047, rgba(0,0,0,0));
+      background-repeat: repeat;
+      background-size: 320px 320px;
+      opacity: 0.25;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .glass-panel {
+      background: rgba(18, 24, 41, 0.78);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .scrollbar-custom::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .scrollbar-custom::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 9999px;
+    }
+    .scrollbar-custom::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.4);
+      border-radius: 9999px;
+    }
+    .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.6);
+    }
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(245, 200, 66, 0.18), rgba(245, 158, 11, 0.25));
+      border-color: rgba(245, 200, 66, 0.5);
+      color: #fbbf24;
+      font-weight: 700;
+      box-shadow: 0 0 15px -3px rgba(245, 200, 66, 0.25);
+    }
+    
+    /* Toggle Switch Customization */
+    .toggle-checkbox:checked {
+      right: 0;
+      border-color: #10b981;
+    }
+    .toggle-checkbox:checked + .toggle-label {
+      background-color: #10b981;
+    }
+    .toggle-checkbox {
+      right: 0;
+      z-index: 1;
+      border-color: #64748b;
+      transition: all 0.3s;
+    }
+    .toggle-label {
+      width: 3rem;
+      height: 1.5rem;
+      background-color: #64748b;
+      border-radius: 9999px;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .toggle-circle {
+      width: 1.25rem;
+      height: 1.25rem;
+      background-color: white;
+      border-radius: 50%;
+      position: absolute;
+      top: 0.125rem;
+      left: 0.125rem;
+      transition: all 0.3s;
+    }
+    .toggle-checkbox:checked + .toggle-label .toggle-circle {
+      transform: translateX(1.5rem);
+    }
+    
+    .item-card {
+      transition: all 0.2s ease-in-out;
+    }
+    .item-card:hover {
+      border-color: rgba(245, 200, 66, 0.4);
+      box-shadow: 0 4px 20px -2px rgba(245, 200, 66, 0.1);
+    }
+    
+    /* Need/Unneeded State Styles */
+    .state-needed {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: linear-gradient(to right, rgba(16, 185, 129, 0.05), rgba(18, 24, 41, 0.8));
+    }
+    .state-unneeded {
+      opacity: 0.6;
+      border-color: rgba(255, 255, 255, 0.05);
+      background: rgba(10, 15, 25, 0.5);
+    }
+
+    /* Accordion Details/Summary overrides */
+    details > summary {
+      list-style: none;
+    }
+    details > summary::-webkit-details-marker {
+      display: none;
+    }
+    .data-table th, .data-table td {
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.8125rem;
+    }
+    .data-table th {
+      background: rgba(15, 23, 42, 0.6);
+      color: #94a3b8;
+      font-weight: 700;
+      text-align: left;
+    }
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+    .data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+  </style>
+</head>
+<body class="font-sans antialiased p-3 sm:p-6 md:p-8 max-w-5xl mx-auto pb-24 relative">
+  <div class="stars-bg"></div>
+
+  <!-- HEADER -->
+  <header class="relative z-10 mb-6 border-b border-slate-800 pb-5">
+    <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <a href="index.html" class="text-xs px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-300 rounded-lg border border-slate-700 hover:border-amber-500/50 transition flex items-center gap-1.5 shadow-sm">
+            <span>←</span>
+            <span>ポータルTOPへ戻る</span>
+          </a>
+          <span class="text-xs text-amber-400/90 font-mono font-bold tracking-wider px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded">
+            AWAKENING MANAGER
+          </span>
+          <span class="text-[11px] text-emerald-400 font-medium px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            自動保存
+          </span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-black text-white flex items-center gap-2.5 tracking-tight">
+          <span class="text-3xl filter drop-shadow">🔮</span>
+          <span>アーティファクト整理ツール</span>
+        </h1>
+        <p class="text-xs sm:text-sm text-slate-400 mt-1">
+          1枠目〜4枠目の効果一覧から、自分にとって「必要」「不要」なものを整理・保存できます。<br>
+          上昇幅や効果量の確認が出来ます
+        </p>
+
+        <!-- モード切り替えUI -->
+        <div class="mt-4 flex bg-slate-900/80 p-1 rounded-xl border border-slate-700/80 inline-flex shadow-inner">
+          <button id="mode-btn-gw" onclick="switchMode('gw')" class="px-5 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40">
+            <span>⚔️</span>
+            <span>古戦場用設定</span>
+          </button>
+          <button id="mode-btn-high" onclick="switchMode('high')" class="px-5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent hover:bg-slate-800/50">
+            <span>🛡️</span>
+            <span>高難易度用設定</span>
+          </button>
+        </div>
+
+      </div>
+      
+      <div class="flex items-center gap-2 mt-2 sm:mt-0">
+        <button onclick="resetAllData()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs rounded-xl transition flex items-center gap-1 shadow-md hover:shadow-lg" title="現在選択中のモードのデータをすべて初期状態に戻す">
+          <span>🔄</span>
+          <span>リセット</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="mt-5 flex flex-wrap gap-2 pt-2 border-t border-slate-800/60">
+      <button onclick="switchTab('slot12')" id="nav-slot12" class="tab-btn active px-4 py-2 rounded-xl text-xs sm:text-sm border border-slate-700/60 bg-slate-900/60 text-slate-300 transition flex items-center gap-2">
+        <span>⚔️</span>
+        <span>1〜2枠目</span>
+      </button>
+      <button onclick="switchTab('slot3')" id="nav-slot3" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm border border-slate-700/60 bg-slate-900/60 text-slate-300 transition flex items-center gap-2">
+        <span>🔥</span>
+        <span>3枠目</span>
+      </button>
+      <button onclick="switchTab('slot4')" id="nav-slot4" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm border border-slate-700/60 bg-slate-900/60 text-slate-300 transition flex items-center gap-2">
+        <span>✨</span>
+        <span>4枠目</span>
+      </button>
+      <button onclick="switchTab('summary')" id="nav-summary" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm border border-slate-700/60 bg-slate-900/60 text-slate-300 transition flex items-center gap-2 ml-auto">
+        <span>📋</span>
+        <span>必要な効果一覧</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main class="relative z-10 space-y-6">
+    
+    <!-- SLOT 1 & 2 -->
+    <section id="tab-slot12" class="tab-content block">
+      <div class="flex items-center justify-between mb-3 px-1">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>⚔️</span> 1〜2枠目の効果
+        </h2>
+        <div class="text-xs text-slate-400">必要な効果と数値を設定</div>
+      </div>
+
+      <!-- Lv強化仕様アコーディオン (1〜2枠目) -->
+      <details class="mb-5 glass-panel rounded-xl group border border-slate-700/50 open:bg-slate-900/60 transition-all duration-300">
+        <summary class="px-4 py-3 font-bold text-sm text-amber-400 cursor-pointer flex justify-between items-center hover:bg-slate-800/60 transition rounded-xl group-open:rounded-b-none border-b border-transparent group-open:border-slate-700/50">
+          <div class="flex items-center gap-2">
+            <span class="text-amber-400 text-lg">📖</span> グループI (1〜2枠目) のLv強化による効果量一覧を見る
+          </div>
+          <span class="text-amber-500/70 group-open:rotate-180 transition-transform duration-300">▼</span>
+        </summary>
+        <div class="p-0 overflow-x-auto rounded-b-xl">
+          <table class="w-full data-table text-slate-300 whitespace-nowrap">
+            <thead>
+              <tr>
+                <th class="w-1/3">効果名</th>
+                <th>初期値の範囲</th>
+                <th>1Lv強化ごと</th>
+                <th class="text-amber-400">最大時 (Lv5) の範囲</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>攻撃力</td><td>1320 〜 1800</td><td><span class="text-emerald-400">+300</span></td><td class="font-bold text-amber-300">2520 〜 3000</td></tr>
+              <tr><td>防御力</td><td>8.8% 〜 12%</td><td><span class="text-emerald-400">+2%</span></td><td class="font-bold text-amber-300">16.8% 〜 20%</td></tr>
+              <tr><td>HP</td><td>660 〜 900</td><td><span class="text-emerald-400">+150</span></td><td class="font-bold text-amber-300">1260 〜 1500</td></tr>
+              <tr><td>奥義ダメ</td><td>13.2% 〜 18%</td><td><span class="text-emerald-400">+3%</span></td><td class="font-bold text-amber-300">25.2% 〜 30%</td></tr>
+              <tr><td>アビダメ</td><td>13.2% 〜 18%</td><td><span class="text-emerald-400">+3%</span></td><td class="font-bold text-amber-300">25.2% 〜 30%</td></tr>
+              <tr><td>回避率</td><td>4.4% 〜 6%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">8.4% 〜 10%</td></tr>
+              <tr><td>弱体成功率</td><td>6.6% 〜 9%</td><td><span class="text-emerald-400">+1.5%</span></td><td class="font-bold text-amber-300">12.6% 〜 15%</td></tr>
+              <tr><td>弱体耐性</td><td>6.6% 〜 9%</td><td><span class="text-emerald-400">+1.5%</span></td><td class="font-bold text-amber-300">12.6% 〜 15%</td></tr>
+              <tr><td>有利属性軽減</td><td>4.4% 〜 6%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">8.4% 〜 10%</td></tr>
+              <tr><td>自属性攻撃力</td><td>8.8% 〜 12%</td><td><span class="text-emerald-400">+2%</span></td><td class="font-bold text-amber-300">16.8% 〜 20%</td></tr>
+              <tr><td>回復性能</td><td>13.2% 〜 18%</td><td><span class="text-emerald-400">+3%</span></td><td class="font-bold text-amber-300">25.2% 〜 30%</td></tr>
+              <tr><td>クリティカル確率</td><td>13.2% 〜 18%</td><td><span class="text-emerald-400">+3%</span></td><td class="font-bold text-amber-300">25.2% 〜 30%</td></tr>
+              <tr><td>DA率</td><td>6.6% 〜 9%</td><td><span class="text-emerald-400">+1.5%</span></td><td class="font-bold text-amber-300">12.6% 〜 15%</td></tr>
+              <tr><td>TA率</td><td>4.4% 〜 6%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">8.4% 〜 10%</td></tr>
+            </tbody>
+          </table>
+
+        </div>
+      </details>
+
+      <div id="list-slot12" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- SLOT 3 -->
+    <section id="tab-slot3" class="tab-content hidden">
+      <div class="flex items-center justify-between mb-3 px-1">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>🔥</span> 3枠目の効果
+        </h2>
+        <div class="text-xs text-slate-400">必要な効果と数値を設定</div>
+      </div>
+
+      <!-- Lv強化仕様アコーディオン (3枠目) -->
+      <details class="mb-5 glass-panel rounded-xl group border border-slate-700/50 open:bg-slate-900/60 transition-all duration-300">
+        <summary class="px-4 py-3 font-bold text-sm text-amber-400 cursor-pointer flex justify-between items-center hover:bg-slate-800/60 transition rounded-xl group-open:rounded-b-none border-b border-transparent group-open:border-slate-700/50">
+          <div class="flex items-center gap-2">
+            <span class="text-amber-400 text-lg">📖</span> グループII (3枠目) のLv強化による効果量一覧を見る
+          </div>
+          <span class="text-amber-500/70 group-open:rotate-180 transition-transform duration-300">▼</span>
+        </summary>
+        <div class="p-0 overflow-x-auto rounded-b-xl">
+          <table class="w-full data-table text-slate-300 whitespace-nowrap">
+            <thead>
+              <tr>
+                <th class="w-1/3">効果名</th>
+                <th>初期値の範囲</th>
+                <th>1Lv強化ごと</th>
+                <th class="text-amber-400">最大時 (Lv5) の範囲</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>通常攻撃ダメ上限</td><td>2.2% 〜 3%</td><td><span class="text-emerald-400">+0.5%</span></td><td class="font-bold text-amber-300">4.2% 〜 5%</td>
+              </tr>
+              <tr>
+                <td>通常攻撃与ダメ上昇 <span class="text-xs text-cyan-400 ml-1">(※全枠と共存可能)</span></td><td>8,800 〜 12,000</td><td><span class="text-emerald-400">+2,000</span></td><td class="font-bold text-amber-300">16,800 〜 20,000</td>
+              </tr>
+              <tr>
+                <td>アビダメ上限</td><td>8.8% 〜 12%</td><td><span class="text-emerald-400">+2%</span></td><td class="font-bold text-amber-300">16.8% 〜 20%</td>
+              </tr>
+              <tr>
+                <td>アビ与ダメ上昇</td><td>11,000 〜 15,000</td><td><span class="text-emerald-400">+2,500</span></td><td class="font-bold text-amber-300">21,000 〜 25,000</td>
+              </tr>
+              <tr>
+                <td>奥義与ダメ上昇</td><td>110,000 〜 150,000</td><td><span class="text-emerald-400">+25,000</span></td><td class="font-bold text-amber-300">210,000 〜 250,000</td>
+              </tr>
+              <tr>
+                <td>奥義ダメ上限</td><td>6.6% 〜 9%</td><td><span class="text-emerald-400">+1.5%</span></td><td class="font-bold text-amber-300">12.6% 〜 15%</td>
+              </tr>
+              <tr>
+                <td>奥義ダメ特殊上限</td><td>4.4% 〜 6%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">8.4% 〜 10%</td>
+              </tr>
+              <tr>
+                <td>チェイン与ダメ</td><td>6.6% 〜 9%</td><td><span class="text-emerald-400">+1.5%</span></td><td class="font-bold text-amber-300">12.6% 〜 15%</td>
+              </tr>
+              <tr>
+                <td>クリ発動時ダメ上限</td><td>2.2% 〜 3%</td><td><span class="text-emerald-400">+0.5%</span></td><td class="font-bold text-amber-300">4.2% 〜 5%</td>
+              </tr>
+              <tr>
+                <td>HP100%時与ダメUP <span class="text-xs text-cyan-400 ml-1">(※全枠と共存可能)</span></td><td>2.2% 〜 3%</td><td><span class="text-emerald-400">+0.5%</span></td><td class="font-bold text-amber-300">4.2% 〜 5%</td>
+              </tr>
+              <tr>
+                <td>HP50%以上時TA率UP</td><td>6.6% 〜 9%</td><td><span class="text-emerald-400">+1.5%</span></td><td class="font-bold text-amber-300">12.6% 〜 15%</td>
+              </tr>
+              <tr>
+                <td>最大HP上昇 / 防御-70%</td><td>8.8% 〜 12%</td><td><span class="text-emerald-400">+2%</span></td><td class="font-bold text-amber-300">16.8% 〜 20%</td>
+              </tr>
+              <tr>
+                <td>ターンダメ軽減</td><td>8.8% 〜 12%</td><td><span class="text-emerald-400">+2%</span></td><td class="font-bold text-amber-300">16.8% 〜 20%</td>
+              </tr>
+              <tr>
+                <td>HP50%以下時ダメ軽減</td><td>8.8% 〜 12%</td><td><span class="text-emerald-400">+2%</span></td><td class="font-bold text-amber-300">16.8% 〜 20%</td>
+              </tr>
+              <tr>
+                <td>再生</td><td>440 〜 600</td><td><span class="text-emerald-400">+100</span></td><td class="font-bold text-amber-300">840 〜 1000</td>
+              </tr>
+              <tr>
+                <td>確率で強化効果が無効化されない</td><td>20%</td><td><span class="text-emerald-400">+20%</span></td><td class="font-bold text-amber-300">100%</td>
+              </tr>
+              <tr>
+                <td>確率で攻撃開始時に弱体1つ回復</td><td>20%</td><td><span class="text-emerald-400">+20%</span></td><td class="font-bold text-amber-300">100%</td>
+              </tr>
+              <tr>
+                <td>通常ダメ上限UP / アビ上限-80% / 奥義上限-60%</td><td>4.4% 〜 6%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">8.4% 〜 10%</td>
+              </tr>
+              <tr>
+                <td>奥義ダメ上限UP / 通常上限-20% / アビ上限-80%</td><td>13.2% 〜 18%</td><td><span class="text-emerald-400">+3%</span></td><td class="font-bold text-amber-300">25.2% 〜 30%</td>
+              </tr>
+              <tr>
+                <td>アビダメ上限UP / 通常上限-20% / 奥義上限-60%</td><td>17.6% 〜 24%</td><td><span class="text-emerald-400">+4%</span></td><td class="font-bold text-amber-300">33.6% 〜 40%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+
+      <div id="list-slot3" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+    <!-- SLOT 4 -->
+    <section id="tab-slot4" class="tab-content hidden">
+      <div class="flex items-center justify-between mb-3 px-1">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+          <span>✨</span> 4枠目の効果
+        </h2>
+        <div class="text-xs text-slate-400">固定数値・特殊効果</div>
+      </div>
+
+      <!-- Lv強化仕様アコーディオン (4枠目) -->
+      <details class="mb-5 glass-panel rounded-xl group border border-slate-700/50 open:bg-slate-900/60 transition-all duration-300">
+        <summary class="px-4 py-3 font-bold text-sm text-amber-400 cursor-pointer flex justify-between items-center hover:bg-slate-800/60 transition rounded-xl group-open:rounded-b-none border-b border-transparent group-open:border-slate-700/50">
+          <div class="flex items-center gap-2">
+            <span class="text-amber-400 text-lg">📖</span> グループIII (4枠目) のLv強化による効果量一覧を見る
+          </div>
+          <span class="text-amber-500/70 group-open:rotate-180 transition-transform duration-300">▼</span>
+        </summary>
+        <div class="p-0 overflow-x-auto rounded-b-xl max-h-[60vh] overflow-y-auto scrollbar-custom">
+          
+          <div class="px-4 py-2 bg-slate-800/80 border-b border-slate-700 text-xs font-bold text-emerald-400 sticky top-0 shadow-md">
+            ■ フロント時のみ有効な効果
+          </div>
+          <table class="w-full data-table text-slate-300 whitespace-nowrap text-xs sm:text-sm">
+            <thead>
+              <tr>
+                <th class="w-1/2">効果名</th>
+                <th>Lv1</th>
+                <th>1Lv強化</th>
+                <th class="text-amber-400">最大 (Lv5)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="whitespace-normal"><span class="text-amber-400 text-[10px] mr-1 block sm:inline">※Lv5で全発動</span>バトル開始時にランダムな強化効果(攻刃50%/アビ倍率0.8倍/奥義ダメ20%/ダメ上限10%/弱体成功10%)</td>
+                <td>1個</td><td><span class="text-emerald-400">+1個</span></td><td class="font-bold text-amber-300">5個</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal"><span class="text-cyan-400 text-[10px] mr-1 block sm:inline">※高い方のみ適用</span>バトル登場時一度だけ与ダメUP(延長不可)×2T</td>
+                <td>3%</td><td><span class="text-emerald-400">+3%</span></td><td class="font-bold text-amber-300">15%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">バトル開始時、被ダメ減少×1T</td>
+                <td>1000</td><td><span class="text-emerald-400">+1000</span></td><td class="font-bold text-amber-300">5000</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">バトル開始時と5T毎に自分にバリア効果</td>
+                <td>1000</td><td><span class="text-emerald-400">+500</span></td><td class="font-bold text-amber-300">3000</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">バトル開始時に最大HP20%消費/3T後にダメ上限UP</td>
+                <td>10%</td><td><span class="text-emerald-400">+10%</span></td><td class="font-bold text-amber-300">50%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">回復アビ使用時、自分の次配置キャラに自属性追撃(1回)</td>
+                <td>4%</td><td><span class="text-emerald-400">+4%</span></td><td class="font-bold text-amber-300">20%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">敵に一定回数攻撃を与えた時、一度だけ自分に乱撃3hit(1回)</td>
+                <td>200回</td><td><span class="text-emerald-400">-25回</span></td><td class="font-bold text-amber-300">100回</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">攻撃開始時、確率で自分に乱撃(6hit/1回)</td>
+                <td>1%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">5%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal"><span class="text-cyan-400 text-[10px] mr-1 block sm:inline">※高い方のみ適用</span>使用間隔10T以上のアビ使用時、与ダメUP×1T</td>
+                <td>2%</td><td><span class="text-emerald-400">+2%</span></td><td class="font-bold text-amber-300">10%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">ターン終了時、そのTの消費HPに応じて無属性ダメ</td>
+                <td>10倍</td><td><span class="text-emerald-400">+10倍</span></td><td class="font-bold text-amber-300">50倍</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">ターン終了時、消費奥義ゲージに応じて与ダメ上昇×1T</td>
+                <td>5000</td><td><span class="text-emerald-400">+5000</span></td><td class="font-bold text-amber-300">25000</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">ターン終了時にHP50%以下の敵がいる時、一度だけHP回復</td>
+                <td>2000</td><td><span class="text-emerald-400">+2000</span></td><td class="font-bold text-amber-300">10000</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">キュアポ、オルポ使用時にFCゲージUP</td>
+                <td>3%</td><td><span class="text-emerald-400">+3%</span></td><td class="font-bold text-amber-300">15%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">弱体アビ使用時、敵に被ダメUP(2回)</td>
+                <td>4%</td><td><span class="text-emerald-400">+4%</span></td><td class="font-bold text-amber-300">20%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal"><span class="text-amber-400 text-[10px] mr-1 block sm:inline">※Lv5で全発動</span>攻撃行動なしT終了時ランダム強化(攻撃/防御/奥義/アビ/連撃UP)</td>
+                <td>1個</td><td><span class="text-emerald-400">+1個</span></td><td class="font-bold text-amber-300">5個</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal"><span class="text-amber-400 text-[10px] mr-1 block sm:inline">※Lv5で全発動</span>戦闘不能時ランダム強化(ブロック/被ダメ減少/再生/高揚/弱体無効)</td>
+                <td>1個</td><td><span class="text-emerald-400">+1個</span></td><td class="font-bold text-amber-300">5個</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal"><span class="text-amber-400 text-[10px] mr-1 block sm:inline">※Lv5で全発動</span>1回攻撃(SA)発動時ランダム強化×2T(実質1T)(通常与ダメ/追撃等)</td>
+                <td>1個</td><td><span class="text-emerald-400">+1個</span></td><td class="font-bold text-amber-300">5個</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">アビダメ一定量毎にアビ与ダメ1万上昇(累積5回)</td>
+                <td>4000万</td><td><span class="text-emerald-400">-500万</span></td><td class="font-bold text-amber-300">2000万</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">アビ一定回数使用毎にダメ上限1%UP(累積5回)</td>
+                <td>5回</td><td><span class="text-emerald-400">-1回</span></td><td class="font-bold text-amber-300">1回</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">リンクアビ一定回数使用時、再使用1T短縮</td>
+                <td>8回</td><td><span class="text-emerald-400">-1回</span></td><td class="font-bold text-amber-300">4回</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">確率でターン進行時に経過ターンを5T進める</td>
+                <td>0.2%</td><td><span class="text-emerald-400">+0.2%</span></td><td class="font-bold text-amber-300">1%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">1アビ使用時HP消費し1アビ使用間隔1T短縮</td>
+                <td>30%</td><td><span class="text-emerald-400">-6%</span></td><td class="font-bold text-amber-300">6%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">攻撃開始時に敵弱体3個以下時ブロック</td>
+                <td>5%</td><td><span class="text-emerald-400">+5%</span></td><td class="font-bold text-amber-300">25%</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal"><span class="text-cyan-400 text-[10px] mr-1 block sm:inline">※別枠共存可</span>敵タゲ一定回数時、自属性20%追撃(1回)</td>
+                <td>7回</td><td><span class="text-emerald-400">-1回</span></td><td class="font-bold text-amber-300">3回</td>
+              </tr>
+              <tr>
+                <td class="whitespace-normal">ターン終了時、確率で敵強化全て無効化</td>
+                <td>1%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">5%</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="px-4 py-2 bg-slate-800/80 border-y border-slate-700 text-xs font-bold text-blue-400 sticky top-0 shadow-md">
+            ■ サブ時でも有効な効果
+          </div>
+          <table class="w-full data-table text-slate-300 whitespace-nowrap text-xs sm:text-sm">
+            <tbody>
+              <tr>
+                <td class="w-1/2 whitespace-normal">獲得経験値UP(重複不可)</td>
+                <td>1%</td><td><span class="text-emerald-400">+1%</span></td><td class="font-bold text-amber-300">5%</td>
+              </tr>
+              <tr>
+                <td class="w-1/2 whitespace-normal">アイテムドロップ率UP(重複不可)</td>
+                <td>0.5%</td><td><span class="text-emerald-400">+0.5%</span></td><td class="font-bold text-amber-300">2.5%</td>
+              </tr>
+              <tr>
+                <td class="w-1/2 whitespace-normal">バトル終了時にランダムな耳飾りを入手(重複不可)</td>
+                <td>-</td><td>-</td><td class="font-bold text-amber-300">-</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="px-4 py-2 bg-slate-800/80 border-y border-slate-700 text-xs font-bold text-purple-400 sticky top-0 shadow-md">
+            ■ サブ時のみ有効な効果
+          </div>
+          <table class="w-full data-table text-slate-300 whitespace-nowrap text-xs sm:text-sm border-b-0">
+            <tbody>
+              <tr>
+                <td class="w-1/2 whitespace-normal">一定ターン毎に敵全体にランダムな弱体効果1つ(重複不可)</td>
+                <td>7T</td><td><span class="text-emerald-400">-1T</span></td><td class="font-bold text-amber-300">3T</td>
+              </tr>
+            </tbody>
+          </table>
+          
+        </div>
+      </details>
+
+      <div id="list-slot4" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+    
+    <!-- SUMMARY -->
+    <section id="tab-summary" class="tab-content hidden">
+      <div class="flex items-center justify-between mb-4 px-1">
+        <h2 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+          <span>📋</span> 「必要」と設定した効果一覧 <span id="summary-mode-label" class="text-xs px-2 py-0.5 rounded border border-amber-500/40 bg-amber-500/20 ml-2">古戦場用</span>
+        </h2>
+      </div>
+      
+      <div class="space-y-6">
+        <div>
+          <h3 class="text-sm font-bold text-slate-300 border-b border-slate-700 pb-2 mb-3">1〜2枠目</h3>
+          <div id="summary-slot12" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-200"></div>
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-slate-300 border-b border-slate-700 pb-2 mb-3">3枠目</h3>
+          <div id="summary-slot3" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-200"></div>
+        </div>
+        <div>
+          <h3 class="text-sm font-bold text-slate-300 border-b border-slate-700 pb-2 mb-3">4枠目</h3>
+          <div id="summary-slot4" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-200"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // ==========================================
+    // データ定義
+    // ==========================================
+    const dataSlot12 = [
+      { name: "攻撃力", values: ["1320", "1440", "1560", "1680", "1800"] },
+      { name: "自属性攻撃力", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
+      { name: "奥義ダメ", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
+      { name: "アビダメ", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
+      { name: "TA率", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
+      { name: "DA率", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
+      { name: "HP", values: ["660", "720", "780", "840", "900"] },
+      { name: "防御力", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
+      { name: "回復性能", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
+      { name: "クリティカル確率", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
+      { name: "有利属性軽減", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
+      { name: "弱体成功率", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
+      { name: "弱体耐性", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
+      { name: "回避率", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] }
+    ];
+
+    const dataSlot3 = [
+      { name: "HP100%時与ダメUP", values: ["2.2%", "2.4%", "2.6%", "2.8%", "3%"] },
+      { name: "クリ発動時ダメ上限", values: ["2.2%", "2.4%", "2.6%", "2.8%", "3%"] },
+      { name: "通常与ダメ上昇", values: ["8800", "9600", "10400", "11200", "12000"] },
+      { name: "通常ダメ上限", values: ["2.2%", "2.4%", "2.6%", "2.8%", "3%"] },
+      { name: "通常上限UP/アビ-80%/奥義-60%", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
+      { name: "アビ与ダメ上昇", values: ["11000", "12000", "13000", "14000", "15000"] },
+      { name: "アビ上限", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
+      { name: "アビ上限UP/通常-20%/奥義-60%", values: ["17.6%", "19.2%", "20.8%", "22.4%", "24%"] },
+      { name: "奥義与ダメ上昇", values: ["110000", "120000", "130000", "140000", "150000"] },
+      { name: "奥義上限", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
+      { name: "奥義特殊上限", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
+      { name: "奥義上限UP/通常-20%/アビ-80%", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
+      { name: "HP50%以上時TA率UP", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
+      { name: "チェイン与ダメ", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
+      { name: "ターンダメ軽減", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
+      { name: "再生", values: ["440", "480", "520", "560", "600"] },
+      { name: "HP50%以下時ダメ軽減", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
+      { name: "最大HP上昇/防御-70%", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
+      { name: "確率で強化効果が無効化されない", values: ["20%"] },
+      { name: "確率で攻撃開始時に弱体効果1つ回復", values: ["20%"] }
+    ];
+
+    const dataSlot4 = [
+      { name: "バトル登場時、一度だけ自分の与ダメUP", value: "3%" },
+      { name: "使用間隔10T以上のアビ使用時、自分に与ダメUP", value: "4%" },
+      { name: "バトル開始時に最大HP20%消費/3T後自分ダメ上限UP", value: "10%" },
+      { name: "一定回数敵のタゲになった場合、一度だけ自属性追撃", value: "7回" },
+      { name: "アビを一定回数使用する度に、自分ダメ上限UP(累積)", value: "5回" },
+      { name: "アビダメを一定量与える毎に、アビ与ダメ上昇(累積)", value: "4000万" },
+      { name: "T終了時、T中消費奥義ゲージに応じて与ダメ上昇", value: "5000" },
+      { name: "弱体アビ使用時、敵に被ダメUP(2回)", value: "4%" },
+      { name: "キュアポかオルポ使用時にFCゲージUP", value: "3%" },
+      { name: "回復アビ使用時、次の配置キャラに自属性追撃(1回)", value: "4%" },
+      { name: "T終了時、T中消費HPに応じて無属性ダメ", value: "10倍" },
+      { name: "T終了時にHP50%以下の敵がいる時、一度だけHP回復", value: "2000" },
+      { name: "戦闘不能時、一度だけ味方全体に一定個数ランダム強化", value: "1個" },
+      { name: "1回攻撃発動時、自分に一定個数ランダム強化", value: "1個" },
+      { name: "攻撃行動を行わなかった場合T終了時、ランダム強化", value: "1個" },
+      { name: "バトル開始時に、自分に一定個数ランダム強化", value: "1個" },
+      { name: "敵に一定回数攻撃を与えた時、一度だけ乱撃3hit", value: "200回" },
+      { name: "攻撃開始時、確率で自分に乱撃(6hit/1回)", value: "1%" },
+      { name: "サブ時、一定T毎に敵全体にランダムな弱体効果", value: "7ターン" },
+      { name: "ターン終了時、確率で敵の強化効果を全て無効化", value: "1%" },
+      { name: "攻撃開始時に敵の弱体効果が3個以下の時、ブロック", value: "5%" },
+      { name: "バトル開始時、1T被ダメ減少", value: "1000" },
+      { name: "バトル開始時と5T毎に自分にバリア効果", value: "1000" },
+      { name: "リンクアビ一定回数使用時、リンクアビ再使用1T短縮", value: "8回" },
+      { name: "1アビ使用時にHPを一定消費するが1アビ使用間隔1T短縮", value: "30%" },
+      { name: "確率でターン進行時に、経過ターンを5T進める", value: "0.2%" },
+      { name: "獲得経験値UP(重複不可)", value: "1%" },
+      { name: "アイテムドロップ率UP(重複不可)", value: "0.5%" },
+      { name: "バトル終了時にランダムな耳飾りを入手", value: "-" }
+    ];
+
+    const STORAGE_KEY_GW = 'gbf_awakening_data_gw';
+    const STORAGE_KEY_HIGH = 'gbf_awakening_data_high';
+    
+    let currentMode = 'gw'; // 'gw' or 'high'
+    let userSettings = {};
+
+    // ==========================================
+    // 初期化
+    // ==========================================
+    document.addEventListener('DOMContentLoaded', () => {
+      loadData();
+      renderAll();
+    });
+
+    function getStorageKey() {
+      return currentMode === 'gw' ? STORAGE_KEY_GW : STORAGE_KEY_HIGH;
+    }
+
+    function loadData() {
+      const key = getStorageKey();
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          userSettings = JSON.parse(saved);
+        } catch (e) {
+          userSettings = {};
+        }
+      } else {
+        userSettings = {};
+      }
+    }
+
+    function saveData() {
+      const key = getStorageKey();
+      localStorage.setItem(key, JSON.stringify(userSettings));
+      renderSummary(); // セーブ時にサマリーも更新
+    }
+
+    function resetAllData() {
+      const modeName = currentMode === 'gw' ? '古戦場用' : '高難易度用';
+      if(confirm(`【${modeName}設定】の必要/不要設定と数値をすべてリセットしますか？`)) {
+        userSettings = {};
+        saveData();
+        renderAll();
+      }
+    }
+
+    // ==========================================
+    // モード切り替え
+    // ==========================================
+    function switchMode(mode) {
+      if(currentMode === mode) return;
+      currentMode = mode;
+      
+      const btnGw = document.getElementById('mode-btn-gw');
+      const btnHigh = document.getElementById('mode-btn-high');
+      const summaryLabel = document.getElementById('summary-mode-label');
+      
+      if(mode === 'gw') {
+        btnGw.className = 'px-5 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/40';
+        btnHigh.className = 'px-5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent hover:bg-slate-800/50';
+        summaryLabel.textContent = '古戦場用';
+        summaryLabel.className = 'text-xs px-2 py-0.5 rounded border border-amber-500/40 bg-amber-500/20 ml-2 text-amber-300';
+      } else {
+        btnHigh.className = 'px-5 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 bg-cyan-500/20 text-cyan-300 shadow-sm border border-cyan-500/40';
+        btnGw.className = 'px-5 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 text-slate-400 hover:text-slate-200 border border-transparent hover:bg-slate-800/50';
+        summaryLabel.textContent = '高難易度用';
+        summaryLabel.className = 'text-xs px-2 py-0.5 rounded border border-cyan-500/40 bg-cyan-500/20 ml-2 text-cyan-300';
+      }
+      
+      // データの再読み込みと再描画
+      loadData();
+      renderAll();
+    }
+
+    // ==========================================
+    // タブ制御
+    // ==========================================
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      
+      document.getElementById('tab-' + tabId).classList.remove('hidden');
+      document.getElementById('nav-' + tabId).classList.add('active');
+    }
+
+    // ==========================================
+    // レンダリング (1〜3枠目)
+    // ==========================================
+    function renderValueItems(containerId, dataList, categoryPrefix) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+
+      dataList.forEach((item, index) => {
+        const key = `${categoryPrefix}_${index}`;
+        
+        // デフォルト値の決定
+        if (!userSettings[key]) {
+          userSettings[key] = {
+            needed: false,
+            selectedValue: item.values[item.values.length - 1] // デフォルトは最大値
+          };
+        }
+        
+        const setting = userSettings[key];
+        const isNeeded = setting.needed;
+        const cardStateClass = isNeeded ? 'state-needed' : 'state-unneeded';
+        
+        const optionsHtml = item.values.map(val => 
+          `<option value="${val}" ${setting.selectedValue === val ? 'selected' : ''}>${val}</option>`
+        ).join('');
+
+        const card = document.createElement('div');
+        card.className = `item-card glass-panel rounded-xl p-4 flex flex-col justify-between gap-3 ${cardStateClass}`;
+        
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <div class="font-bold text-sm text-slate-100 flex-1">${item.name}</div>
+            
+            <!-- Toggle -->
+            <label class="flex items-center cursor-pointer flex-shrink-0">
+              <div class="relative">
+                <input type="checkbox" class="sr-only toggle-checkbox" ${isNeeded ? 'checked' : ''} onchange="toggleNeed('${key}', this.checked, '${containerId}')">
+                <div class="toggle-label bg-slate-700">
+                  <div class="toggle-circle"></div>
+                </div>
+              </div>
+            </label>
+          </div>
+          
+          <div class="flex items-center justify-between border-t border-slate-700/50 pt-2 mt-1">
+            <span class="text-xs text-slate-400">採用数値</span>
+            <select onchange="changeValue('${key}', this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-amber-300 font-mono font-bold focus:outline-none focus:border-amber-500 max-w-[120px]">
+              ${optionsHtml}
+            </select>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // ==========================================
+    // レンダリング (4枠目)
+    // ==========================================
+    function renderFixedItems(containerId, dataList, categoryPrefix) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+
+      dataList.forEach((item, index) => {
+        const key = `${categoryPrefix}_${index}`;
+        
+        if (!userSettings[key]) {
+          userSettings[key] = {
+            needed: false,
+            selectedValue: item.value
+          };
+        }
+        
+        const setting = userSettings[key];
+        const isNeeded = setting.needed;
+        const cardStateClass = isNeeded ? 'state-needed' : 'state-unneeded';
+
+        const card = document.createElement('div');
+        card.className = `item-card glass-panel rounded-xl p-4 flex flex-col justify-between gap-3 ${cardStateClass}`;
+        
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <div class="font-bold text-sm text-slate-100 flex-1 leading-snug">${item.name}</div>
+            
+            <!-- Toggle -->
+            <label class="flex items-center cursor-pointer flex-shrink-0 mt-0.5">
+              <div class="relative">
+                <input type="checkbox" class="sr-only toggle-checkbox" ${isNeeded ? 'checked' : ''} onchange="toggleNeed('${key}', this.checked, '${containerId}')">
+                <div class="toggle-label bg-slate-700">
+                  <div class="toggle-circle"></div>
+                </div>
+              </div>
+            </label>
+          </div>
+          
+          <div class="flex items-center justify-between border-t border-slate-700/50 pt-2 mt-1">
+            <span class="text-xs text-slate-400">固定効果量</span>
+            <span class="text-amber-300 font-mono font-bold text-xs bg-slate-900 px-2 py-1 rounded border border-slate-800">${item.value}</span>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // ==========================================
+    // アクション・ハンドラ
+    // ==========================================
+    function toggleNeed(key, isChecked, containerId) {
+      if (userSettings[key]) {
+        userSettings[key].needed = isChecked;
+        saveData();
+        
+        // 再レンダリング（状態クラスの更新のため）
+        if (containerId === 'list-slot12') renderValueItems('list-slot12', dataSlot12, 's12');
+        else if (containerId === 'list-slot3') renderValueItems('list-slot3', dataSlot3, 's3');
+        else if (containerId === 'list-slot4') renderFixedItems('list-slot4', dataSlot4, 's4');
+      }
+    }
+
+    function changeValue(key, newValue) {
+      if (userSettings[key]) {
+        userSettings[key].selectedValue = newValue;
+        saveData();
+      }
+    }
+
+    // ==========================================
+    // サマリー画面のレンダリング
+    // ==========================================
+    function renderSummary() {
+      const renderSummarySection = (containerId, dataList, prefix) => {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        
+        let count = 0;
+        dataList.forEach((item, index) => {
+          const key = `${prefix}_${index}`;
+          const setting = userSettings[key];
+          
+          if (setting && setting.needed) {
+            count++;
+            const val = setting.selectedValue;
+            container.innerHTML += `
+              <div class="glass-panel p-3 rounded-lg flex items-center justify-between border border-emerald-500/30 bg-emerald-500/5">
+                <span class="text-xs sm:text-sm text-slate-200 font-medium flex-1 mr-2">${item.name}</span>
+                <span class="text-amber-300 font-mono text-xs font-bold whitespace-nowrap">${val}</span>
+              </div>
+            `;
+          }
+        });
+        
+        if (count === 0) {
+          container.innerHTML = `<div class="text-xs text-slate-500 italic col-span-2">「必要」に設定された効果はありません</div>`;
+        }
+      };
+
+      renderSummarySection('summary-slot12', dataSlot12, 's12');
+      renderSummarySection('summary-slot3', dataSlot3, 's3');
+      renderSummarySection('summary-slot4', dataSlot4, 's4');
+    }
+
+    function renderAll() {
+      renderValueItems('list-slot12', dataSlot12, 's12');
+      renderValueItems('list-slot3', dataSlot3, 's3');
+      renderFixedItems('list-slot4', dataSlot4, 's4');
+      renderSummary();
+    }
+  </script>
+</body>
+</html>
