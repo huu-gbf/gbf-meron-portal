@@ -591,6 +591,15 @@
           <h3 class="text-sm font-bold text-slate-300 border-b border-slate-700 pb-2 mb-3">4枠目</h3>
           <div id="summary-slot4" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-200"></div>
         </div>
+        
+        <div class="mt-8">
+          <h3 class="text-sm font-bold text-slate-300 border-b border-slate-700 pb-2 mb-3 flex items-center gap-2">
+            <span>👤</span> キャラ別・希望アーティファクトメモ
+          </h3>
+          <div id="memo-container" class="space-y-2">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
       </div>
     </section>
 
@@ -923,6 +932,83 @@
       renderValueItems('list-slot3', dataSlot3, 's3');
       renderFixedItems('list-slot4', dataSlot4, 's4');
       renderSummary();
+      renderMemos();
+    }
+
+    // ==========================================
+    // メモ機能
+    // ==========================================
+    function renderMemos() {
+      if (!userSettings.memos || !Array.isArray(userSettings.memos) || userSettings.memos.length === 0) {
+        userSettings.memos = [{ character: '', artifact: '' }];
+      }
+      
+      const container = document.getElementById('memo-container');
+      if (!container) return;
+      container.innerHTML = '';
+      
+      userSettings.memos.forEach((memo, index) => {
+        container.appendChild(createMemoRow(index, memo));
+      });
+    }
+
+    function createMemoRow(index, memo) {
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 mb-2';
+        
+        row.innerHTML = `
+          <input type="text" value="${escapeHtml(memo.character)}" 
+                 oninput="handleMemoInput(this, 'character')"
+                 placeholder="キャラ名 (例: 風シャトラ)" 
+                 class="flex-1 bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/70 transition shadow-inner">
+          <input type="text" value="${escapeHtml(memo.artifact)}" 
+                 oninput="handleMemoInput(this, 'artifact')"
+                 placeholder="1番目のアビでHP消費アビ短縮" 
+                 class="flex-1 bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/70 transition shadow-inner">
+          <button onclick="deleteMemo(this)" class="p-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-500/30 rounded-lg transition flex items-center justify-center shadow-sm" title="削除">
+            🗑️
+          </button>
+        `;
+        return row;
+    }
+
+    function handleMemoInput(inputEl, field) {
+      const rowEl = inputEl.closest('div.flex');
+      const container = document.getElementById('memo-container');
+      const index = Array.from(container.children).indexOf(rowEl);
+      
+      const value = inputEl.value;
+      userSettings.memos[index][field] = value;
+      saveData();
+      
+      if (index === userSettings.memos.length - 1 && (userSettings.memos[index].character.trim() !== '' || userSettings.memos[index].artifact.trim() !== '')) {
+        const newMemo = { character: '', artifact: '' };
+        userSettings.memos.push(newMemo);
+        const newIndex = userSettings.memos.length - 1;
+        container.appendChild(createMemoRow(newIndex, newMemo));
+      }
+    }
+
+    function deleteMemo(btnEl) {
+      const rowEl = btnEl.closest('div.flex');
+      const container = document.getElementById('memo-container');
+      const index = Array.from(container.children).indexOf(rowEl);
+      
+      userSettings.memos.splice(index, 1);
+      
+      if (userSettings.memos.length === 0) {
+        userSettings.memos.push({ character: '', artifact: '' });
+      }
+      saveData();
+      renderMemos();
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>'"]/g, function(match) {
+        const escape = { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+        return escape[match];
+      });
     }
   </script>
 </body>
