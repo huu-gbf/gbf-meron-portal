@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>団内AIアシスタント | めろ～ん王国</title>
+
+    <meta name="robots" content="noindex,nofollow">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- HTMLサニタイズ -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+
+    <!-- Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&display=swap"
+        rel="stylesheet">
+
+    <style>
+        body {
+            background-color: #080b14;
+            color: #f1f5f9;
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+
+        .stars-bg {
+            position: fixed;
+            inset: 0;
+
+            background-image:
+                radial-gradient(1.5px 1.5px at 20px 30px,
+                    #ffffff,
+                    rgba(0, 0, 0, 0)),
+                radial-gradient(1px 1px at 40px 70px,
+                    #fde047,
+                    rgba(0, 0, 0, 0)),
+                radial-gradient(2px 2px at 90px 40px,
+                    #38bdf8,
+                    rgba(0, 0, 0, 0));
+
+            background-size: 300px 300px;
+            opacity: 0.3;
+
+            pointer-events: none;
+
+            z-index: 0;
+        }
+
+        .glass-panel {
+            background: rgba(18, 24, 41, 0.75);
+
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+
+            border:
+                1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .glow-effect {
+            box-shadow:
+                0 0 25px -5px rgba(245, 200, 66, 0.15);
+        }
+
+
+        /* =====================================================
+           Markdown表示
+        ===================================================== */
+
+        .markdown-body {
+            line-height: 1.85;
+            word-break: break-word;
+        }
+
+        .markdown-body>*:first-child {
+            margin-top: 0;
+        }
+
+        .markdown-body>*:last-child {
+            margin-bottom: 0;
+        }
+
+        .markdown-body p {
+            margin: 0 0 0.85rem;
+        }
+
+        .markdown-body h1,
+        .markdown-body h2,
+        .markdown-body h3,
+        .markdown-body h4 {
+            color: #ffffff;
+
+            font-weight: 800;
+
+            line-height: 1.5;
+
+            margin-top: 1.25rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .markdown-body h1 {
+            font-size: 1.25rem;
+        }
+
+        .markdown-body h2 {
+            font-size: 1.1rem;
+
+            padding-bottom: 0.35rem;
+
+            border-bottom:
+                1px solid rgba(71, 85, 105, 0.5);
+        }
+
+        .markdown-body h3 {
+            font-size: 1rem;
+
+            color: #fde68a;
+        }
+
+        .markdown-body h4 {
+            font-size: 0.95rem;
+        }
+
+        .markdown-body strong {
+            color: #ffffff;
+            font-weight: 800;
+        }
+
+        .markdown-body em {
+            color: #cbd5e1;
+        }
+
+        .markdown-body ul,
+        .markdown-body ol {
+            margin:
+                0.5rem 0 1rem 1.4rem;
+
+            padding-left: 0.7rem;
+        }
+
+        .markdown-body ul {
+            list-style-type: disc;
+        }
+
+        .markdown-body ol {
+            list-style-type: decimal;
+        }
+
+        .markdown-body li {
+            margin: 0.25rem 0;
+        }
+
+        .markdown-body li::marker {
+            color: #fbbf24;
+        }
+
+        .markdown-body blockquote {
+            margin: 0.8rem 0;
+
+            padding:
+                0.65rem 0.9rem;
+
+            border-left:
+                3px solid #fbbf24;
+
+            background:
+                rgba(245, 158, 11, 0.06);
+
+            color: #cbd5e1;
+
+            border-radius:
+                0 8px 8px 0;
+        }
+
+        .markdown-body code {
+            background:
+                rgba(15, 23, 42, 0.9);
+
+            color: #93c5fd;
+
+            padding:
+                0.15rem 0.35rem;
+
+            border-radius: 5px;
+
+            font-family:
+                Consolas,
+                Monaco,
+                monospace;
+
+            font-size: 0.85em;
+        }
+
+        .markdown-body pre {
+            overflow-x: auto;
+
+            margin: 0.8rem 0;
+
+            padding: 0.9rem;
+
+            background:
+                rgba(2, 6, 23, 0.95);
+
+            border:
+                1px solid rgba(51, 65, 85, 0.8);
+
+            border-radius: 10px;
+        }
+
+        .markdown-body pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .markdown-body hr {
+            border: none;
+
+            border-top:
+                1px solid rgba(71, 85, 105, 0.55);
+
+            margin: 1rem 0;
+        }
+
+        .markdown-body a {
+            color: #38bdf8;
+
+            text-decoration:
+                underline;
+
+            text-underline-offset: 2px;
+        }
+
+        .markdown-body a:hover {
+            color: #7dd3fc;
+        }
+
+        .markdown-body table {
+            width: 100%;
+
+            border-collapse:
+                collapse;
+
+            margin: 1rem 0;
+
+            font-size: 0.8rem;
+        }
+
+        .markdown-body th,
+        .markdown-body td {
+            border:
+                1px solid rgba(71, 85, 105, 0.6);
+
+            padding:
+                0.5rem 0.6rem;
+
+            text-align: left;
+        }
+
+        .markdown-body th {
+            background:
+                rgba(30, 41, 59, 0.8);
+
+            color: #ffffff;
+        }
+
+
+        /* =====================================================
+           スクロールバー
+        ===================================================== */
+
+        #chatMessages::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #chatMessages::-webkit-scrollbar-track {
+            background:
+                rgba(15, 23, 42, 0.5);
+        }
+
+        #chatMessages::-webkit-scrollbar-thumb {
+            background:
+                rgba(100, 116, 139, 0.55);
+
+            border-radius: 999px;
+        }
+
+        #chatMessages::-webkit-scrollbar-thumb:hover {
+            background:
+                rgba(148, 163, 184, 0.7);
+        }
+    </style>
+</head>
+
+
+<body class="min-h-screen relative flex flex-col">
+
+    <div class="stars-bg"></div>
+
+
+    <!-- =====================================================
+         ヘッダー
+    ====================================================== -->
+
+    <header class="
+            border-b
+            border-slate-800/80
+            bg-slate-950/80
+            backdrop-blur
+            sticky
+            top-0
+            z-50
+        ">
+
+        <div class="
+                max-w-4xl
+                mx-auto
+                px-4
+                h-16
+                flex
+                items-center
+                justify-between
+            ">
+
+            <div class="
+                    flex
+                    items-center
+                    gap-3
+                ">
+
+                <span class="text-2xl">
+                    🤖
+                </span>
+
+                <div class="
+                        flex
+                        items-center
+                        gap-2
+                    ">
+
+                    <h1 class="
+                            font-bold
+                            text-white
+                            tracking-wide
+                            text-lg
+                        ">
+                        めろ～ん王国 AIコンシェルジュ
+                    </h1>
+
+                    <span class="
+                            text-[10px]
+                            px-2
+                            py-0.5
+                            bg-amber-500/20
+                            text-amber-300
+                            border
+                            border-amber-500/40
+                            rounded-full
+                            font-semibold
+                        ">
+                        RAG搭載
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <a href="index.html" class="
+                    text-xs
+                    bg-slate-800/80
+                    hover:bg-slate-700
+                    text-slate-300
+                    hover:text-white
+                    px-3.5
+                    py-2
+                    rounded-xl
+                    border
+                    border-slate-700
+                    transition
+                    flex
+                    items-center
+                    gap-1.5
+                ">
+
+                <span>←</span>
+
+                <span>
+                    ポータルに戻る
+                </span>
+
+            </a>
+
+        </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         メインチャット
+    ====================================================== -->
+
+    <main class="
+            flex-1
+            max-w-4xl
+            w-full
+            mx-auto
+            p-4
+            sm:p-6
+            flex
+            flex-col
+            relative
+            z-10
+        ">
+
+        <div class="
+                glass-panel
+                rounded-2xl
+                glow-effect
+                flex-1
+                flex
+                flex-col
+                overflow-hidden
+                border
+                border-slate-800
+            ">
+
+
+            <!-- =================================================
+                 メッセージ表示
+            ================================================== -->
+
+            <div id="chatMessages" class="
+                    flex-1
+                    p-4
+                    sm:p-6
+                    overflow-y-auto
+                    space-y-4
+                    max-h-[calc(100vh-260px)]
+                    min-h-[400px]
+                ">
+
+
+                <!-- 初期メッセージ -->
+
+                <div class="
+                        flex
+                        items-start
+                        gap-3
+                    ">
+
+                    <div class="
+                            w-9
+                            h-9
+                            rounded-xl
+                            bg-amber-500/20
+                            border
+                            border-amber-500/40
+                            flex
+                            items-center
+                            justify-center
+                            text-base
+                            shrink-0
+                            shadow-lg
+                        ">
+                        🤖
+                    </div>
+
+
+                    <div class="
+                            bg-slate-900/90
+                            border
+                            border-slate-800
+                            rounded-2xl
+                            px-4
+                            py-3
+                            text-sm
+                            text-slate-200
+                            max-w-[85%]
+                            leading-relaxed
+                            shadow
+                        ">
+
+                        こんにちは！めろ～ん王国のAIアシスタントです。
+                        <br>
+
+                        団内規約・PDF・Webサイト・編成共有などについて質問できます。
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =================================================
+                 入力欄
+            ================================================== -->
+
+            <div class="
+                    p-4
+                    border-t
+                    border-slate-800/80
+                    bg-slate-950/60
+                ">
+
+                <form id="chatForm" onsubmit="
+                        handleSendMessage(event)
+                    " class="
+                        flex
+                        gap-2
+                    ">
+
+                    <input type="text" id="userInput" placeholder="
+                            例：ヴェルサシアの編成はありますか？
+                        " required autocomplete="off" class="
+                            flex-1
+                            bg-slate-900/90
+                            border
+                            border-slate-700
+                            focus:border-amber-400
+                            focus:ring-1
+                            focus:ring-amber-400
+                            rounded-xl
+                            px-4
+                            py-3
+                            text-sm
+                            text-white
+                            placeholder-slate-500
+                            outline-none
+                            transition
+                        " />
+
+
+                    <button type="submit" id="sendButton" class="
+                            bg-gradient-to-r
+                            from-amber-500
+                            to-yellow-400
+                            hover:from-amber-400
+                            hover:to-yellow-300
+                            text-slate-950
+                            font-bold
+                            px-5
+                            py-3
+                            rounded-xl
+                            shadow-lg
+                            shadow-amber-500/20
+                            transition
+                            transform
+                            active:scale-95
+                            text-sm
+                            flex
+                            items-center
+                            gap-1.5
+                            whitespace-nowrap
+                            disabled:opacity-50
+                            disabled:cursor-not-allowed
+                        ">
+
+                        <span>
+                            送信
+                        </span>
+
+                        <span>
+                            🚀
+                        </span>
+
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </main>
+
+
+    <!-- =====================================================
+         JavaScript
+    ====================================================== -->
+
+    <script>
+
+        // =====================================================
+        // FastAPI
+        // =====================================================
+
+        const API_URL =
+            "https://meron-ai-api-281908486591.asia-northeast1.run.app/api/chat";
+
+
+        // =====================================================
+        // Markdown設定
+        // =====================================================
+
+        if (
+            typeof marked
+            !== "undefined"
+        ) {
+
+            marked.setOptions({
+                breaks: true,
+                gfm: true
+            });
+
+        }
+
+
+        // =====================================================
+        // メッセージ送信
+        // =====================================================
+
+        async function handleSendMessage(
+            e
+        ) {
+
+            e.preventDefault();
+
+
+            const inputEl =
+                document.getElementById(
+                    "userInput"
+                );
+
+
+            const sendButton =
+                document.getElementById(
+                    "sendButton"
+                );
+
+
+            const message =
+                inputEl.value.trim();
+
+
+            if (!message) {
+                return;
+            }
+
+
+            // ---------------------------------------------
+            // ユーザー発言表示
+            // ---------------------------------------------
+
+            appendMessage(
+                message,
+                "user"
+            );
+
+
+            inputEl.value = "";
+
+            inputEl.disabled = true;
+
+            sendButton.disabled = true;
+
+
+            // ---------------------------------------------
+            // ローディング表示
+            // ---------------------------------------------
+
+            const loadingId =
+                "loading-"
+                + Date.now();
+
+
+            appendLoadingMessage(
+                loadingId
+            );
+
+
+            try {
+
+                // -----------------------------------------
+                // FastAPIへ送信
+                // -----------------------------------------
+
+                const response =
+                    await fetch(
+                        API_URL,
+                        {
+
+                            method:
+                                "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json"
+                            },
+
+                            body:
+                                JSON.stringify({
+                                    message:
+                                        message
+                                })
+                        }
+                    );
+
+
+                // -----------------------------------------
+                // HTTPエラー
+                // -----------------------------------------
+
+                if (!response.ok) {
+
+                    let detail = "";
+
+
+                    try {
+
+                        const errorData =
+                            await response.json();
+
+
+                        detail =
+                            errorData.detail
+                            || "";
+
+                    } catch {
+                        // JSONでなくても問題なし
+                    }
+
+
+                    throw new Error(
+                        detail
+                        || "サーバー応答エラー"
+                    );
+
+                }
+
+
+                // -----------------------------------------
+                // JSON取得
+                // -----------------------------------------
+
+                const data =
+                    await response.json();
+
+
+                // -----------------------------------------
+                // ローディング削除
+                // -----------------------------------------
+
+                removeMessage(
+                    loadingId
+                );
+
+
+                // -----------------------------------------
+                // AI回答表示
+                // -----------------------------------------
+
+                appendMessage(
+
+                    data.reply
+                    || "回答を取得できませんでした。",
+
+                    "ai",
+
+                    data.sources
+                    || []
+                );
+
+
+            } catch (err) {
+
+                console.error(
+                    err
+                );
+
+
+                removeMessage(
+                    loadingId
+                );
+
+
+                appendMessage(
+
+                    "申し訳ありません。"
+                    + "AI応答の取得中にエラーが発生しました。\n\n"
+                    + "FastAPIバックエンドが"
+                    + "起動しているか確認してください。",
+
+                    "ai"
+                );
+
+
+            } finally {
+
+                inputEl.disabled =
+                    false;
+
+                sendButton.disabled =
+                    false;
+
+                inputEl.focus();
+
+            }
+
+        }
+
+
+        // =====================================================
+        // ローディング
+        // =====================================================
+
+        function appendLoadingMessage(
+            id
+        ) {
+
+            const chatMessages =
+                document.getElementById(
+                    "chatMessages"
+                );
+
+
+            const wrapper =
+                document.createElement(
+                    "div"
+                );
+
+
+            wrapper.id =
+                id;
+
+
+            wrapper.className =
+                "flex items-start gap-3";
+
+
+            const avatar =
+                document.createElement(
+                    "div"
+                );
+
+
+            avatar.className =
+                "w-9 h-9 rounded-xl "
+                + "bg-amber-500/20 "
+                + "border border-amber-500/40 "
+                + "flex items-center "
+                + "justify-center "
+                + "text-base "
+                + "shrink-0 "
+                + "shadow-lg";
+
+
+            avatar.textContent =
+                "🤖";
+
+
+            const bubble =
+                document.createElement(
+                    "div"
+                );
+
+
+            bubble.className =
+                "bg-slate-900/90 "
+                + "border border-slate-800 "
+                + "rounded-2xl "
+                + "rounded-tl-none "
+                + "px-4 py-3 "
+                + "text-sm "
+                + "text-slate-400 "
+                + "max-w-[85%] "
+                + "shadow "
+                + "animate-pulse";
+
+
+            bubble.textContent =
+                "回答を考えています...";
+
+
+            wrapper.appendChild(
+                avatar
+            );
+
+
+            wrapper.appendChild(
+                bubble
+            );
+
+
+            chatMessages.appendChild(
+                wrapper
+            );
+
+
+            scrollChatToBottom();
+
+        }
+
+
+        // =====================================================
+        // メッセージ削除
+        // =====================================================
+
+        function removeMessage(
+            id
+        ) {
+
+            const element =
+                document.getElementById(
+                    id
+                );
+
+
+            if (element) {
+
+                element.remove();
+
+            }
+
+        }
+
+
+        // =====================================================
+        // メッセージ表示
+        // =====================================================
+
+        function appendMessage(
+            text,
+            sender,
+            sources = []
+        ) {
+
+            const chatMessages =
+                document.getElementById(
+                    "chatMessages"
+                );
+
+
+            const isUser =
+                sender === "user";
+
+
+            // ---------------------------------------------
+            // 外枠
+            // ---------------------------------------------
+
+            const wrapper =
+                document.createElement(
+                    "div"
+                );
+
+
+            wrapper.className =
+                `flex items-start gap-3 ${isUser
+                    ? "flex-row-reverse"
+                    : ""
+                }`;
+
+
+            // ---------------------------------------------
+            // アイコン
+            // ---------------------------------------------
+
+            const avatar =
+                document.createElement(
+                    "div"
+                );
+
+
+            avatar.className =
+                "w-9 h-9 rounded-xl "
+                + "flex items-center "
+                + "justify-center "
+                + "text-base "
+                + "shrink-0 "
+                + "shadow-lg "
+                + (
+                    isUser
+                        ? "bg-indigo-500/20 "
+                        + "border border-indigo-500/40 "
+                        + "text-indigo-300"
+
+                        : "bg-amber-500/20 "
+                        + "border border-amber-500/40 "
+                        + "text-amber-300"
+                );
+
+
+            avatar.textContent =
+                isUser
+                    ? "👤"
+                    : "🤖";
+
+
+            // ---------------------------------------------
+            // 吹き出し
+            // ---------------------------------------------
+
+            const bubble =
+                document.createElement(
+                    "div"
+                );
+
+
+            bubble.className =
+                "rounded-2xl "
+                + "px-4 py-3 "
+                + "text-sm "
+                + "max-w-[85%] "
+                + "leading-relaxed "
+                + "shadow "
+                + (
+                    isUser
+
+                        ? "bg-indigo-600 "
+                        + "text-white "
+                        + "rounded-tr-none"
+
+                        : "bg-slate-900/90 "
+                        + "border border-slate-800 "
+                        + "text-slate-200 "
+                        + "rounded-tl-none"
+                );
+
+
+            // ---------------------------------------------
+            // ユーザー
+            // ---------------------------------------------
+
+            if (isUser) {
+
+                const messageText =
+                    document.createElement(
+                        "div"
+                    );
+
+
+                messageText.style.whiteSpace =
+                    "pre-wrap";
+
+
+                messageText.textContent =
+                    text;
+
+
+                bubble.appendChild(
+                    messageText
+                );
+
+            }
+
+            // ---------------------------------------------
+            // AI
+            // ---------------------------------------------
+
+            else {
+
+                const messageText =
+                    document.createElement(
+                        "div"
+                    );
+
+
+                messageText.className =
+                    "markdown-body";
+
+
+                // Markdown描画
+                if (
+                    typeof marked
+                    !== "undefined"
+                    &&
+                    typeof DOMPurify
+                    !== "undefined"
+                ) {
+
+                    const rawHtml =
+                        marked.parse(
+                            text
+                        );
+
+
+                    messageText.innerHTML =
+                        DOMPurify.sanitize(
+                            rawHtml
+                        );
+
+                }
+
+                // CDNが読み込めなかった場合の予備
+                else {
+
+                    messageText.style.whiteSpace =
+                        "pre-wrap";
+
+
+                    messageText.textContent =
+                        text;
+
+                }
+
+
+                // AI回答内リンクは
+                // 別タブで安全に開く
+                messageText
+                    .querySelectorAll(
+                        "a"
+                    )
+                    .forEach(
+                        link => {
+
+                            link.target =
+                                "_blank";
+
+                            link.rel =
+                                "noopener noreferrer";
+
+                        }
+                    );
+
+
+                bubble.appendChild(
+                    messageText
+                );
+
+
+                // -----------------------------------------
+                // 編成画像解析の注意
+                // -----------------------------------------
+
+                const hasFormationSource =
+                    sources.some(
+                        source =>
+                            source.type
+                            === "formation"
+                    );
+
+
+                if (hasFormationSource) {
+
+                    const notice =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    notice.className =
+                        "mt-4 "
+                        + "px-3 py-2.5 "
+                        + "rounded-xl "
+                        + "border "
+                        + "border-amber-500/20 "
+                        + "bg-amber-500/5 "
+                        + "text-[11px] "
+                        + "leading-relaxed "
+                        + "text-amber-200/80";
+
+
+                    notice.textContent =
+                        "⚠️ 編成スクリーンショットの"
+                        + "AI画像解析を含む回答です。"
+                        + "キャラクター・武器・召喚石などの"
+                        + "細かな名称は誤認する場合があります。"
+                        + "最終確認は元の投稿画像をご覧ください。";
+
+
+                    bubble.appendChild(
+                        notice
+                    );
+
+                }
+
+
+                // -----------------------------------------
+                // 参照元
+                // -----------------------------------------
+
+                appendSources(
+                    bubble,
+                    sources
+                );
+
+            }
+
+
+            // ---------------------------------------------
+            // DOM追加
+            // ---------------------------------------------
+
+            wrapper.appendChild(
+                avatar
+            );
+
+
+            wrapper.appendChild(
+                bubble
+            );
+
+
+            chatMessages.appendChild(
+                wrapper
+            );
+
+
+            scrollChatToBottom();
+
+        }
+
+
+        // =====================================================
+        // 参照元
+        // =====================================================
+
+        function appendSources(
+            bubble,
+            sources
+        ) {
+
+            if (
+                !Array.isArray(
+                    sources
+                )
+                ||
+                sources.length === 0
+            ) {
+
+                return;
+
+            }
+
+
+            const sourceBox =
+                document.createElement(
+                    "div"
+                );
+
+
+            sourceBox.className =
+                "mt-4 "
+                + "pt-3 "
+                + "border-t "
+                + "border-slate-700/70";
+
+
+            // ---------------------------------------------
+            // タイトル
+            // ---------------------------------------------
+
+            const sourceTitle =
+                document.createElement(
+                    "div"
+                );
+
+
+            sourceTitle.className =
+                "text-[11px] "
+                + "text-slate-500 "
+                + "mb-2 "
+                + "font-semibold "
+                + "tracking-wide";
+
+
+            sourceTitle.textContent =
+                "📚 参照元";
+
+
+            sourceBox.appendChild(
+                sourceTitle
+            );
+
+
+            // ---------------------------------------------
+            // 各参照元
+            // ---------------------------------------------
+
+            sources.forEach(
+                source => {
+
+                    const row =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    row.className =
+                        "text-xs "
+                        + "text-slate-400 "
+                        + "mb-1.5 "
+                        + "flex "
+                        + "items-start "
+                        + "gap-1.5";
+
+
+                    const sourceType =
+                        source.type
+                        || "internal";
+
+
+                    const icon =
+                        getSourceIcon(
+                            sourceType
+                        );
+
+
+                    const sourceName =
+                        cleanSourceName(
+                            source.name
+                            || "不明な参照元",
+                            sourceType
+                        );
+
+
+                    // -------------------------------------
+                    // アイコン
+                    // -------------------------------------
+
+                    const iconSpan =
+                        document.createElement(
+                            "span"
+                        );
+
+
+                    iconSpan.textContent =
+                        icon;
+
+
+                    iconSpan.className =
+                        "shrink-0";
+
+
+                    row.appendChild(
+                        iconSpan
+                    );
+
+
+                    // -------------------------------------
+                    // URLあり
+                    // -------------------------------------
+
+                    if (source.url) {
+
+                        const link =
+                            document.createElement(
+                                "a"
+                            );
+
+
+                        link.href =
+                            source.url;
+
+
+                        link.target =
+                            "_blank";
+
+
+                        link.rel =
+                            "noopener noreferrer";
+
+
+                        link.className =
+                            "text-sky-400 "
+                            + "hover:text-sky-300 "
+                            + "underline "
+                            + "underline-offset-2 "
+                            + "break-all";
+
+
+                        link.textContent =
+                            sourceName;
+
+
+                        row.appendChild(
+                            link
+                        );
+
+                    }
+
+                    // -------------------------------------
+                    // URLなし
+                    // -------------------------------------
+
+                    else {
+
+                        const textSpan =
+                            document.createElement(
+                                "span"
+                            );
+
+
+                        textSpan.textContent =
+                            sourceName;
+
+
+                        row.appendChild(
+                            textSpan
+                        );
+
+                    }
+
+
+                    sourceBox.appendChild(
+                        row
+                    );
+
+                }
+            );
+
+
+            bubble.appendChild(
+                sourceBox
+            );
+
+        }
+
+
+        // =====================================================
+        // 参照元アイコン
+        // =====================================================
+
+        function getSourceIcon(
+            sourceType
+        ) {
+
+            switch (
+            sourceType
+            ) {
+
+                case "web":
+                    return "🌐";
+
+
+                case "file":
+                    return "📄";
+
+
+                case "formation":
+                    return "⚔️";
+
+
+                case "internal":
+                    return "🍈";
+
+
+                default:
+                    return "📚";
+
+            }
+
+        }
+
+
+        // =====================================================
+        // 参照元名称整理
+        // =====================================================
+
+        function cleanSourceName(
+            name,
+            sourceType
+        ) {
+
+            let cleaned =
+                String(name);
+
+
+            // formation側では
+            // Python側ですでに⚔️が
+            // 名前に入っている場合があるため除去
+            if (
+                sourceType
+                === "formation"
+            ) {
+
+                cleaned =
+                    cleaned.replace(
+                        /^⚔️\s*/,
+                        ""
+                    );
+
+            }
+
+
+            return cleaned;
+
+        }
+
+
+        // =====================================================
+        // 最下部へスクロール
+        // =====================================================
+
+        function scrollChatToBottom() {
+
+            const chatMessages =
+                document.getElementById(
+                    "chatMessages"
+                );
+
+
+            requestAnimationFrame(
+                () => {
+
+                    chatMessages.scrollTop =
+                        chatMessages.scrollHeight;
+
+                }
+            );
+
+        }
+
+    </script>
+
+</body>
+
+</html>
