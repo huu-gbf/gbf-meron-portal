@@ -593,6 +593,60 @@
 
         const API_URL =
             "https://meron-ai-api-281908486591.asia-northeast1.run.app/api/chat";
+        // =====================================================
+        // 端末識別ID
+        //
+        // 団員が何か入力する必要はありません。
+        // 初回アクセス時にブラウザ内で自動生成し、
+        // 以後同じブラウザでは同じIDを使用します。
+        // =====================================================
+
+        function getClientId() {
+
+            const storageKey =
+                "meron_ai_client_id";
+
+            let clientId =
+                localStorage.getItem(
+                    storageKey
+                );
+
+            if (!clientId) {
+
+                if (
+                    window.crypto
+                    &&
+                    typeof window.crypto.randomUUID
+                    === "function"
+                ) {
+
+                    clientId =
+                        window.crypto.randomUUID();
+
+                } else {
+
+                    clientId =
+                        "client-"
+                        + Date.now()
+                        + "-"
+                        + Math.random()
+                            .toString(36)
+                            .substring(2, 15);
+
+                }
+
+                localStorage.setItem(
+                    storageKey,
+                    clientId
+                );
+            }
+
+            return clientId;
+        }
+
+
+        const CLIENT_ID =
+            getClientId();
 
 
         // =====================================================
@@ -691,7 +745,10 @@
 
                             headers: {
                                 "Content-Type":
-                                    "application/json"
+                                    "application/json",
+
+                                "X-Client-Id":
+                                    CLIENT_ID
                             },
 
                             body:
