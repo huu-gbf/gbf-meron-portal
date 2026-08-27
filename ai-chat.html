@@ -3,49 +3,86 @@
 
 <head>
     <meta charset="UTF-8">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>団内AIアシスタント | めろ～ん王国</title>
+    <title>
+        団内AIアシスタント | めろ～ん王国
+    </title>
 
     <meta name="robots" content="noindex,nofollow">
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Markdown -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- =====================================================
+         Tailwind CSS
+    ====================================================== -->
 
-    <!-- HTMLサニタイズ -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script src="https://cdn.tailwindcss.com">
+    </script>
 
-    <!-- Fonts -->
+
+    <!-- =====================================================
+         Markdown
+    ====================================================== -->
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js">
+    </script>
+
+
+    <!-- =====================================================
+         HTMLサニタイズ
+    ====================================================== -->
+
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js">
+    </script>
+
+
+    <!-- =====================================================
+         Font
+    ====================================================== -->
+
     <link
         href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&display=swap"
         rel="stylesheet">
+
 
     <style>
         body {
             background-color: #080b14;
             color: #f1f5f9;
-            font-family: 'Noto Sans JP', sans-serif;
+
+            font-family:
+                'Noto Sans JP',
+                sans-serif;
         }
+
+
+        /* =====================================================
+           背景
+        ===================================================== */
 
         .stars-bg {
             position: fixed;
+
             inset: 0;
 
             background-image:
+
                 radial-gradient(1.5px 1.5px at 20px 30px,
                     #ffffff,
                     rgba(0, 0, 0, 0)),
+
                 radial-gradient(1px 1px at 40px 70px,
                     #fde047,
                     rgba(0, 0, 0, 0)),
+
                 radial-gradient(2px 2px at 90px 40px,
                     #38bdf8,
                     rgba(0, 0, 0, 0));
 
-            background-size: 300px 300px;
+            background-size:
+                300px 300px;
+
             opacity: 0.3;
 
             pointer-events: none;
@@ -53,24 +90,39 @@
             z-index: 0;
         }
 
-        .glass-panel {
-            background: rgba(18, 24, 41, 0.75);
 
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+        .glass-panel {
+            background:
+                rgba(18,
+                    24,
+                    41,
+                    0.75);
+
+            backdrop-filter:
+                blur(12px);
+
+            -webkit-backdrop-filter:
+                blur(12px);
 
             border:
-                1px solid rgba(212, 175, 55, 0.2);
+                1px solid rgba(212,
+                    175,
+                    55,
+                    0.2);
         }
+
 
         .glow-effect {
             box-shadow:
-                0 0 25px -5px rgba(245, 200, 66, 0.15);
+                0 0 25px -5px rgba(245,
+                    200,
+                    66,
+                    0.15);
         }
 
 
         /* =====================================================
-           Markdown表示
+           Markdown
         ===================================================== */
 
         .markdown-body {
@@ -78,90 +130,132 @@
             word-break: break-word;
         }
 
+
         .markdown-body>*:first-child {
             margin-top: 0;
         }
+
 
         .markdown-body>*:last-child {
             margin-bottom: 0;
         }
 
+
         .markdown-body p {
-            margin: 0 0 0.85rem;
+            margin:
+                0 0 0.85rem;
         }
+
 
         .markdown-body h1,
         .markdown-body h2,
         .markdown-body h3,
         .markdown-body h4 {
+
             color: #ffffff;
 
             font-weight: 800;
 
             line-height: 1.5;
 
-            margin-top: 1.25rem;
-            margin-bottom: 0.6rem;
+            margin-top:
+                1.25rem;
+
+            margin-bottom:
+                0.6rem;
         }
+
 
         .markdown-body h1 {
-            font-size: 1.25rem;
+            font-size:
+                1.25rem;
         }
+
 
         .markdown-body h2 {
-            font-size: 1.1rem;
+            font-size:
+                1.1rem;
 
-            padding-bottom: 0.35rem;
+            padding-bottom:
+                0.35rem;
 
             border-bottom:
-                1px solid rgba(71, 85, 105, 0.5);
+                1px solid rgba(71,
+                    85,
+                    105,
+                    0.5);
         }
+
 
         .markdown-body h3 {
-            font-size: 1rem;
+            font-size:
+                1rem;
 
-            color: #fde68a;
+            color:
+                #fde68a;
         }
+
 
         .markdown-body h4 {
-            font-size: 0.95rem;
+            font-size:
+                0.95rem;
         }
+
 
         .markdown-body strong {
-            color: #ffffff;
-            font-weight: 800;
+            color:
+                #ffffff;
+
+            font-weight:
+                800;
         }
 
+
         .markdown-body em {
-            color: #cbd5e1;
+            color:
+                #cbd5e1;
         }
+
 
         .markdown-body ul,
         .markdown-body ol {
+
             margin:
                 0.5rem 0 1rem 1.4rem;
 
-            padding-left: 0.7rem;
+            padding-left:
+                0.7rem;
         }
+
 
         .markdown-body ul {
-            list-style-type: disc;
+            list-style-type:
+                disc;
         }
+
 
         .markdown-body ol {
-            list-style-type: decimal;
+            list-style-type:
+                decimal;
         }
+
 
         .markdown-body li {
-            margin: 0.25rem 0;
+            margin:
+                0.25rem 0;
         }
+
 
         .markdown-body li::marker {
-            color: #fbbf24;
+            color:
+                #fbbf24;
         }
 
+
         .markdown-body blockquote {
-            margin: 0.8rem 0;
+
+            margin:
+                0.8rem 0;
 
             padding:
                 0.65rem 0.9rem;
@@ -170,141 +264,222 @@
                 3px solid #fbbf24;
 
             background:
-                rgba(245, 158, 11, 0.06);
+                rgba(245,
+                    158,
+                    11,
+                    0.06);
 
-            color: #cbd5e1;
+            color:
+                #cbd5e1;
 
             border-radius:
                 0 8px 8px 0;
         }
 
-        .markdown-body code {
-            background:
-                rgba(15, 23, 42, 0.9);
 
-            color: #93c5fd;
+        .markdown-body code {
+
+            background:
+                rgba(15,
+                    23,
+                    42,
+                    0.9);
+
+            color:
+                #93c5fd;
 
             padding:
                 0.15rem 0.35rem;
 
-            border-radius: 5px;
+            border-radius:
+                5px;
 
             font-family:
                 Consolas,
                 Monaco,
                 monospace;
 
-            font-size: 0.85em;
+            font-size:
+                0.85em;
         }
+
 
         .markdown-body pre {
-            overflow-x: auto;
 
-            margin: 0.8rem 0;
+            overflow-x:
+                auto;
 
-            padding: 0.9rem;
+            margin:
+                0.8rem 0;
+
+            padding:
+                0.9rem;
 
             background:
-                rgba(2, 6, 23, 0.95);
+                rgba(2,
+                    6,
+                    23,
+                    0.95);
 
             border:
-                1px solid rgba(51, 65, 85, 0.8);
+                1px solid rgba(51,
+                    65,
+                    85,
+                    0.8);
 
-            border-radius: 10px;
+            border-radius:
+                10px;
         }
+
 
         .markdown-body pre code {
-            background: none;
-            padding: 0;
+            background:
+                none;
+
+            padding:
+                0;
         }
+
 
         .markdown-body hr {
-            border: none;
+
+            border:
+                none;
 
             border-top:
-                1px solid rgba(71, 85, 105, 0.55);
+                1px solid rgba(71,
+                    85,
+                    105,
+                    0.55);
 
-            margin: 1rem 0;
+            margin:
+                1rem 0;
         }
 
+
         .markdown-body a {
-            color: #38bdf8;
+
+            color:
+                #38bdf8;
 
             text-decoration:
                 underline;
 
-            text-underline-offset: 2px;
+            text-underline-offset:
+                2px;
         }
+
 
         .markdown-body a:hover {
-            color: #7dd3fc;
+            color:
+                #7dd3fc;
         }
 
+
         .markdown-body table {
-            width: 100%;
+
+            width:
+                100%;
 
             border-collapse:
                 collapse;
 
-            margin: 1rem 0;
+            margin:
+                1rem 0;
 
-            font-size: 0.8rem;
+            font-size:
+                0.8rem;
         }
+
 
         .markdown-body th,
         .markdown-body td {
+
             border:
-                1px solid rgba(71, 85, 105, 0.6);
+                1px solid rgba(71,
+                    85,
+                    105,
+                    0.6);
 
             padding:
                 0.5rem 0.6rem;
 
-            text-align: left;
+            text-align:
+                left;
         }
 
-        .markdown-body th {
-            background:
-                rgba(30, 41, 59, 0.8);
 
-            color: #ffffff;
+        .markdown-body th {
+
+            background:
+                rgba(30,
+                    41,
+                    59,
+                    0.8);
+
+            color:
+                #ffffff;
         }
 
 
         /* =====================================================
-           スクロールバー
+           Scrollbar
         ===================================================== */
 
         #chatMessages::-webkit-scrollbar {
-            width: 8px;
+            width:
+                8px;
         }
+
 
         #chatMessages::-webkit-scrollbar-track {
+
             background:
-                rgba(15, 23, 42, 0.5);
+                rgba(15,
+                    23,
+                    42,
+                    0.5);
         }
+
 
         #chatMessages::-webkit-scrollbar-thumb {
-            background:
-                rgba(100, 116, 139, 0.55);
 
-            border-radius: 999px;
+            background:
+                rgba(100,
+                    116,
+                    139,
+                    0.55);
+
+            border-radius:
+                999px;
         }
 
+
         #chatMessages::-webkit-scrollbar-thumb:hover {
+
             background:
-                rgba(148, 163, 184, 0.7);
+                rgba(148,
+                    163,
+                    184,
+                    0.7);
         }
     </style>
 </head>
 
 
-<body class="min-h-screen relative flex flex-col">
+<body class="
+        min-h-screen
+        relative
+        flex
+        flex-col
+    ">
 
-    <div class="stars-bg"></div>
+    <div class="stars-bg">
+    </div>
 
 
     <!-- =====================================================
-         ヘッダー
+         Header
     ====================================================== -->
 
     <header class="
@@ -337,6 +512,7 @@
                     🤖
                 </span>
 
+
                 <div class="
                         flex
                         items-center
@@ -349,8 +525,11 @@
                             tracking-wide
                             text-lg
                         ">
+
                         めろ～ん王国 AIコンシェルジュ
+
                     </h1>
+
 
                     <span class="
                             text-[10px]
@@ -363,7 +542,9 @@
                             rounded-full
                             font-semibold
                         ">
+
                         RAG搭載
+
                     </span>
 
                 </div>
@@ -388,7 +569,9 @@
                     gap-1.5
                 ">
 
-                <span>←</span>
+                <span>
+                    ←
+                </span>
 
                 <span>
                     ポータルに戻る
@@ -402,7 +585,7 @@
 
 
     <!-- =====================================================
-         メインチャット
+         Main
     ====================================================== -->
 
     <main class="
@@ -432,7 +615,7 @@
 
 
             <!-- =================================================
-                 メッセージ表示
+                 Messages
             ================================================== -->
 
             <div id="chatMessages" class="
@@ -446,7 +629,7 @@
                 ">
 
 
-                <!-- 初期メッセージ -->
+                <!-- Welcome -->
 
                 <div class="
                         flex
@@ -487,6 +670,7 @@
                         ">
 
                         こんにちは！めろ～ん王国のAIアシスタントです。
+
                         <br>
 
                         団内規約・PDF・Webサイト・編成共有などについて質問できます。
@@ -499,7 +683,7 @@
 
 
             <!-- =================================================
-                 入力欄
+                 Input
             ================================================== -->
 
             <div class="
@@ -518,7 +702,7 @@
 
                     <input type="text" id="userInput" placeholder="
                             例：ヴェルサシアの編成はありますか？
-                        " required autocomplete="off" class="
+                        " required autocomplete="off" maxlength="1500" class="
                             flex-1
                             bg-slate-900/90
                             border
@@ -534,7 +718,7 @@
                             placeholder-slate-500
                             outline-none
                             transition
-                        " />
+                        ">
 
 
                     <button type="submit" id="sendButton" class="
@@ -587,18 +771,20 @@
 
     <script>
 
+
         // =====================================================
-        // FastAPI
+        // Cloud Run API
         // =====================================================
 
         const API_URL =
             "https://meron-ai-api-281908486591.asia-northeast1.run.app/api/chat";
+
+
         // =====================================================
         // 端末識別ID
         //
-        // 団員が何か入力する必要はありません。
-        // 初回アクセス時にブラウザ内で自動生成し、
-        // 以後同じブラウザでは同じIDを使用します。
+        // 団員による入力操作はありません。
+        // ブラウザ内で自動生成します。
         // =====================================================
 
         function getClientId() {
@@ -606,10 +792,12 @@
             const storageKey =
                 "meron_ai_client_id";
 
+
             let clientId =
                 localStorage.getItem(
                     storageKey
                 );
+
 
             if (!clientId) {
 
@@ -631,15 +819,19 @@
                         + "-"
                         + Math.random()
                             .toString(36)
-                            .substring(2, 15);
-
+                            .substring(
+                                2,
+                                15
+                            );
                 }
+
 
                 localStorage.setItem(
                     storageKey,
                     clientId
                 );
             }
+
 
             return clientId;
         }
@@ -650,7 +842,7 @@
 
 
         // =====================================================
-        // Markdown設定
+        // Markdown
         // =====================================================
 
         if (
@@ -659,22 +851,48 @@
         ) {
 
             marked.setOptions({
-                breaks: true,
-                gfm: true
+
+                breaks:
+                    true,
+
+                gfm:
+                    true
             });
 
         }
 
 
         // =====================================================
-        // メッセージ送信
+        // APIエラー
+        // =====================================================
+
+        class ApiError
+            extends Error {
+
+            constructor(
+                status,
+                message
+            ) {
+
+                super(
+                    message
+                );
+
+                this.status =
+                    status;
+            }
+        }
+
+
+        // =====================================================
+        // Send
         // =====================================================
 
         async function handleSendMessage(
-            e
+            event
         ) {
 
-            e.preventDefault();
+            event.preventDefault();
 
 
             const inputEl =
@@ -699,7 +917,7 @@
 
 
             // ---------------------------------------------
-            // ユーザー発言表示
+            // User message
             // ---------------------------------------------
 
             appendMessage(
@@ -708,15 +926,18 @@
             );
 
 
-            inputEl.value = "";
+            inputEl.value =
+                "";
 
-            inputEl.disabled = true;
+            inputEl.disabled =
+                true;
 
-            sendButton.disabled = true;
+            sendButton.disabled =
+                true;
 
 
             // ---------------------------------------------
-            // ローディング表示
+            // Loading
             // ---------------------------------------------
 
             const loadingId =
@@ -732,18 +953,22 @@
             try {
 
                 // -----------------------------------------
-                // FastAPIへ送信
+                // API
                 // -----------------------------------------
 
                 const response =
                     await fetch(
+
                         API_URL,
+
                         {
 
                             method:
                                 "POST",
 
+
                             headers: {
+
                                 "Content-Type":
                                     "application/json",
 
@@ -751,8 +976,10 @@
                                     CLIENT_ID
                             },
 
+
                             body:
                                 JSON.stringify({
+
                                     message:
                                         message
                                 })
@@ -761,47 +988,112 @@
 
 
                 // -----------------------------------------
-                // HTTPエラー
+                // Response JSON
                 // -----------------------------------------
 
-                if (!response.ok) {
-
-                    let detail = "";
-
-
-                    try {
-
-                        const errorData =
-                            await response.json();
+                let data =
+                    null;
 
 
-                        detail =
-                            errorData.detail
-                            || "";
+                try {
 
-                    } catch {
-                        // JSONでなくても問題なし
-                    }
+                    data =
+                        await response.json();
 
+                } catch {
 
-                    throw new Error(
-                        detail
-                        || "サーバー応答エラー"
-                    );
-
+                    data =
+                        null;
                 }
 
 
                 // -----------------------------------------
-                // JSON取得
+                // HTTP error
                 // -----------------------------------------
 
-                const data =
-                    await response.json();
+                if (!response.ok) {
+
+                    let errorMessage =
+                        "";
+
+
+                    if (
+                        data
+                        &&
+                        typeof data.detail
+                        === "string"
+                    ) {
+
+                        errorMessage =
+                            data.detail;
+                    }
+
+
+                    // 429
+                    if (
+                        response.status
+                        === 429
+                    ) {
+
+                        throw new ApiError(
+
+                            429,
+
+                            errorMessage
+                            ||
+                            "AIの利用回数が上限に達しました。少し時間をおいてからお試しください。"
+                        );
+                    }
+
+
+                    // 503
+                    if (
+                        response.status
+                        === 503
+                    ) {
+
+                        throw new ApiError(
+
+                            503,
+
+                            errorMessage
+                            ||
+                            "現在AIを一時的に利用できません。少し待ってからもう一度お試しください。"
+                        );
+                    }
+
+
+                    // 400
+                    if (
+                        response.status
+                        === 400
+                    ) {
+
+                        throw new ApiError(
+
+                            400,
+
+                            errorMessage
+                            ||
+                            "入力内容を確認してください。"
+                        );
+                    }
+
+
+                    // Other
+                    throw new ApiError(
+
+                        response.status,
+
+                        errorMessage
+                        ||
+                        "AIサーバーでエラーが発生しました。"
+                    );
+                }
 
 
                 // -----------------------------------------
-                // ローディング削除
+                // Success
                 // -----------------------------------------
 
                 removeMessage(
@@ -809,26 +1101,24 @@
                 );
 
 
-                // -----------------------------------------
-                // AI回答表示
-                // -----------------------------------------
-
                 appendMessage(
 
-                    data.reply
-                    || "回答を取得できませんでした。",
+                    data?.reply
+                    ||
+                    "回答を取得できませんでした。",
 
                     "ai",
 
-                    data.sources
-                    || []
+                    data?.sources
+                    ||
+                    []
                 );
 
 
-            } catch (err) {
+            } catch (error) {
 
                 console.error(
-                    err
+                    error
                 );
 
 
@@ -837,13 +1127,91 @@
                 );
 
 
+                let userMessage =
+                    "";
+
+
+                // -----------------------------------------
+                // Rate limit
+                // -----------------------------------------
+
+                if (
+                    error instanceof ApiError
+                    &&
+                    error.status === 429
+                ) {
+
+                    userMessage =
+                        "⏳ "
+                        + error.message;
+                }
+
+
+                // -----------------------------------------
+                // Temporary unavailable
+                // -----------------------------------------
+
+                else if (
+                    error instanceof ApiError
+                    &&
+                    error.status === 503
+                ) {
+
+                    userMessage =
+                        "🔧 "
+                        + error.message;
+                }
+
+
+                // -----------------------------------------
+                // Bad request
+                // -----------------------------------------
+
+                else if (
+                    error instanceof ApiError
+                    &&
+                    error.status === 400
+                ) {
+
+                    userMessage =
+                        "⚠️ "
+                        + error.message;
+                }
+
+
+                // -----------------------------------------
+                // Server error
+                // -----------------------------------------
+
+                else if (
+                    error instanceof ApiError
+                ) {
+
+                    userMessage =
+                        "申し訳ありません。"
+                        + "AIサーバーでエラーが発生しました。"
+                        + "\n\n"
+                        + "少し待ってから、もう一度お試しください。";
+                }
+
+
+                // -----------------------------------------
+                // Network error
+                // -----------------------------------------
+
+                else {
+
+                    userMessage =
+                        "申し訳ありません。"
+                        + "AIサーバーへ接続できませんでした。"
+                        + "\n\n"
+                        + "通信環境を確認して、"
+                        + "少し待ってからもう一度お試しください。";
+                }
+
+
                 appendMessage(
-
-                    "申し訳ありません。"
-                    + "AI応答の取得中にエラーが発生しました。\n\n"
-                    + "FastAPIバックエンドが"
-                    + "起動しているか確認してください。",
-
+                    userMessage,
                     "ai"
                 );
 
@@ -853,18 +1221,18 @@
                 inputEl.disabled =
                     false;
 
+
                 sendButton.disabled =
                     false;
 
+
                 inputEl.focus();
-
             }
-
         }
 
 
         // =====================================================
-        // ローディング
+        // Loading
         // =====================================================
 
         function appendLoadingMessage(
@@ -951,12 +1319,11 @@
 
 
             scrollChatToBottom();
-
         }
 
 
         // =====================================================
-        // メッセージ削除
+        // Remove message
         // =====================================================
 
         function removeMessage(
@@ -972,14 +1339,12 @@
             if (element) {
 
                 element.remove();
-
             }
-
         }
 
 
         // =====================================================
-        // メッセージ表示
+        // Append message
         // =====================================================
 
         function appendMessage(
@@ -998,10 +1363,6 @@
                 sender === "user";
 
 
-            // ---------------------------------------------
-            // 外枠
-            // ---------------------------------------------
-
             const wrapper =
                 document.createElement(
                     "div"
@@ -1016,7 +1377,7 @@
 
 
             // ---------------------------------------------
-            // アイコン
+            // Avatar
             // ---------------------------------------------
 
             const avatar =
@@ -1034,6 +1395,7 @@
                 + "shadow-lg "
                 + (
                     isUser
+
                         ? "bg-indigo-500/20 "
                         + "border border-indigo-500/40 "
                         + "text-indigo-300"
@@ -1051,7 +1413,7 @@
 
 
             // ---------------------------------------------
-            // 吹き出し
+            // Bubble
             // ---------------------------------------------
 
             const bubble =
@@ -1082,7 +1444,7 @@
 
 
             // ---------------------------------------------
-            // ユーザー
+            // User
             // ---------------------------------------------
 
             if (isUser) {
@@ -1104,8 +1466,8 @@
                 bubble.appendChild(
                     messageText
                 );
-
             }
+
 
             // ---------------------------------------------
             // AI
@@ -1123,7 +1485,6 @@
                     "markdown-body";
 
 
-                // Markdown描画
                 if (
                     typeof marked
                     !== "undefined"
@@ -1143,10 +1504,7 @@
                             rawHtml
                         );
 
-                }
-
-                // CDNが読み込めなかった場合の予備
-                else {
+                } else {
 
                     messageText.style.whiteSpace =
                         "pre-wrap";
@@ -1154,12 +1512,9 @@
 
                     messageText.textContent =
                         text;
-
                 }
 
 
-                // AI回答内リンクは
-                // 別タブで安全に開く
                 messageText
                     .querySelectorAll(
                         "a"
@@ -1172,7 +1527,6 @@
 
                             link.rel =
                                 "noopener noreferrer";
-
                         }
                     );
 
@@ -1183,10 +1537,14 @@
 
 
                 // -----------------------------------------
-                // 編成画像解析の注意
+                // Formation warning
                 // -----------------------------------------
 
                 const hasFormationSource =
+                    Array.isArray(
+                        sources
+                    )
+                    &&
                     sources.some(
                         source =>
                             source.type
@@ -1194,7 +1552,9 @@
                     );
 
 
-                if (hasFormationSource) {
+                if (
+                    hasFormationSource
+                ) {
 
                     const notice =
                         document.createElement(
@@ -1225,25 +1585,15 @@
                     bubble.appendChild(
                         notice
                     );
-
                 }
 
-
-                // -----------------------------------------
-                // 参照元
-                // -----------------------------------------
 
                 appendSources(
                     bubble,
                     sources
                 );
-
             }
 
-
-            // ---------------------------------------------
-            // DOM追加
-            // ---------------------------------------------
 
             wrapper.appendChild(
                 avatar
@@ -1261,12 +1611,11 @@
 
 
             scrollChatToBottom();
-
         }
 
 
         // =====================================================
-        // 参照元
+        // Sources
         // =====================================================
 
         function appendSources(
@@ -1279,11 +1628,11 @@
                     sources
                 )
                 ||
-                sources.length === 0
+                sources.length
+                === 0
             ) {
 
                 return;
-
             }
 
 
@@ -1299,10 +1648,6 @@
                 + "border-t "
                 + "border-slate-700/70";
 
-
-            // ---------------------------------------------
-            // タイトル
-            // ---------------------------------------------
 
             const sourceTitle =
                 document.createElement(
@@ -1327,10 +1672,6 @@
             );
 
 
-            // ---------------------------------------------
-            // 各参照元
-            // ---------------------------------------------
-
             sources.forEach(
                 source => {
 
@@ -1351,7 +1692,8 @@
 
                     const sourceType =
                         source.type
-                        || "internal";
+                        ||
+                        "internal";
 
 
                     const icon =
@@ -1362,15 +1704,14 @@
 
                     const sourceName =
                         cleanSourceName(
+
                             source.name
-                            || "不明な参照元",
+                            ||
+                            "不明な参照元",
+
                             sourceType
                         );
 
-
-                    // -------------------------------------
-                    // アイコン
-                    // -------------------------------------
 
                     const iconSpan =
                         document.createElement(
@@ -1391,11 +1732,9 @@
                     );
 
 
-                    // -------------------------------------
-                    // URLあり
-                    // -------------------------------------
-
-                    if (source.url) {
+                    if (
+                        source.url
+                    ) {
 
                         const link =
                             document.createElement(
@@ -1431,13 +1770,7 @@
                             link
                         );
 
-                    }
-
-                    // -------------------------------------
-                    // URLなし
-                    // -------------------------------------
-
-                    else {
+                    } else {
 
                         const textSpan =
                             document.createElement(
@@ -1452,14 +1785,12 @@
                         row.appendChild(
                             textSpan
                         );
-
                     }
 
 
                     sourceBox.appendChild(
                         row
                     );
-
                 }
             );
 
@@ -1467,12 +1798,11 @@
             bubble.appendChild(
                 sourceBox
             );
-
         }
 
 
         // =====================================================
-        // 参照元アイコン
+        // Source icon
         // =====================================================
 
         function getSourceIcon(
@@ -1501,14 +1831,12 @@
 
                 default:
                     return "📚";
-
             }
-
         }
 
 
         // =====================================================
-        // 参照元名称整理
+        // Source name
         // =====================================================
 
         function cleanSourceName(
@@ -1517,12 +1845,11 @@
         ) {
 
             let cleaned =
-                String(name);
+                String(
+                    name
+                );
 
 
-            // formation側では
-            // Python側ですでに⚔️が
-            // 名前に入っている場合があるため除去
             if (
                 sourceType
                 === "formation"
@@ -1533,17 +1860,15 @@
                         /^⚔️\s*/,
                         ""
                     );
-
             }
 
 
             return cleaned;
-
         }
 
 
         // =====================================================
-        // 最下部へスクロール
+        // Scroll
         // =====================================================
 
         function scrollChatToBottom() {
@@ -1559,10 +1884,8 @@
 
                     chatMessages.scrollTop =
                         chatMessages.scrollHeight;
-
                 }
             );
-
         }
 
     </script>
