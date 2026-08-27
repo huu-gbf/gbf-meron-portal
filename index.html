@@ -160,6 +160,9 @@
       <div class="max-w-6xl mx-auto px-4">
         <!-- PC: horizontal menu bar -->
         <div class="hidden md:flex items-center gap-1 py-2 overflow-x-auto scrollbar-hide">
+          <a href="#sec-registered" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+            <span>📰</span><span>登録済み情報</span>
+          </a>
           <a href="#sec-schedule" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
             <span>📅</span><span>イベント予定</span>
           </a>
@@ -188,6 +191,9 @@
         </div>
         <!-- Mobile: expandable dropdown menu -->
         <div id="mobileMenu" class="hidden md:hidden pb-3 space-y-1 border-t border-slate-800/60 pt-2">
+          <a href="#sec-registered" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+            <span>📰</span><span>登録済み情報</span>
+          </a>
           <a href="#sec-schedule" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
             <span>📅</span><span>古戦場・イベント予定</span>
           </a>
@@ -456,10 +462,41 @@
 
 
 
-      <!-- =========================================================?
+      <!-- =========================================================
+?
            SECTION: 古戦場・イベント予定
       ========================================================= -->
-      <section id="sec-schedule" class="space-y-4 scroll-mt-32">
+            
+
+      <!-- =========================================================
+           SECTION: AI登録済み情報
+      ========================================================= -->
+      <section id="sec-registered" class="space-y-4 scroll-mt-32 pt-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-lg">📰</div>
+            <h2 class="text-xl font-bold text-white">AI登録済み新着情報</h2>
+          </div>
+          <button id="btn-refresh-registered" onclick="fetchRegisteredUpdates()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-1 transition disabled:opacity-50">
+            <span>↻</span><span>最新状態を確認</span>
+          </button>
+        </div>
+        
+        <details name="portal-sections" class="glass-panel rounded-2xl group overflow-hidden" open>
+          <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
+            <span class="text-base transition-transform duration-200 group-open:rotate-90 text-purple-400">▶</span>
+            <span id="registered-summary-text" class="flex items-center">登録済み情報を表示 <span class="ml-4 text-sm font-normal text-slate-400">⏳ 取得中...</span></span>
+          </summary>
+          
+          <div class="px-5 sm:px-6 pb-6 border-t border-slate-800 pt-4" id="registered-content-area">
+            <div class="text-center text-slate-400 py-8">
+              <span class="animate-pulse">取得中...</span>
+            </div>
+          </div>
+        </details>
+      </section>
+
+<section id="sec-schedule" class="space-y-4 scroll-mt-32">
         <!-- Section Header -->
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-lg">📅</div>
@@ -1471,6 +1508,8 @@
     }
 
 
+  
+    
   </script>
 </body>
 </html>

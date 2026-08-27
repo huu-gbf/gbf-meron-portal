@@ -242,6 +242,53 @@ def save_article(
 
 
 # =========================================================
+# Firestoreへ監視状態を保存 (site_watch_state)
+# =========================================================
+
+def save_site_state(
+    db,
+    source_id: str,
+    source_name: str,
+    source_type: str,
+    enabled: bool,
+    status: str,
+    error_msg: str | None = None,
+    latest_article: dict | None = None,
+    new_count: int = 0,
+) -> None:
+    """
+    1サイトの監視状態を保存する。
+    """
+    if db is None or DRY_RUN:
+        return
+
+    doc_data = {
+        "source_id": source_id,
+        "source_name": source_name,
+        "source_type": source_type,
+        "enabled": enabled,
+        "last_checked_at": firestore.SERVER_TIMESTAMP,
+        "last_status": status,
+        "last_error": error_msg,
+    }
+    
+    if latest_article:
+        doc_data["latest_title"] = latest_article.get("title", "")
+        doc_data["latest_url"] = latest_article.get("url", "")
+        doc_data["latest_item_id"] = latest_article.get("article_id", "")
+        
+    doc_data["last_new_count"] = new_count
+
+    try:
+        db.collection("site_watch_state").document(source_id).set(
+            doc_data,
+            merge=True
+        )
+    except Exception as e:
+        print(f"[SITE] {source_id} 状態保存エラー: {e}")
+
+
+# =========================================================
 # 1サイト分の処理
 # =========================================================
 
@@ -257,6 +304,8 @@ def process_site(
     3. 新着をFirestoreへ保存
     """
     source_id = site_config["id"]
+    source_name = site_config.get("name", source_id)
+    source_type = site_config.get("source_type", "")
     adapter_name = site_config.get("adapter", source_id)
     method = site_config.get("method", "")
 
@@ -269,21 +318,17 @@ def process_site(
     adapter = load_adapter(adapter_name)
 
     if adapter is None:
-        print(
-            f"[SITE] {source_id} "
-            f"adapterが見つかりません: "
-            f"adapters/{adapter_name}.py"
-        )
+        msg = f"adapterが見つかりません: adapters/{adapter_name}.py"
+        print(f"[SITE] {source_id} {msg}")
         print(f"[SITE] {source_id} skipped")
+        save_site_state(db, source_id, source_name, source_type, True, "error", msg)
         return
 
     if not hasattr(adapter, "fetch"):
-        print(
-            f"[SITE] {source_id} "
-            f"adapters/{adapter_name}.py に "
-            f"fetch() が定義されていません"
-        )
+        msg = f"adapters/{adapter_name}.py に fetch() が定義されていません"
+        print(f"[SITE] {source_id} {msg}")
         print(f"[SITE] {source_id} skipped")
+        save_site_state(db, source_id, source_name, source_type, True, "error", msg)
         return
 
     # --------------------------------------------------
@@ -292,11 +337,10 @@ def process_site(
     try:
         articles = adapter.fetch(site_config)
     except Exception as e:
-        print(
-            f"[SITE] {source_id} "
-            f"adapter.fetch() エラー: {e}"
-        )
+        msg = f"adapter.fetch() エラー: {e}"
+        print(f"[SITE] {source_id} {msg}")
         print(f"[SITE] {source_id} done (error)")
+        save_site_state(db, source_id, source_name, source_type, True, "error", str(e))
         return
 
     print(f"[SITE] {source_id} fetched={len(articles)}")
@@ -308,6 +352,7 @@ def process_site(
         )
         print(f"[SITE] {source_id} gemini_calls=0")
         print(f"[SITE] {source_id} done")
+        save_site_state(db, source_id, source_name, source_type, True, "ok", None, None, 0)
         return
 
     # --------------------------------------------------
@@ -338,6 +383,7 @@ def process_site(
         print(f"[SITE] {source_id} 新着なし")
         print(f"[SITE] {source_id} gemini_calls=0")
         print(f"[SITE] {source_id} done")
+        save_site_state(db, source_id, source_name, source_type, True, "ok", None, articles[0] if articles else None, 0)
         return
 
     # --------------------------------------------------
@@ -396,6 +442,9 @@ def process_site(
                 f"[SITE] {source_id} "
                 f"failed_count={failed_count}"
             )
+            
+    # 全体の処理結果を保存
+    save_site_state(db, source_id, source_name, source_type, True, "ok", None, articles[0] if articles else None, len(new_articles))
 
     print(f"[SITE] {source_id} gemini_calls=0")
     print(f"[SITE] {source_id} done")
@@ -440,17 +489,17 @@ def main():
         s for s in sites
         if s.get("enabled", False)
     ]
+    
+    disabled_sites = [
+        s for s in sites
+        if not s.get("enabled", False)
+    ]
 
     print(
         f"[NEWS WATCH] "
         f"sites={len(enabled_sites)} "
         f"(enabled)"
     )
-
-    if not enabled_sites:
-        print("[NEWS WATCH] 有効なサイトがありません")
-        print("[NEWS WATCH] done")
-        sys.exit(0)
 
     # --------------------------------------------------
     # Firestore クライアント（DRY_RUNでない場合のみ）
@@ -465,6 +514,15 @@ def main():
                 f"Firestoreクライアント初期化エラー: {e}"
             )
             sys.exit(1)
+            
+    # 無効なサイトの状態を "disabled" に更新する
+    for s in disabled_sites:
+        save_site_state(db, s["id"], s.get("name", s["id"]), s.get("source_type", ""), False, "disabled", None, None, 0)
+
+    if not enabled_sites:
+        print("[NEWS WATCH] 有効なサイトがありません")
+        print("[NEWS WATCH] done")
+        sys.exit(0)
 
     # --------------------------------------------------
     # 各サイトを順番に処理

@@ -2028,6 +2028,20 @@ async def register_official_news(
         )
 
 
+
+    # === NEW: Update pending site_updates to registered ===
+    try:
+        updates_ref = db.collection("site_updates").where(filter=FieldFilter("url", "==", url)).where(filter=FieldFilter("status", "==", "pending")).stream()
+        for doc in updates_ref:
+            doc.reference.update({
+                "status": "registered",
+                "registered_at": firestore.SERVER_TIMESTAMP,
+                "knowledge_registered": True
+            })
+    except Exception as e:
+        print(f"Error updating site_updates status: {e}")
+    # ====================================================
+
     return (
         OfficialNewsRegisterResponse(
 
@@ -2282,3 +2296,92 @@ async def chat_endpoint(
                 "AI応答の生成中に"
                 "エラーが発生しました。"
         )
+# =========================================================
+# 情報ウォッチ管理API (GET /api/admin/site-updates)
+# =========================================================
+
+@app.get("/api/admin/site-updates")
+async def admin_site_updates_endpoint(http_request: Request):
+    require_admin(http_request)
+    
+    try:
+        state_docs = db.collection("site_watch_state").stream()
+        sources = []
+        for doc in state_docs:
+            data = doc.to_dict()
+            sources.append({
+                "source_id": data.get("source_id", ""),
+                "source_name": data.get("source_name", ""),
+                "status": data.get("last_status", "ok"),
+                "last_checked_at": data.get("last_checked_at"),
+                "unread_count": data.get("last_new_count", 0),
+                "enabled": data.get("enabled", True),
+                "last_error": data.get("last_error")
+            })
+
+        update_docs = (
+            db.collection("site_updates")
+            .where(filter=FieldFilter("status", "==", "pending"))
+            .limit(50)
+            .stream()
+        )
+        updates = []
+        for doc in update_docs:
+            data = doc.to_dict()
+            updates.append({
+                "source_name": data.get("source_name", ""),
+                "title": data.get("title", ""),
+                "url": data.get("url", ""),
+                "published_at": data.get("published_at", ""),
+                "detected_at": data.get("detected_at"),
+                "status": data.get("status", "")
+            })
+            
+        def sort_key(x):
+            return x.get("detected_at") or datetime.min.replace(tzinfo=timezone.utc)
+        updates.sort(key=sort_key, reverse=True)
+
+        return {
+            "sources": sources,
+            "updates": updates
+        }
+
+    except Exception as e:
+        print(f"Error fetching admin site updates: {e}")
+        raise HTTPException(status_code=500, detail="監視状況の取得中にエラーが発生しました。")
+
+
+# =========================================================
+# 情報ウォッチ公開API (GET /api/registered-updates)
+# =========================================================
+
+@app.get("/api/registered-updates")
+async def registered_updates_endpoint():
+    try:
+        update_docs = (
+            db.collection("site_updates")
+            .where(filter=FieldFilter("status", "==", "registered"))
+            .limit(20)
+            .stream()
+        )
+        updates = []
+        for doc in update_docs:
+            data = doc.to_dict()
+            updates.append({
+                "source_name": data.get("source_name", ""),
+                "title": data.get("title", ""),
+                "url": data.get("url", ""),
+                "published_at": data.get("published_at", ""),
+                "detected_at": data.get("detected_at")
+            })
+            
+        def sort_key(x):
+            return x.get("detected_at") or datetime.min.replace(tzinfo=timezone.utc)
+        updates.sort(key=sort_key, reverse=True)
+
+        return updates
+
+    except Exception as e:
+        print(f"Error fetching registered updates: {e}")
+        raise HTTPException(status_code=500, detail="情報の取得中にエラーが発生しました。")
+
