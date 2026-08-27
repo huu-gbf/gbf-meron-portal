@@ -1,0 +1,12 @@
+[
+  {
+    "id": "granblue_official",
+    "name": "グランブルーファンタジー公式",
+    "source_type": "official_news",
+    "url": "https://granbluefantasy.com/ja/news/",
+    "method": "playwright",
+    "adapter": "granblue_official",
+    "enabled": true,
+    "max_items": 25
+  }
+]
