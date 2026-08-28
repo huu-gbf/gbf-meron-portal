@@ -37,6 +37,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google.cloud import firestore
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 # =========================================================
 # 定数
@@ -121,15 +128,23 @@ def make_article_id_from_url(url: str) -> str:
 def load_adapter(adapter_name: str):
     """
     adapters/<adapter_name>.py をインポートして返す。
-    モジュールが存在しない場合は None を返す。
+    
+    戻り値:
+      (module, None) : 成功時
+      (None, "missing_adapter") : adapters/<adapter_name>.py 自体が存在しない
+      (None, f"missing dependency '{missing_name}'") : adapter内部依存ライブラリのインポートに失敗
     """
+    target_module = f"adapters.{adapter_name}"
     try:
-        module = importlib.import_module(
-            f"adapters.{adapter_name}"
-        )
-        return module
-    except ModuleNotFoundError:
-        return None
+        module = importlib.import_module(target_module)
+        return module, None
+    except ModuleNotFoundError as e:
+        if e.name == target_module:
+            return None, "missing_adapter"
+        missing_dep = e.name or "unknown"
+        return None, f"missing dependency '{missing_dep}'"
+    except Exception as e:
+        return None, f"import error: {e}"
 
 
 # =========================================================
@@ -140,40 +155,24 @@ def fetch_known_ids(
     db,
     source_id: str,
 ) -> set[str]:
-    """
-    指定されたsource_idの記事のうち、
-    すでにFirestoreに登録済みのarticle_idセットを返す。
-
-    エラー時は空セットを返す（全件を新着候補として扱う）。
-    document IDが冪等なため、重複しても上書きになるだけ。
-    """
-    try:
-        docs = (
-            db.collection(COLLECTION_NAME)
-            .where(
-                filter=firestore.FieldFilter(
-                    "source_id",
-                    "==",
-                    source_id,
-                )
+    docs = (
+        db.collection(COLLECTION_NAME)
+        .where(
+            filter=firestore.FieldFilter(
+                "source_id",
+                "==",
+                source_id,
             )
-            .select(["article_id"])
-            .stream()
         )
+        .select(["article_id"])
+        .stream()
+    )
 
-        return {
-            doc.to_dict().get("article_id", "")
-            for doc in docs
-            if doc.to_dict().get("article_id")
-        }
-
-    except Exception as e:
-        print(
-            f"[SITE] {source_id} "
-            f"Firestore既知ID取得エラー: {e}"
-        )
-        return set()
-
+    return {
+        doc.to_dict().get("article_id", "")
+        for doc in docs
+        if doc.to_dict().get("article_id")
+    }
 
 # =========================================================
 # Firestoreへ記事を保存
@@ -203,33 +202,21 @@ def save_article(
     doc_id = make_doc_id(source_id, article_id)
 
     doc_data = {
-        "source_id":
-            source_id,
-
-        "source_name":
-            article.get("source_name", ""),
-
-        "source_type":
-            article.get("source_type", ""),
-
-        "title":
-            article.get("title", ""),
-
-        "url":
-            article.get("url", ""),
-
-        "published_at":
-            article.get("published_at", ""),
-
-        "article_id":
-            article_id,
-
-        "status":
-            status,
-
-        "detected_at":
-            firestore.SERVER_TIMESTAMP,
+        "source_id": source_id,
+        "source_name": article.get("source_name", ""),
+        "source_type": article.get("source_type", ""),
+        "title": article.get("title", ""),
+        "url": article.get("url", ""),
+        "published_at": article.get("published_at", ""),
+        "article_id": article_id,
+        "status": status,
+        "detected_at": firestore.SERVER_TIMESTAMP,
     }
+    
+    if "video_id" in article:
+        doc_data["video_id"] = article["video_id"]
+    if "channel_id" in article:
+        doc_data["channel_id"] = article["channel_id"]
 
     (
         db.collection(COLLECTION_NAME)
@@ -245,6 +232,19 @@ def save_article(
 # Firestoreへ監視状態を保存 (site_watch_state)
 # =========================================================
 
+def fetch_site_state(db, source_id: str) -> dict:
+    if db is None or DRY_RUN:
+        return {}
+    try:
+        doc = db.collection("site_watch_state").document(source_id).get()
+        if doc.exists:
+            return doc.to_dict() or {}
+        return {}
+    except Exception as e:
+        print(f"[SITE] {source_id} 状態取得エラー: {e}")
+        return {}
+
+
 def save_site_state(
     db,
     source_id: str,
@@ -253,6 +253,7 @@ def save_site_state(
     enabled: bool,
     status: str,
     error_msg: str | None = None,
+    initialized: bool | None = None,
     latest_article: dict | None = None,
     new_count: int = 0,
 ) -> None:
@@ -278,6 +279,8 @@ def save_site_state(
         doc_data["latest_item_id"] = latest_article.get("article_id", "")
         
     doc_data["last_new_count"] = new_count
+    if initialized is not None:
+        doc_data["initialized"] = initialized
 
     try:
         db.collection("site_watch_state").document(source_id).set(
@@ -313,22 +316,50 @@ def process_site(
     print(f"[SITE] {source_id} method={method}")
 
     # --------------------------------------------------
+    # DRY_RUN 判定 (Playwrightサイトのスキップ)
+    # --------------------------------------------------
+    if DRY_RUN and method == "playwright":
+        print(f"[SITE] {source_id} [DRY RUN] playwright site fetch skipped")
+        print(f"[SITE] {source_id} gemini_calls=0")
+        print(f"[SITE] {source_id} done")
+        return
+
+    # --------------------------------------------------
     # adapterを読み込む
     # --------------------------------------------------
-    adapter = load_adapter(adapter_name)
+    adapter, load_err = load_adapter(adapter_name)
 
     if adapter is None:
-        msg = f"adapterが見つかりません: adapters/{adapter_name}.py"
+        if load_err == "missing_adapter":
+            msg = f"adapterが見つかりません: adapters/{adapter_name}.py"
+        else:
+            msg = f"adapter import failed: {load_err}"
         print(f"[SITE] {source_id} {msg}")
         print(f"[SITE] {source_id} skipped")
-        save_site_state(db, source_id, source_name, source_type, True, "error", msg)
+        save_site_state(
+            db=db,
+            source_id=source_id,
+            source_name=source_name,
+            source_type=source_type,
+            enabled=True,
+            status="error",
+            error_msg=msg,
+        )
         return
 
     if not hasattr(adapter, "fetch"):
         msg = f"adapters/{adapter_name}.py に fetch() が定義されていません"
         print(f"[SITE] {source_id} {msg}")
         print(f"[SITE] {source_id} skipped")
-        save_site_state(db, source_id, source_name, source_type, True, "error", msg)
+        save_site_state(
+            db=db,
+            source_id=source_id,
+            source_name=source_name,
+            source_type=source_type,
+            enabled=True,
+            status="error",
+            error_msg=msg,
+        )
         return
 
     # --------------------------------------------------
@@ -340,7 +371,15 @@ def process_site(
         msg = f"adapter.fetch() エラー: {e}"
         print(f"[SITE] {source_id} {msg}")
         print(f"[SITE] {source_id} done (error)")
-        save_site_state(db, source_id, source_name, source_type, True, "error", str(e))
+        save_site_state(
+            db=db,
+            source_id=source_id,
+            source_name=source_name,
+            source_type=source_type,
+            enabled=True,
+            status="error",
+            error_msg=str(e),
+        )
         return
 
     print(f"[SITE] {source_id} fetched={len(articles)}")
@@ -352,22 +391,64 @@ def process_site(
         )
         print(f"[SITE] {source_id} gemini_calls=0")
         print(f"[SITE] {source_id} done")
-        save_site_state(db, source_id, source_name, source_type, True, "ok", None, None, 0)
+        save_site_state(
+            db=db,
+            source_id=source_id,
+            source_name=source_name,
+            source_type=source_type,
+            enabled=True,
+            status="ok",
+            error_msg=None,
+            latest_article=None,
+            new_count=0,
+        )
         return
 
     # --------------------------------------------------
-    # 既知記事IDを取得
+    # 既知記事IDを取得とFail-Closed・初期化判定
     # --------------------------------------------------
+    initialized = False
     if DRY_RUN:
         known_ids: set[str] = set()
-        print(
-            f"[SITE] {source_id} "
-            f"[DRY RUN] Firestore問い合わせをスキップ"
-        )
+        print(f"[SITE] {source_id} [DRY RUN] Firestore問い合わせをスキップ")
     else:
-        known_ids = fetch_known_ids(db, source_id)
+        try:
+            known_ids = fetch_known_ids(db, source_id)
+            site_state = fetch_site_state(db, source_id)
+            initialized = site_state.get("initialized", False)
+            
+            # 移行ロジック: initialized未設定でもknown_idsがある場合は初期化済みとみなす
+            if not initialized and len(known_ids) > 0:
+                print(f"[SITE] {source_id} 既存データあり。初期化済みへ移行します")
+                initialized = True
+                save_site_state(
+                    db=db,
+                    source_id=source_id,
+                    source_name=source_name,
+                    source_type=source_type,
+                    enabled=True,
+                    status="ok",
+                    error_msg=None,
+                    initialized=True,
+                )
+                
+        except Exception as e:
+            msg = f"Firestore既知ID取得エラー (Fail-Closed): {e}"
+            print(f"[SITE] {source_id} {msg}")
+            print(f"[SITE] {source_id} done (error)")
+            save_site_state(
+                db=db,
+                source_id=source_id,
+                source_name=source_name,
+                source_type=source_type,
+                enabled=True,
+                status="error",
+                error_msg=msg,
+                initialized=initialized if initialized else None,
+            )
+            return
 
-    print(f"[SITE] {source_id} known={len(known_ids)}")
+    print(f"[SITE] {source_id} known={len(known_ids)} initialized={initialized}")
 
     # --------------------------------------------------
     # 新着判定
@@ -383,68 +464,80 @@ def process_site(
         print(f"[SITE] {source_id} 新着なし")
         print(f"[SITE] {source_id} gemini_calls=0")
         print(f"[SITE] {source_id} done")
-        save_site_state(db, source_id, source_name, source_type, True, "ok", None, articles[0] if articles else None, 0)
+        
+        # 新着なしでも、初回の場合は初期化完了とする
+        if not initialized and not DRY_RUN:
+            print(f"[SITE] {source_id} 初回seed完了(新着0)。初期化済みフラグをセットします")
+            initialized = True
+            
+        save_site_state(
+            db=db,
+            source_id=source_id,
+            source_name=source_name,
+            source_type=source_type,
+            enabled=True,
+            status="ok",
+            error_msg=None,
+            initialized=True if initialized else None,
+            latest_article=articles[0] if articles else None,
+            new_count=0,
+        )
         return
 
     # --------------------------------------------------
     # 新着ログ
     # --------------------------------------------------
     for article in new_articles:
-        print(
-            f"[SITE] {source_id} NEW: "
-            f"{article.get('title', '')} "
-            f"{article.get('url', '')}"
-        )
+        print(f"[SITE] {source_id} NEW: {article.get('title', '')} {article.get('url', '')}")
 
     # --------------------------------------------------
     # Firestoreへ保存
     # --------------------------------------------------
-    status = "seeded" if INITIAL_SEED_ONLY else "unread"
+    # 初期化されていない（かつ既存データもない）場合、またはINITIAL_SEED_ONLYの場合はseededとする
+    if (not initialized or INITIAL_SEED_ONLY) and not DRY_RUN:
+        status = "seeded"
+    else:
+        status = "pending"  # unreadからpendingへ変更
 
     saved_count = 0
     failed_count = 0
 
     for article in new_articles:
-
         if DRY_RUN:
-            print(
-                f"[SITE] {source_id} "
-                f"[DRY RUN] 保存スキップ: "
-                f"{article.get('title', '')}"
-            )
+            print(f"[SITE] {source_id} [DRY RUN] 保存スキップ: {article.get('title', '')}")
             continue
 
         try:
             save_article(db, article, status=status)
             saved_count += 1
-
-            article_id = article.get("article_id", "")
-            print(
-                f"[SITE] {source_id} "
-                f"saved: {source_id}_{article_id}"
-            )
-
+            print(f"[SITE] {source_id} saved: {source_id}_{article.get('article_id', '')}")
         except Exception as e:
             failed_count += 1
-            print(
-                f"[SITE] {source_id} "
-                f"保存失敗: "
-                f"{article.get('article_id', '')} - {e}"
-            )
+            print(f"[SITE] {source_id} 保存失敗: {article.get('article_id', '')} - {e}")
 
     if not DRY_RUN:
-        print(
-            f"[SITE] {source_id} "
-            f"saved_count={saved_count}"
-        )
+        print(f"[SITE] {source_id} saved_count={saved_count}")
         if failed_count > 0:
-            print(
-                f"[SITE] {source_id} "
-                f"failed_count={failed_count}"
-            )
+            print(f"[SITE] {source_id} failed_count={failed_count}")
             
     # 全体の処理結果を保存
-    save_site_state(db, source_id, source_name, source_type, True, "ok", None, articles[0] if articles else None, len(new_articles))
+    # 初回seedが正常に完了した（エラーなし）ならinitialized=Trueとする
+    if not initialized and not DRY_RUN and failed_count == 0:
+        print(f"[SITE] {source_id} 初回seed完了。初期化済みフラグをセットします")
+        initialized = True
+        
+    save_site_state(
+        db=db,
+        source_id=source_id,
+        source_name=source_name,
+        source_type=source_type,
+        enabled=True,
+        status="ok",
+        error_msg=None,
+        initialized=True if initialized else None,
+        latest_article=articles[0] if articles else None,
+        new_count=len(new_articles),
+    )
 
     print(f"[SITE] {source_id} gemini_calls=0")
     print(f"[SITE] {source_id} done")
@@ -517,7 +610,17 @@ def main():
             
     # 無効なサイトの状態を "disabled" に更新する
     for s in disabled_sites:
-        save_site_state(db, s["id"], s.get("name", s["id"]), s.get("source_type", ""), False, "disabled", None, None, 0)
+        save_site_state(
+            db=db,
+            source_id=s["id"],
+            source_name=s.get("name", s["id"]),
+            source_type=s.get("source_type", ""),
+            enabled=False,
+            status="disabled",
+            error_msg=None,
+            latest_article=None,
+            new_count=0,
+        )
 
     if not enabled_sites:
         print("[NEWS WATCH] 有効なサイトがありません")

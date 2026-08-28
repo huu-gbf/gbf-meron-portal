@@ -8,5 +8,16 @@
     "adapter": "granblue_official",
     "enabled": true,
     "max_items": 25
+  },
+  {
+    "id": "youtube_ucbc7w818zospu6otxsrenow",
+    "name": "YouTubeチャンネル",
+    "source_type": "youtube_creator",
+    "channel_id": "UCbC7w818ZosPu6OtXsrEnow",
+    "url": "https://www.youtube.com/channel/UCbC7w818ZosPu6OtXsrEnow/videos",
+    "method": "rss",
+    "adapter": "youtube_channel",
+    "enabled": true,
+    "max_items": 20
   }
 ]

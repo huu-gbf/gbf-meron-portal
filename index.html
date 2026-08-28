@@ -281,7 +281,7 @@
                 <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                   <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/08/28</span>
                   <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">新機能</span>
-                  <strong class="text-sm font-bold text-white">AIチャット機能を追加</strong>
+                  <strong class="text-sm font-bold text-white">AIチャット機能(未完成)</strong>
                 </div>
                 <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
                   団規約・編成共有・登録済み公式情報について質問できる「AI」ツールを追加しました。
@@ -1011,10 +1011,10 @@
     };
     const FIREBASE_VAPID_KEY = "YOUR_VAPID_PUBLIC_KEY";
 
-    // パスワードのSHA-256ハッシュ値（初期値: '[REMOVED]' のハッシュ）
-    // 平文のパスワードはコード内に持たせません
+    // パスワードのSHA-256ハッシュ値
+    // 平文パスワードはコード内に持たせません
     const CORRECT_HASH = 'cc1d9af0bb9ac07141c3c53cf5b2ced53876a1d1239756fbb77628424921ef0d';
-    // 管理人用パスワード（'[REMOVED]' のハッシュ）
+    // 管理人用パスワードのハッシュ
     const ADMIN_HASH = 'a7ea8f2832251e800e040ae0373732dfa2623b954e774c26a74d5c55ccc2da38';
     const STORAGE_KEY = 'gbf_crew_auth_hash';
     window.isAdmin = false;
@@ -1072,6 +1072,8 @@
       document.getElementById('portalScreen').classList.remove('hidden');
       initNavObserver();
       initNavAccordionSync();
+      // 認証成功後、1回だけregisteredUpdatesを取得する
+      loadRegisteredUpdatesOnce();
     }
 
     function showAuth() {
@@ -1525,6 +1527,103 @@
 
   
     
+  
+    // =========================================================
+    // AI登録済み情報の取得とUI構築
+    // =========================================================
+    function escapeHTML(str) {
+      return String(str).replace(/[&<>"']/g, function(match) {
+        return {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        }[match];
+      });
+    }
+
+    async function fetchRegisteredUpdates() {
+      const btn = document.getElementById("btn-refresh-registered");
+      const summary = document.getElementById("registered-summary-text");
+      const area = document.getElementById("registered-content-area");
+      
+      if(btn) btn.disabled = true;
+      if(area) area.innerHTML = '<div class="text-center text-slate-400 py-8"><span class="animate-pulse">取得中...</span></div>';
+      
+      try {
+        const response = await fetch("https://meron-ai-api-281908486591.asia-northeast1.run.app/api/registered-updates");
+        if (!response.ok) throw new Error("Network response was not ok");
+        
+        const updates = await response.json();
+        
+        if (updates.length > 0) {
+          if(summary) summary.innerHTML = `登録済み情報を表示 <span class="ml-4 text-sm font-bold text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">🆕 ${updates.length}件</span>`;
+        } else {
+          if(summary) summary.innerHTML = `登録済み情報を表示 <span class="ml-4 text-sm font-normal text-slate-400">新着なし</span>`;
+        }
+        
+        if (updates.length > 0) {
+          let html = '<div class="space-y-3">';
+          updates.forEach(upd => {
+            let dateStr = '';
+            if (upd.published_at) {
+                dateStr = upd.published_at;
+            } else if (upd.detected_at) {
+                const dt = new Date(upd.detected_at);
+                dateStr = `${dt.getFullYear()}/${(dt.getMonth()+1).toString().padStart(2, '0')}/${dt.getDate().toString().padStart(2, '0')}`;
+            }
+            
+            const isYouTube = upd.url.includes("youtube.com") || upd.url.includes("youtu.be") || upd.source_type === "youtube_creator";
+            const openLabel = isYouTube ? "動画を開く →" : "元記事を開く →";
+            const badgeColor = isYouTube ? "bg-red-500/20 text-red-300" : "bg-blue-500/20 text-blue-300";
+            const prefix = isYouTube ? "[YouTube] " : "";
+            
+            html += `
+              <div class="flex items-start gap-3 p-4 rounded-lg bg-slate-900/50 border border-slate-800/80 hover:bg-slate-800/50 transition">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 ${badgeColor} rounded">${prefix}${escapeHTML(upd.source_name)}</span>
+                    <span class="text-[10px] font-bold px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">AI知識へ登録済み</span>
+                  </div>
+                  <div class="text-sm font-bold text-slate-200 mb-2 break-words">${escapeHTML(upd.title)}</div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono text-slate-400">${dateStr}</span>
+                    <a href="${escapeHTML(upd.url)}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-purple-400 hover:text-purple-300 transition block">${openLabel}</a>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+          if(area) area.innerHTML = html;
+        } else {
+          if(area) area.innerHTML = '<div class="text-center text-slate-400 py-8">現在、新しいAI登録済み情報はありません</div>';
+        }
+        
+      } catch (e) {
+        console.error(e);
+        if(summary) summary.innerHTML = `登録済み情報を表示 <span class="ml-4 text-sm font-normal text-rose-400">❌ 取得エラー</span>`;
+        if(area) area.innerHTML = '<div class="text-center text-rose-400 py-8">情報を取得できませんでした</div>';
+      } finally {
+        if(btn) btn.disabled = false;
+      }
+    }
+    
+    // 認証成功後、1回だけregistered情報を取得する
+    let registeredUpdatesLoaded = false;
+    async function loadRegisteredUpdatesOnce() {
+      if (registeredUpdatesLoaded) return;
+      registeredUpdatesLoaded = true;
+      await fetchRegisteredUpdates();
+    }
+
+    // DOMContentLoaded時は認証不要の自動呼び出しを行わない
+    // showPortal() → loadRegisteredUpdatesOnce() ルートで認証後に呼ぶ
+    document.addEventListener("DOMContentLoaded", () => {
+      // 認証状態の初期化のみ。registeredの取得は行わない
+    });
+
   </script>
 </body>
 </html>
