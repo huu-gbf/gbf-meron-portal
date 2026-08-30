@@ -1074,6 +1074,9 @@
       initNavAccordionSync();
       // 認証成功後、1回だけregisteredUpdatesを取得する
       loadRegisteredUpdatesOnce();
+      // アクセス解析: 認証成功後にfire-and-forgetで記録
+      // 失敗してもポータル本体へ影響しない
+      recordVisit();
     }
 
     function showAuth() {
@@ -1623,6 +1626,78 @@
     document.addEventListener("DOMContentLoaded", () => {
       // 認証状態の初期化のみ。registeredの取得は行わない
     });
+
+    // =========================================================
+    // アクセス解析用 匿名訪問者ID管理
+    //
+    // AI用の X-Client-Id（ai-chat.html）とは完全に分離。
+    // ブラウザ側: localStorage に保存（ランダム生成UUID）
+    // サーバー側: SHA-256でハッシュ化して保存（生値は保存しない）
+    // =========================================================
+    const VISIT_ID_STORAGE_KEY = 'meron_visitor_id';
+
+    function getOrCreateVisitorId() {
+      try {
+        let id = localStorage.getItem(VISIT_ID_STORAGE_KEY);
+        // 既存IDが正しい形式かチェック（英数字・ハイフンのみ、32〜64文字）
+        if (id && /^[A-Za-z0-9\-]{32,64}$/.test(id)) {
+          return id;
+        }
+        // 新規生成: Web Crypto API を優先使用
+        if (
+          typeof crypto !== 'undefined' &&
+          typeof crypto.randomUUID === 'function'
+        ) {
+          id = crypto.randomUUID(); // 36文字のUUID形式
+        } else if (
+          typeof crypto !== 'undefined' &&
+          crypto.getRandomValues
+        ) {
+          // フォールバック: 32バイトのランダム値をhex化
+          const arr = new Uint8Array(24);
+          crypto.getRandomValues(arr);
+          id = Array.from(arr)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+        } else {
+          // 最終フォールバック: 匿名として扱う
+          return 'anonymous-fallback';
+        }
+        localStorage.setItem(VISIT_ID_STORAGE_KEY, id);
+        return id;
+      } catch {
+        // localStorage アクセスエラー等は anonymous にフォールバック
+        return 'anonymous';
+      }
+    }
+
+    // 同一ページ表示中の重複POST防止フラグ
+    let _visitRecorded = false;
+
+    async function recordVisit() {
+      // 同じページ表示中に複数回呼ばれても1回だけ記録する
+      if (_visitRecorded) return;
+      _visitRecorded = true;
+
+      try {
+        const visitorId = getOrCreateVisitorId();
+        // fire-and-forget: レスポンスはチェックしない
+        // タイムアウト・ネットワークエラーでもポータルへ影響しない
+        fetch(
+          'https://meron-ai-api-281908486591.asia-northeast1.run.app/api/visit',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visitor_id: visitorId }),
+            // AbortController は使わない（fire-and-forgetのため）
+          }
+        ).catch(() => {
+          // ネットワークエラーは静かに無視する
+        });
+      } catch {
+        // visitorId生成エラー等も静かに無視する
+      }
+    }
 
   </script>
 </body>

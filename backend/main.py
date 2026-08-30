@@ -149,6 +149,21 @@ MAX_MESSAGE_LENGTH = int(
 
 
 # =========================================================
+# アクセス解析設定
+#
+# Cloud Runの環境変数から変更できます。
+# Gemini呼び出し 0回、Embedding 0回 を保証。
+# =========================================================
+
+VISIT_DAILY_PV_CAP = int(
+    os.getenv(
+        "VISIT_DAILY_PV_CAP",
+        "2000"  # 1日あたりの最大PV記録数（荒らし対策上限）
+    )
+)
+
+
+# =========================================================
 # 日本時間
 # =========================================================
 
@@ -375,6 +390,25 @@ class YouTubeRegisterRequest(BaseModel):
     channel_id: str = Field(..., max_length=100)
     video_id: str = Field(..., max_length=50)
     site_update_id: str = Field(..., max_length=100)
+
+
+class SiteUpdateIgnoreRequest(BaseModel):
+    site_update_id: str = Field(..., max_length=200)
+
+
+# =========================================================
+# アクセス解析 リクエストモデル
+# =========================================================
+
+class VisitRequest(
+    BaseModel
+):
+    # ブラウザが生成したランダム匿名ID
+    # サーバー側でSHA-256ハッシュ化するため生値は保存しない
+    visitor_id: str = Field(
+        default="",
+        max_length=120
+    )
 
 # =========================================================
 # 利用制限用例外
@@ -2430,6 +2464,117 @@ async def admin_site_updates_endpoint(http_request: Request):
 
 
 # =========================================================
+# 管理API: 「AIに教えない」(POST /api/admin/site-updates/ignore)
+# =========================================================
+
+_SITE_UPDATE_ID_RE = re.compile(r"^[A-Za-z0-9_\-]{1,200}$")
+
+
+def _validate_site_update_id(raw: str) -> str:
+    """
+    site_update_id をFirestoreドキュメントIDとして安全に使えるか検証する。
+
+    - 文字列であること
+    - 空文字禁止
+    - 長さ上限 200文字
+    - '/' を含むIDは拒否（パストラバーサル防止）
+    - 改行・制御文字を拒否
+    - 英数字 / _ / - のみ許可
+    """
+    if not isinstance(raw, str):
+        raise HTTPException(status_code=400, detail="site_update_idは文字列で指定してください。")
+    value = raw.strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="site_update_idが空です。")
+    if len(value) > 200:
+        raise HTTPException(status_code=400, detail="site_update_idが長すぎます。")
+    if "/" in value:
+        raise HTTPException(status_code=400, detail="site_update_idに '/' を含めることはできません。")
+    if not _SITE_UPDATE_ID_RE.fullmatch(value):
+        raise HTTPException(status_code=400, detail="site_update_idに使用できない文字が含まれています。")
+    return value
+
+
+@app.post("/api/admin/site-updates/ignore")
+async def ignore_site_update_endpoint(
+    request: SiteUpdateIgnoreRequest,
+    http_request: Request,
+):
+    """
+    pendingな site_updates ドキュメントを ignored に変更する。
+
+    - Gemini API を一切呼ばない
+    - Embedding を一切生成しない
+    - knowledge コレクションへの書き込みは行わない
+    - registered / seeded ドキュメントは変更しない
+    - すでに ignored なら idempotent に成功を返す
+    """
+    require_admin(http_request)
+
+    # ---- 入力検証 ----
+    site_update_id = _validate_site_update_id(request.site_update_id)
+
+    # ---- Firestore 取得 ----
+    try:
+        doc_ref = db.collection("site_updates").document(site_update_id)
+        doc = doc_ref.get()
+    except Exception as e:
+        print(f"[IGNORE] Firestore取得エラー: {e}")
+        raise HTTPException(status_code=500, detail="データ取得中にエラーが発生しました。")
+
+    if not doc.exists:
+        raise HTTPException(
+            status_code=404,
+            detail="指定された情報が見つかりません。"
+        )
+
+    data = doc.to_dict() or {}
+    current_status = data.get("status", "")
+
+    # ---- すでに ignored なら冪等成功 ----
+    if current_status == "ignored":
+        print(f"[IGNORE] {site_update_id} already ignored")
+        return {
+            "ok": True,
+            "site_update_id": site_update_id,
+            "status": "ignored",
+            "already_ignored": True,
+        }
+
+    # ---- registered / seeded は変更しない ----
+    if current_status in ("registered", "seeded"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"status='{current_status}' の情報は無視できません。"
+        )
+
+    # ---- pending 以外（予期しない状態）は拒否 ----
+    if current_status != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"status='{current_status}' の情報は無視できません。"
+        )
+
+    # ---- pending -> ignored 更新 (Gemini/Embedding 呼び出しなし) ----
+    try:
+        doc_ref.update({
+            "status": "ignored",
+            "ignored_at": firestore.SERVER_TIMESTAMP,
+            "ignored_by": "admin",
+        })
+    except Exception as e:
+        print(f"[IGNORE] Firestore更新エラー: {e}")
+        raise HTTPException(status_code=500, detail="データ更新中にエラーが発生しました。")
+
+    print(f"[IGNORE] {site_update_id} pending -> ignored")
+    return {
+        "ok": True,
+        "site_update_id": site_update_id,
+        "status": "ignored",
+    }
+
+
+# =========================================================
 # 情報ウォッチ公開API (GET /api/registered-updates)
 # =========================================================
 
@@ -3239,3 +3384,349 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
         print(f"Batch commit error: {e}")
         raise HTTPException(status_code=500, detail="AI知識への一括登録時にエラーが発生しました。")
 
+
+# =========================================================
+# アクセス解析 公開API
+# POST /api/visit
+#
+# 一般ユーザーが認証成功後に呼ぶ。管理キー不要。
+# - Gemini呼び出し 0回
+# - Embedding 0回
+# - IPアドレス保存なし
+# - visitor_idの生値をFirestoreへ保存しない（サーバー側でSHA-256）
+# - 失敗しても必ず200を返してフロントを壊さない
+#
+# Firestoreコレクション（既存コレクションとは完全分離）:
+#   visit_stats/totals_global        累計PV・累計ユニーク
+#   visit_stats/daily_YYYYMMDD       日次PV
+#     └ visitors/{hash32}            日次ユニーク判定
+#   visit_all_visitors/{hash32}      累計ユニーク判定
+# =========================================================
+
+@app.post("/api/visit")
+async def visit_endpoint(
+    request: VisitRequest,
+    http_request: Request,
+):
+    """
+    ページ訪問記録API。
+    アクセス失敗時もポータルを止めないよう、
+    例外はすべてログに留めて 200 を返す。
+    """
+    try:
+        # --------------------------------------------------
+        # 1. 匿名IDの正規化（normalize_client_id を再利用）
+        #    → 不正文字・過長IDは "anonymous" が返る
+        # --------------------------------------------------
+        raw_id = (request.visitor_id or "").strip()
+        client_id = normalize_client_id(raw_id)
+
+        # --------------------------------------------------
+        # [修正] 不正なvisitor_idは記録しない
+        #   normalize_client_id() が "anonymous" を返した場合、
+        #   Firestoreへの書き込みを一切行わずに正常終了する。
+        #   固定文字列 "anonymous" を Firestore へ保存しない。
+        # --------------------------------------------------
+        if client_id == "anonymous":
+            return {"status": "ok"}
+
+        # --------------------------------------------------
+        # 2. サーバー側SHA-256ハッシュ化（hash_client_id を再利用）
+        #    → 32文字hexのみをFirestoreドキュメントIDとして使用
+        #    → 生IDは保存しない
+        # --------------------------------------------------
+        hashed = hash_client_id(client_id)
+
+        # --------------------------------------------------
+        # 3. JST日付キー（"YYYYMMDD" 形式）
+        # --------------------------------------------------
+        now = datetime.now(JST)
+        day_key = now.strftime("%Y%m%d")
+
+        # --------------------------------------------------
+        # 4. Firestoreリファレンス
+        #    ドキュメントIDは [a-z0-9_]{8,} または [a-f0-9]{32} のみ
+        # --------------------------------------------------
+        daily_ref = (
+            db.collection("visit_stats")
+            .document(f"daily_{day_key}")
+        )
+        visitor_ref = (
+            daily_ref
+            .collection("visitors")
+            .document(hashed)
+        )
+        totals_ref = (
+            db.collection("visit_stats")
+            .document("totals_global")
+        )
+        all_visitor_ref = (
+            db.collection("visit_all_visitors")
+            .document(hashed)
+        )
+
+        # --------------------------------------------------
+        # 5. [修正] Firestore Transaction で競合安全な初回判定
+        #
+        #    daily_YYYYMMDD/visitors/{hash} と
+        #    visit_all_visitors/{hash} の両方を1トランザクションで
+        #    原子的にチェック・作成する。
+        #
+        #    「同一visitor_idのほぼ同時2リクエスト」が来ても、
+        #    Firestore が楽観的ロックで競合を検出し、
+        #    一方のみが「新規」として処理される（他方はリトライ）。
+        #
+        #    result タプル: (is_new_today, is_brand_new_ever)
+        # --------------------------------------------------
+        @firestore.transactional
+        def _check_and_register(
+            txn,
+            v_ref,      # daily visitors/{hash}
+            a_ref,      # visit_all_visitors/{hash}
+            t_ref,      # visit_stats/totals_global
+            d_key,      # day_key string
+        ):
+            v_snap = v_ref.get(transaction=txn)
+            a_snap = a_ref.get(transaction=txn)
+
+            new_today = not v_snap.exists
+            new_ever = not a_snap.exists
+
+            if new_today:
+                # 今日初回: 日次訪問を記録
+                txn.set(v_ref, {"first_seen": firestore.SERVER_TIMESTAMP})
+
+            if new_ever:
+                # 累計初来訪: 全期間ユニークを記録＋カウンタ加算
+                txn.set(
+                    a_ref,
+                    {"first_seen": firestore.SERVER_TIMESTAMP},
+                )
+                txn.set(
+                    t_ref,
+                    {"total_unique_visitors": firestore.Increment(1)},
+                    merge=True,
+                )
+
+            return new_today, new_ever
+
+        txn = db.transaction()
+        is_new_today, is_brand_new = _check_and_register(
+            txn,
+            visitor_ref,
+            all_visitor_ref,
+            totals_ref,
+            day_key,
+        )
+
+        # --------------------------------------------------
+        # 6. 荒らし防御: 1日のPV上限チェック
+        #    新規ユニーク訪問者は上限を超えても記録する
+        #    2回目以降のPVのみ上限でカット
+        # --------------------------------------------------
+        if not is_new_today:
+            daily_snap = daily_ref.get()
+            daily_data = (
+                daily_snap.to_dict() or {}
+                if daily_snap.exists
+                else {}
+            )
+            current_pv = int(daily_data.get("page_views", 0))
+            if current_pv >= VISIT_DAILY_PV_CAP:
+                print(
+                    f"[VISIT] Daily PV cap reached: "
+                    f"day={day_key} pv={current_pv}"
+                )
+                return {"status": "ok"}
+
+        # --------------------------------------------------
+        # 7. Firestoreバッチ書き込み（PVカウント）
+        #
+        #    daily page_views と total_page_views のインクリメントは
+        #    競合安全なアトミック加算のため Transaction 不要。
+        #    Batch でまとめて書く。
+        #
+        #    新規ユニーク（初来訪）: Transaction + 2writes (PV)
+        #    同日2回目以降        : 1read (cap) + 2writes (PV)
+        # --------------------------------------------------
+        batch = db.batch()
+
+        # 常時: 日次PV加算（ドキュメントなければ自動作成）
+        batch.set(
+            daily_ref,
+            {
+                "date": day_key,
+                "page_views": firestore.Increment(1),
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+        # 常時: 累計PV加算
+        batch.set(
+            totals_ref,
+            {
+                "total_page_views": firestore.Increment(1),
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+        batch.commit()
+
+        print(
+            f"[VISIT] recorded "
+            f"day={day_key} "
+            f"new_today={is_new_today} "
+            f"brand_new={is_brand_new}"
+        )
+
+    except Exception as e:
+        # エラーはログに出すがフロントには影響させない
+        print(f"[VISIT] error: {e}")
+
+    return {"status": "ok"}
+
+
+
+# =========================================================
+# アクセス解析 管理者API
+# GET /api/admin/visit-stats
+#
+# require_admin() により X-Admin-Key が必須。
+# 一般ユーザーは絶対に取得できない。
+# - Gemini呼び出し 0回
+# - Embedding 0回
+# - 7日/30日はIDの union（重複除外）で計算
+# =========================================================
+
+@app.get("/api/admin/visit-stats")
+async def visit_stats_endpoint(
+    http_request: Request,
+):
+    """管理者専用アクセス統計API。"""
+    require_admin(http_request)
+
+    try:
+        now = datetime.now(JST)
+
+        # --------------------------------------------------
+        # 累計PV・累計ユニーク（1 read）
+        # --------------------------------------------------
+        totals_snap = (
+            db.collection("visit_stats")
+            .document("totals_global")
+            .get()
+        )
+        totals = (
+            totals_snap.to_dict() or {}
+            if totals_snap.exists
+            else {}
+        )
+        total_pv = int(totals.get("total_page_views", 0))
+        total_unique = int(
+            totals.get("total_unique_visitors", 0)
+        )
+        last_updated_raw = totals.get("updated_at")
+
+        # --------------------------------------------------
+        # 過去30日の日付リスト（今日から遡る）
+        # --------------------------------------------------
+        days_30 = [
+            (now - timedelta(days=i)).strftime("%Y%m%d")
+            for i in range(30)
+        ]
+        today_key = days_30[0]
+        yesterday_key = days_30[1]
+
+        # --------------------------------------------------
+        # 今日・昨日のPV（2 reads）
+        # --------------------------------------------------
+        today_snap = (
+            db.collection("visit_stats")
+            .document(f"daily_{today_key}")
+            .get()
+        )
+        yesterday_snap = (
+            db.collection("visit_stats")
+            .document(f"daily_{yesterday_key}")
+            .get()
+        )
+        today_pv = int(
+            (today_snap.to_dict() or {}).get("page_views", 0)
+            if today_snap.exists
+            else 0
+        )
+        yesterday_pv = int(
+            (yesterday_snap.to_dict() or {}).get("page_views", 0)
+            if yesterday_snap.exists
+            else 0
+        )
+
+        # --------------------------------------------------
+        # 30日間の visitors subcollection を一括 stream
+        # 7日・30日のユニーク人数を重複除外で計算
+        # 小規模（30名）なら最大900ドキュメント程度で無料枠内
+        # --------------------------------------------------
+        seen_today: set[str] = set()
+        seen_yesterday: set[str] = set()
+        seen_7: set[str] = set()
+        seen_30: set[str] = set()
+
+        for i, day in enumerate(days_30):
+            visitors_ref = (
+                db.collection("visit_stats")
+                .document(f"daily_{day}")
+                .collection("visitors")
+            )
+            for doc in visitors_ref.stream():
+                hid = doc.id
+                seen_30.add(hid)
+                if i < 7:
+                    seen_7.add(hid)
+                if i == 0:
+                    seen_today.add(hid)
+                elif i == 1:
+                    seen_yesterday.add(hid)
+
+        # --------------------------------------------------
+        # 最終更新日時の整形
+        # --------------------------------------------------
+        if (
+            last_updated_raw is not None
+            and hasattr(last_updated_raw, "astimezone")
+        ):
+            updated_str = (
+                last_updated_raw.astimezone(JST).isoformat()
+            )
+        else:
+            updated_str = now.isoformat()
+
+        return {
+            "today": {
+                "unique_visitors": len(seen_today),
+                "page_views": today_pv,
+            },
+            "yesterday": {
+                "unique_visitors": len(seen_yesterday),
+                "page_views": yesterday_pv,
+            },
+            "last_7_days": {
+                "unique_visitors": len(seen_7),
+            },
+            "last_30_days": {
+                "unique_visitors": len(seen_30),
+            },
+            "total": {
+                "unique_visitors": total_unique,
+                "page_views": total_pv,
+            },
+            "last_updated": updated_str,
+        }
+
+    except Exception as e:
+        print(f"[VISIT STATS] error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="アクセス統計の取得中にエラーが発生しました。",
+        )
