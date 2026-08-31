@@ -21,6 +21,7 @@ from pydantic import (
     BaseModel,
     Field,
     ConfigDict,
+    StrictBool,
 )
 
 from google import genai
@@ -264,6 +265,18 @@ app.add_middleware(
 # =========================================================
 # API形式
 # =========================================================
+
+class SourceSettingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool
+
+
+class SourceSettingResponse(BaseModel):
+    source_type: str
+    display_name: str
+    enabled: bool
+    configured: bool
+
 
 class ChatRequest(
     BaseModel
@@ -1487,6 +1500,18 @@ def save_official_news_summary(
 # Firestore RAG検索
 # =========================================================
 
+def is_valid_source_type(stype: str) -> bool:
+    if not isinstance(stype, str):
+        return False
+    if not stype:
+        return False
+    if len(stype) > 64:
+        return False
+    if not re.fullmatch(r"^[a-z0-9][a-z0-9_-]{0,63}$", stype):
+        return False
+    return True
+
+
 def search_knowledge_base(
     query_text: str
 ) -> tuple[str, list[dict]]:
@@ -1498,6 +1523,7 @@ def search_knowledge_base(
                 query_text
             )
         )
+
 
 
         collection_ref = (
@@ -1533,16 +1559,46 @@ def search_knowledge_base(
 
         candidates = []
 
-
         now_utc = datetime.now(timezone.utc)
+        
+        candidate_docs = list(results.get())
+        
+        unique_source_types = set()
+        for doc in candidate_docs:
+            stype = (doc.to_dict() or {}).get("source_type")
+            if stype is not None:
+                if is_valid_source_type(stype):
+                    unique_source_types.add(stype)
+                
+        source_settings = {}
+        fetch_failed = False
+        if unique_source_types:
+            settings_refs = [
+                db.collection("knowledge_source_settings").document(stype)
+                for stype in unique_source_types
+            ]
+            try:
+                settings_docs = db.get_all(settings_refs)
+                for s_doc in settings_docs:
+                    if s_doc.exists:
+                        s_data = s_doc.to_dict() or {}
+                        enabled = s_data.get("enabled")
+                        if not isinstance(enabled, bool):
+                            print(f"[RAG source設定異常] {s_doc.id} enabled is not bool. Safely disabled.")
+                            enabled = False
+                        source_settings[s_doc.id] = enabled
+                    else:
+                        source_settings[s_doc.id] = True
+            except Exception as e:
+                print(f"[RAG] Failed to fetch source settings: {e}")
+                # フェッチ失敗時は安全側に全てOFFとする(フェイルクローズ)
+                fetch_failed = True
 
-
-        for doc in results.get():
+        for doc in candidate_docs:
 
             doc_data = (
                 doc.to_dict()
             )
-
 
             distance = (
                 doc_data.get(
@@ -1550,14 +1606,27 @@ def search_knowledge_base(
                 )
             )
 
-
             if distance is None:
                 continue
-
 
             if doc_data.get("active", True) is False:
                 print(f"[RAG除外] {doc.id} (inactive)")
                 continue
+                
+            stype = doc_data.get("source_type")
+            if stype is not None:
+                if not is_valid_source_type(stype):
+                    print(f"[RAG除外] {doc.id} (invalid source_type: {stype})")
+                    continue
+                
+                if fetch_failed:
+                    print(f"[RAG除外] {doc.id} (source settings fetch failed)")
+                    continue
+                
+                is_source_enabled = source_settings.get(stype, True) # 設定未登録ならデフォルトON
+                if not is_source_enabled:
+                    print(f"[RAG除外] {doc.id} (source disabled: {stype})")
+                    continue
 
             # valid_from 判定 (壊れたデータは安全に除外、now < valid_from なら期間外除外)
             valid_from_val = doc_data.get("valid_from")
@@ -3970,4 +4039,94 @@ def update_knowledge_expiration(doc_id: str, request: KnowledgeExpirationUpdate,
     except Exception as e:
         print(f"Error updating knowledge expiration: {e}")
         raise HTTPException(status_code=500, detail="有効期限の更新に失敗しました。")
+
+
+SOURCE_DISPLAY_NAMES = {
+    "official_summary": "公式ニュース",
+    "official_news": "公式ニュース(Raw)",
+    "youtube_summary": "YouTube要約",
+    "youtube_creator": "YouTubeクリエイター",
+    "formation": "編成共有",
+    "file": "ファイル",
+    "web": "Web",
+    "crew_rules": "団ルール",
+    "strategy_site": "攻略サイト",
+}
+
+
+@app.get("/api/admin/knowledge/source-settings")
+def get_source_settings(http_request: Request):
+    require_admin(http_request)
+    
+    try:
+        settings_ref = db.collection("knowledge_source_settings")
+        settings_docs = settings_ref.stream()
+        
+        settings_map = {}
+        for doc in settings_docs:
+            if not is_valid_source_type(doc.id):
+                print(f"[RAG source設定異常] Invalid source_type in doc id: {doc.id}")
+                continue
+                
+            data = doc.to_dict() or {}
+            enabled = data.get("enabled")
+            if not isinstance(enabled, bool):
+                enabled = False
+            settings_map[doc.id] = {
+                "enabled": enabled,
+                "configured": True,
+            }
+            
+        all_types = set(SOURCE_DISPLAY_NAMES.keys()).union(set(settings_map.keys()))
+        
+        try:
+            knowledge_docs = db.collection("knowledge").select(["source_type"]).limit(200).stream()
+            for kdoc in knowledge_docs:
+                k_data = kdoc.to_dict() or {}
+                k_stype = k_data.get("source_type")
+                if k_stype and is_valid_source_type(k_stype):
+                    all_types.add(k_stype)
+        except Exception as ke:
+            print(f"Error fetching knowledge for source_types: {ke}")
+        
+        results = []
+        for stype in sorted(all_types):
+            info = settings_map.get(stype, {"enabled": True, "configured": False})
+            results.append(SourceSettingResponse(
+                source_type=stype,
+                display_name=SOURCE_DISPLAY_NAMES.get(stype, stype),
+                enabled=info["enabled"],
+                configured=info["configured"],
+            ))
+            
+        return {"status": "ok", "items": [r.model_dump() for r in results]}
+        
+    except Exception as e:
+        print(f"Error fetching source settings: {e}")
+        raise HTTPException(status_code=500, detail="情報ソース設定の取得に失敗しました。")
+
+
+@app.patch("/api/admin/knowledge/source-settings/{source_type}")
+def update_source_setting(source_type: str, request: SourceSettingUpdate, http_request: Request):
+    require_admin(http_request)
+    
+    if not source_type or len(source_type) > 64:
+        raise HTTPException(status_code=400, detail="不正な source_type です。")
+        
+    if not re.fullmatch(r"^[a-z0-9][a-z0-9_-]{0,63}$", source_type):
+        raise HTTPException(status_code=400, detail="source_type の形式が不正です。")
+        
+    try:
+        doc_ref = db.collection("knowledge_source_settings").document(source_type)
+        
+        doc_ref.set({
+            "enabled": request.enabled,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        }, merge=True)
+        
+        return {"status": "ok", "message": f"「{source_type}」の設定を更新しました。"}
+        
+    except Exception as e:
+        print(f"Error updating source setting for {source_type}: {e}")
+        raise HTTPException(status_code=500, detail="情報ソース設定の更新に失敗しました。")
 

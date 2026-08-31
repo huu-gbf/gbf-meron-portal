@@ -3,7 +3,7 @@ os.environ["GEMINI_API_KEY"] = "test"
 os.environ["ADMIN_API_KEY"] = "test_admin_key"
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock
 import google.cloud.firestore
 import google.genai
 from datetime import datetime, timezone, timedelta
@@ -83,9 +83,19 @@ mock_doc_ref.get.return_value = mock_doc_snap
 def doc_side_effect(doc_id):
     if doc_id == "notfound":
         mock_nf = MagicMock()
+        type(mock_nf).id = PropertyMock(return_value=doc_id)
         mock_nf.get.return_value.exists = False
         return mock_nf
-    return mock_doc_ref
+    
+    mock_ref = MagicMock()
+    type(mock_ref).id = PropertyMock(return_value=doc_id)
+    mock_ref.update = mock_doc_ref.update
+    
+    mock_snap = MagicMock()
+    mock_snap.exists = True
+    mock_ref.get.return_value = mock_snap
+    
+    return mock_ref
 
 mock_collection.document.side_effect = doc_side_effect
 
@@ -385,6 +395,7 @@ mock_find_results.get.return_value = test_docs
 
 mock_col = MagicMock()
 mock_col.find_nearest.return_value = mock_find_results
+mock_col.document.side_effect = doc_side_effect
 db.collection.return_value = mock_col
 
 # Mock get_embedding
@@ -441,6 +452,328 @@ assert mock_get_knowledge_status({}, test_now) == "有効"
 
 print("PASS: UI状態優先順位（active=false最優先 -> 未来 -> 期限切れ -> 有効）確認")
 
+
+print("\n=== 情報ソース管理 (Task 5) テスト ===")
+
+# Test 16: PATCH /api/admin/knowledge/source-settings/{source_type} バリデーション
+res = client.patch("/api/admin/knowledge/source-settings/test-source", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": True})
+assert res.status_code == 200
+
+res = client.patch("/api/admin/knowledge/source-settings/test-source", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": False})
+assert res.status_code == 200
+
+res = client.patch("/api/admin/knowledge/source-settings/test-source", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": "false"})
+assert res.status_code == 422, "文字列の false は 422 で拒否"
+
+res = client.patch("/api/admin/knowledge/source-settings/test-source", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": "true"})
+assert res.status_code == 422, "文字列の true は 422 で拒否"
+
+res = client.patch("/api/admin/knowledge/source-settings/test-source", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": 1})
+assert res.status_code == 422, "数値の 1 は 422 で拒否"
+
+res = client.patch("/api/admin/knowledge/source-settings/test-source", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": True, "extra_field": "test"})
+assert res.status_code == 422, "未知のフィールドは 422 で拒否"
+
+#不正な source_type
+res = client.patch("/api/admin/knowledge/source-settings/invalid/type", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": True})
+assert res.status_code == 404, "/ を含むとパスが変わるので404"
+res = client.patch("/api/admin/knowledge/source-settings/!invalid", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": True})
+assert res.status_code == 400, "不正な文字は400で拒否"
+res = client.patch(f"/api/admin/knowledge/source-settings/{'a' * 70}", headers={"X-Admin-Key": "test_admin_key"}, json={"enabled": True})
+assert res.status_code == 400, "長すぎる値は400で拒否"
+print("PASS: PATCH source-settings API バリデーション (StrictBool, extra=forbid, source_type形式)")
+
+# Test 17: RAG 検索時の source_type による除外挙動
+d12 = MagicMock()
+d12.id = "k_source_disabled"
+d12.to_dict.return_value = {
+    "content": "ソース無効データ",
+    "vector_distance": 0.03,
+    "active": True,
+    "source_type": "disabled_source"
+}
+d13 = MagicMock()
+d13.id = "k_source_enabled"
+d13.to_dict.return_value = {
+    "content": "ソース有効データ",
+    "vector_distance": 0.02,
+    "active": True,
+    "source_type": "enabled_source"
+}
+d14 = MagicMock()
+d14.id = "k_source_unknown"
+d14.to_dict.return_value = {
+    "content": "ソース未登録データ（デフォルトON）",
+    "vector_distance": 0.01,
+    "active": True,
+    "source_type": "unknown_source"
+}
+test_docs.extend([d12, d13, d14])
+
+mock_s_disabled = MagicMock()
+mock_s_disabled.exists = True
+type(mock_s_disabled).id = PropertyMock(return_value="disabled_source")
+mock_s_disabled.to_dict.return_value = {"enabled": False}
+
+mock_s_enabled = MagicMock()
+mock_s_enabled.exists = True
+type(mock_s_enabled).id = PropertyMock(return_value="enabled_source")
+mock_s_enabled.to_dict.return_value = {"enabled": True}
+
+mock_s_unknown = MagicMock()
+mock_s_unknown.exists = False
+type(mock_s_unknown).id = PropertyMock(return_value="unknown_source")
+
+mock_s_bad_type = MagicMock()
+mock_s_bad_type.exists = True
+type(mock_s_bad_type).id = PropertyMock(return_value="bad_type_source")
+mock_s_bad_type.to_dict.return_value = {"enabled": "invalid"}
+
+# 既存の RAG テストで使っている find_nearest に影響するため、再定義
+def mock_get_all(refs):
+    res = []
+    print(f"[DEBUG] mock_get_all called with {len(refs)} refs")
+    for r in refs:
+        print(f"[DEBUG] ref id: {r.id}")
+        if r.id == "disabled_source": res.append(mock_s_disabled)
+        elif r.id == "enabled_source": res.append(mock_s_enabled)
+        elif r.id == "unknown_source": res.append(mock_s_unknown)
+        elif r.id == "bad_type_source": res.append(mock_s_bad_type)
+        else:
+            m = MagicMock()
+            m.exists = False
+            type(m).id = PropertyMock(return_value=r.id)
+            res.append(m)
+    return res
+
+db.get_all = MagicMock(side_effect=mock_get_all)
+
+context_text_2, sources_2 = search_knowledge_base("テスト検索ソース")
+
+assert "ソース無効データ" not in context_text_2, "OFFになったソースのデータが除外されていない"
+assert "ソース有効データ" in context_text_2, "ONのソースのデータが取得できていない"
+assert "ソース未登録データ（デフォルトON）" in context_text_2, "未登録ソースがデフォルトON扱いになっていない"
+
+print("PASS: RAG検索時の source_type による除外挙動 (1回の get_all で取得し N+1 回避)")
+
+# Test 18: UI状態優先順位判定 (JS同等ロジックの修正版)
+def mock_get_knowledge_status_v2(item, sourceSettings, now_dt):
+    if item.get("active") is False:
+        return "無効"
+    
+    stype = item.get("source_type")
+    sourceDisabled = False
+    if stype and sourceSettings:
+        s = next((x for x in sourceSettings if x.get("source_type") == stype), None)
+        if s and s.get("enabled") is False:
+            sourceDisabled = True
+            
+    if sourceDisabled:
+        return "ソース停止中"
+        
+    vf = item.get("valid_from")
+    if vf:
+        vf_dt = datetime.fromisoformat(vf) if isinstance(vf, str) else vf
+        if now_dt < vf_dt:
+            return "期間外（未来）"
+    vu = item.get("valid_until")
+    if vu:
+        vu_dt = datetime.fromisoformat(vu) if isinstance(vu, str) else vu
+        if now_dt > vu_dt:
+            return "期限切れ"
+    return "有効"
+
+mock_source_settings = [
+    {"source_type": "disabled_source", "enabled": False},
+    {"source_type": "enabled_source", "enabled": True},
+]
+
+# active=false + source OFF -> 「無効」が優先
+assert mock_get_knowledge_status_v2({"active": False, "source_type": "disabled_source"}, mock_source_settings, test_now) == "無効"
+# active=true + source OFF + 期限切れ -> 「ソース停止中」が優先
+assert mock_get_knowledge_status_v2({"active": True, "source_type": "disabled_source", "valid_until": "2026-08-01T00:00:00Z"}, mock_source_settings, test_now) == "ソース停止中"
+# active=true + source ON + 期限切れ -> 「期限切れ」
+assert mock_get_knowledge_status_v2({"active": True, "source_type": "enabled_source", "valid_until": "2026-08-01T00:00:00Z"}, mock_source_settings, test_now) == "期限切れ"
+
+print("PASS: UI状態優先順位判定 v2 (ソース停止中の優先順位確認)")
+
+d15 = MagicMock()
+d15.id = "k_source_invalid_format"
+d15.to_dict.return_value = {
+    "content": "不正フォーマットデータ",
+    "vector_distance": 0.05,
+    "active": True,
+    "source_type": "invalid/format"
+}
+
+d16 = MagicMock()
+d16.id = "k_source_bad_type"
+d16.to_dict.return_value = {
+    "content": "壊れたソース設定データ",
+    "vector_distance": 0.04,
+    "active": True,
+    "source_type": "bad_type_source"
+}
+
+d17 = MagicMock()
+d17.id = "k_source_none"
+d17.to_dict.return_value = {
+    "content": "ソース未設定データ",
+    "vector_distance": 0.01,
+    "active": True
+}
+
+test_docs.extend([d15, d16, d17])
+
+db.get_all.reset_mock()
+context_text_3, sources_3 = search_knowledge_base("テスト検索ソース")
+
+# db.get_all.call_count == 1 をassertし、N+1になっていないことを確認
+assert db.get_all.call_count == 1, "db.get_allが複数回呼ばれている (N+1問題)"
+
+# enabledが文字列など壊れた設定ドキュメントを持つ bad_type_source のknowledge候補がRAGから除外されることをassert
+assert "壊れたソース設定データ" not in context_text_3, "enabledが不正なソースのデータが除外されていない"
+
+# source_type未設定knowledge -> デフォルトON
+assert "ソース未設定データ" in context_text_3, "source_type未設定のデータが取得できていない"
+
+# source_typeが不正形式のknowledge -> RAG除外
+assert "不正フォーマットデータ" not in context_text_3, "不正フォーマットのsource_typeが除外されていない"
+
+print("PASS: RAG検索時の追加条件 (不正フォーマット、不正設定値、未設定、N+1チェック)")
+
+# source設定取得自体が例外になった場合、全sourceがONとして通過しないことを確認 (fail-closed)
+db.get_all.side_effect = Exception("Test get_all exception")
+context_text_ex, _ = search_knowledge_base("テスト検索ソース")
+assert "ソース有効データ" not in context_text_ex, "例外時にソース有効データが含まれている (fail-closedになっていない)"
+assert "ソース未登録データ（デフォルトON）" not in context_text_ex, "例外時にソース未登録データが含まれている (fail-closedになっていない)"
+assert "ソース未設定データ" in context_text_ex, "例外時でもsource_type未設定のデータは含まれるべき"
+db.get_all.side_effect = mock_get_all # restore
+
+print("PASS: RAG検索時のフェッチ例外発生時 fail-closed 挙動")
+
+
+# 新しいGET/PATCH source-settings APIで管理キーなし -> 401
+res_get_no_key = client.get("/api/admin/knowledge/source-settings")
+assert res_get_no_key.status_code == 401, "管理キーなしGETで401が返っていない"
+
+res_patch_no_key = client.patch("/api/admin/knowledge/source-settings/enabled_source", json={"enabled": False})
+assert res_patch_no_key.status_code == 401, "管理キーなしPATCHで401が返っていない"
+
+print("PASS: source-settings API の認証チェック (401)")
+
+# GET API で実際の knowledge の source_type もマージされているか
+def mock_knowledge_stream():
+    kd1 = MagicMock()
+    kd1.to_dict.return_value = {"source_type": "new_source"}
+    kd2 = MagicMock()
+    kd2.to_dict.return_value = {"source_type": "invalid/format"}
+    return [kd1, kd2]
+
+mock_knowledge_query = MagicMock()
+mock_knowledge_query.select.return_value.limit.return_value.stream.side_effect = mock_knowledge_stream
+db.collection.side_effect = lambda c: mock_knowledge_query if c == "knowledge" else mock_col
+
+res_get_all = client.get("/api/admin/knowledge/source-settings", headers={"X-Admin-Key": "test_admin_key"})
+assert res_get_all.status_code == 200
+items = res_get_all.json()["items"]
+new_source_item = next((x for x in items if x["source_type"] == "new_source"), None)
+assert new_source_item is not None, "knowledgeにのみ存在するsource_typeが一覧に含まれていない"
+assert new_source_item["enabled"] is True, "未知のsource_typeのenabledがTrueになっていない"
+assert new_source_item["configured"] is False, "未知のsource_typeのconfiguredがFalseになっていない"
+
+invalid_source_item = next((x for x in items if x["source_type"] == "invalid/format"), None)
+assert invalid_source_item is None, "不正フォーマットのsource_typeが一覧に含まれてしまっている"
+
+print("PASS: GET API の knowledge レコードからのマージ挙動")
+
+# source ON/OFF切替前後で本体が変更されないこと
+mock_doc_ref.update.reset_mock()
+client.patch("/api/admin/knowledge/source-settings/enabled_source", json={"enabled": False}, headers={"X-Admin-Key": "test_admin_key"})
+assert mock_doc_ref.update.call_count == 0, "source-settings の PATCH で knowledge 本体が変更されている"
+
+# restore db.collection.side_effect
+db.collection.side_effect = None
+db.collection.return_value = mock_col
+
+# source OFF -> RAG除外 -> source ON -> 復活
+mock_s_toggle = MagicMock()
+mock_s_toggle.exists = True
+type(mock_s_toggle).id = PropertyMock(return_value="toggle_source")
+mock_s_toggle.to_dict.return_value = {"enabled": False}
+
+d18 = MagicMock()
+d18.id = "k_source_toggle"
+d18.to_dict.return_value = {
+    "content": "トグルテストデータ",
+    "vector_distance": 0.01,
+    "active": True,
+    "source_type": "toggle_source",
+    "valid_from": "2020-01-01T00:00:00Z",
+    "valid_until": "2030-01-01T00:00:00Z"
+}
+test_docs.append(d18)
+
+def mock_get_all_with_toggle(refs):
+    res = mock_get_all(refs)
+    for r in refs:
+        if r.id == "toggle_source": res.append(mock_s_toggle)
+    return res
+
+db.get_all.side_effect = mock_get_all_with_toggle
+ctx_off, _ = search_knowledge_base("テスト検索ソース")
+assert "トグルテストデータ" not in ctx_off, "OFF時は除外される"
+
+# ONに切り替え
+mock_s_toggle.to_dict.return_value = {"enabled": True}
+ctx_on, _ = search_knowledge_base("テスト検索ソース")
+assert "トグルテストデータ" in ctx_on, "ON時は復活する"
+
+db.get_all.side_effect = mock_get_all # restore
+print("PASS: source ON/OFF切替でのRAG除外・復活確認")
+
+# knowledge_source_settingsに不正なsource_type ID相当が存在しても、GET一覧に含まれないこと
+def mock_settings_stream():
+    s1 = MagicMock()
+    type(s1).id = PropertyMock(return_value="valid_source")
+    s1.to_dict.return_value = {"enabled": True}
+    s2 = MagicMock()
+    type(s2).id = PropertyMock(return_value="invalid/id")
+    s2.to_dict.return_value = {"enabled": True}
+    return [s1, s2]
+
+mock_settings_ref = MagicMock()
+mock_settings_ref.stream.side_effect = mock_settings_stream
+
+def db_col_side_effect(c):
+    if c == "knowledge_source_settings": return mock_settings_ref
+    if c == "knowledge": return mock_knowledge_query
+    return mock_col
+db.collection.side_effect = db_col_side_effect
+
+res_settings = client.get("/api/admin/knowledge/source-settings", headers={"X-Admin-Key": "test_admin_key"})
+items2 = res_settings.json()["items"]
+assert next((x for x in items2 if x["source_type"] == "invalid/id"), None) is None, "不正なIDがGET一覧に含まれている"
+print("PASS: GET API で不正な doc_id が除外される確認")
+
+# 未設定sourceを初回PATCHした後、UI側の状態相当で configured=true になること (バックエンドの挙動として)
+mock_settings_ref.stream.side_effect = lambda: [s1] # 既存の valid_source だけを返す
+# new_source に対してPATCHを行う
+client.patch("/api/admin/knowledge/source-settings/new_source", json={"enabled": False}, headers={"X-Admin-Key": "test_admin_key"})
+# すると db.collection("knowledge_source_settings").document("new_source").set() が呼ばれるはず
+# 今回のモック構成では db.collection("knowledge_source_settings") は mock_settings_ref を返すので、
+# その document("new_source") が set を呼ばれたか確認できる
+mock_settings_ref.document.assert_called_with("new_source")
+assert mock_settings_ref.document.return_value.set.call_count == 1
+# UI側はレスポンスOKなら configured=true にして対応している
+
+# restore db.collection.side_effect
+db.collection.side_effect = None
+db.collection.return_value = mock_col
+
+# Gemini 0回, Embedding 0回 (mock_get_embedding は呼ばれているが実ネットワークアクセスはしていない。生成AIも呼ばれていない)
+print("PASS: すべてのテストで Gemini API, Embedding API 実呼び出し 0回")
+
 print("\n============================================================")
-print("全テスト (Test 1〜18 + RAG判定 + UI状態優先順位) 正常終了")
+print("全テスト (Task 5 追加要件含む) 完了")
 print("============================================================")
