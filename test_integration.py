@@ -665,7 +665,7 @@ skb_match = _re2.search(
 )
 assert skb_match, "search_knowledge_base が見つからない"
 skb_src = skb_match.group()
-assert "limit=" in skb_src and "+ 15" in skb_src or "+ 10" in skb_src or "+ 20" in skb_src, "ベクトル検索で必要件数より多く取得していない"
+assert "limit=" in skb_src and ("* 4" in skb_src or "+ 15" in skb_src or "+ 10" in skb_src or "+ 20" in skb_src), "ベクトル検索で必要件数より多く取得していない"
 assert "doc_data.get(\"active\", True) is False" in skb_src, "active=falseの除外処理がない(既存データ有効扱い含む)"
 assert "candidates[:RAG_SEARCH_LIMIT]" in skb_src, "最後に必要件数に絞る処理がない"
 print("PASS: search_knowledge_base での active=false 除外ロジック確認")

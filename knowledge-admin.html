@@ -179,16 +179,17 @@
         <table class="w-full text-left text-sm" id="knowledgeTable">
           <thead class="bg-slate-900/60 border-b border-slate-700/50">
             <tr>
-              <th class="px-4 py-3 font-medium text-slate-300 w-16">状態</th>
+              <th class="px-4 py-3 font-medium text-slate-300 w-28">状態</th>
               <th class="px-4 py-3 font-medium text-slate-300">タイトル / ソース</th>
-              <th class="px-4 py-3 font-medium text-slate-300 w-32">種別</th>
-              <th class="px-4 py-3 font-medium text-slate-300 w-32">更新日時</th>
-              <th class="px-4 py-3 font-medium text-slate-300 w-40 text-center">操作</th>
+              <th class="px-4 py-3 font-medium text-slate-300 w-28">種別</th>
+              <th class="px-4 py-3 font-medium text-slate-300 w-44">有効期間 (JST)</th>
+              <th class="px-4 py-3 font-medium text-slate-300 w-36">更新日時</th>
+              <th class="px-4 py-3 font-medium text-slate-300 w-48 text-center">操作</th>
             </tr>
           </thead>
           <tbody id="knowledgeTbody" class="divide-y divide-slate-800/50">
             <tr>
-              <td colspan="5" class="px-4 py-8 text-center text-slate-500">
+              <td colspan="6" class="px-4 py-8 text-center text-slate-500">
                 管理キーを入力し、「一覧を取得」をクリックしてください。
               </td>
             </tr>
@@ -215,6 +216,69 @@
         <div>
           <span class="text-xs text-slate-400 font-bold block mb-1">Content</span>
           <pre id="modalContent" class="text-sm text-slate-300 whitespace-pre-wrap font-sans bg-slate-950/50 p-4 rounded-xl border border-slate-800/50"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 期限設定モーダル -->
+  <div id="expirationModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+      <div class="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">
+        <h3 class="font-bold text-white text-base">有効期限の設定</h3>
+        <button onclick="closeExpirationModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700 transition">
+          ✕
+        </button>
+      </div>
+      <div class="p-5 space-y-4">
+        <input type="hidden" id="expDocId">
+        <div>
+          <label class="block text-xs font-bold text-slate-400 mb-1">
+            有効開始日時 (JST)
+          </label>
+          <input
+            type="datetime-local"
+            id="expValidFrom"
+            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
+          >
+          <p class="text-[11px] text-slate-500 mt-1">※未指定の場合は「開始期限なし」</p>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-400 mb-1">
+            有効終了日時 (JST)
+          </label>
+          <input
+            type="datetime-local"
+            id="expValidUntil"
+            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
+          >
+          <p class="text-[11px] text-slate-500 mt-1">※未指定の場合は「終了期限なし」</p>
+        </div>
+        <div class="flex items-center justify-between pt-2">
+          <button
+            type="button"
+            onclick="clearExpirationInputs()"
+            class="text-xs text-slate-400 hover:text-slate-200 underline"
+          >
+            期限なしに戻す (クリア)
+          </button>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onclick="closeExpirationModal()"
+              class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-2 rounded-xl transition border border-slate-700"
+            >
+              キャンセル
+            </button>
+            <button
+              type="button"
+              id="saveExpBtn"
+              onclick="saveExpiration()"
+              class="text-xs bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-2 rounded-xl transition shadow-lg shadow-amber-900/20"
+            >
+              保存する
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -268,9 +332,7 @@
 
       try {
         const response = await fetch(`${API_URL}/api/admin/knowledge?limit=50`, {
-          headers: {
-            'X-Admin-Key': adminKey
-          }
+          headers: { 'X-Admin-Key': adminKey }
         });
 
         if (!response.ok) {
@@ -302,10 +364,9 @@
         return;
       }
 
-      const targetActive = !currentActive;
-      const actionText = targetActive ? "有効化" : "無効化";
-      
-      if (!confirm(`ドキュメントを${actionText}しますか？`)) {
+      const nextActive = !currentActive;
+      const actionName = nextActive ? '再有効化' : '無効化';
+      if (!confirm(`この知識を${actionName}しますか？`)) {
         return;
       }
 
@@ -316,24 +377,21 @@
             'Content-Type': 'application/json',
             'X-Admin-Key': adminKey
           },
-          body: JSON.stringify({ active: targetActive })
+          body: JSON.stringify({ active: nextActive })
         });
 
         if (!response.ok) {
           const text = await response.text();
-          showStatus('error', '更新失敗', `HTTP ${response.status}: ${text}`);
+          showStatus('error', `${actionName}失敗`, `HTTP ${response.status}: ${text}`);
           return;
         }
 
-        // ローカルデータの更新
-        const doc = loadedKnowledge.find(d => d.doc_id === docId);
-        if (doc) {
-          doc.active = targetActive;
-          doc.updated_at = new Date().toISOString(); // UI上の即時反映
+        const item = loadedKnowledge.find(k => k.doc_id === docId);
+        if (item) {
+          item.active = nextActive;
         }
-        
         renderTable();
-        showStatus('success', '更新完了', `ドキュメントを${actionText}しました。`);
+        showStatus('success', `${actionName}完了`, `状態を変更しました。`);
 
       } catch (err) {
         showStatus('error', '通信エラー', err.message);
@@ -341,15 +399,13 @@
     }
 
     // ==========================================
-    // 描画・フィルタリング
+    // フィルタ・テーブル描画
     // ==========================================
     function updateSourceTypeFilter() {
       const select = document.getElementById('sourceTypeFilter');
-      const types = [...new Set(loadedKnowledge.map(item => item.source_type).filter(Boolean))];
+      const types = Array.from(new Set(loadedKnowledge.map(k => k.source_type).filter(Boolean)));
       
-      // Keep selected value if possible
       const currentVal = select.value;
-      
       select.innerHTML = '<option value="">すべて</option>';
       types.forEach(type => {
         const opt = document.createElement('option');
@@ -363,6 +419,47 @@
       }
     }
 
+    // ==========================================
+    // 状態判定ヘルパー (優先順位: 無効 -> 期間外 -> 期限切れ -> 有効)
+    // ==========================================
+    function getKnowledgeStatus(item, now = new Date()) {
+      if (item.active === false) {
+        return { label: '無効', className: 'bg-red-500/10 text-red-400 border border-red-500/20' };
+      }
+      if (item.valid_from && now < new Date(item.valid_from)) {
+        return { label: '期間外（未来）', className: 'bg-sky-500/10 text-sky-400 border border-sky-500/20' };
+      }
+      if (item.valid_until && now > new Date(item.valid_until)) {
+        return { label: '期限切れ', className: 'bg-amber-500/10 text-amber-400 border border-amber-500/20' };
+      }
+      return { label: '有効', className: 'bg-green-500/10 text-green-400 border border-green-500/20' };
+    }
+
+    // ==========================================
+    // JST 日時変換ヘルパー (ローカルPCのTZに非依存)
+    // ==========================================
+    function formatForJstInput(isoStr) {
+      if (!isoStr) return "";
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return "";
+      const parts = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).formatToParts(d);
+      const getVal = (type) => parts.find(p => p.type === type)?.value || '';
+      return `${getVal('year')}-${getVal('month')}-${getVal('day')}T${getVal('hour')}:${getVal('minute')}`;
+    }
+
+    function toJstIsoWithTz(localStr) {
+      if (!localStr || !localStr.trim()) return null;
+      return `${localStr.trim()}:00+09:00`;
+    }
+
     function renderTable() {
       const tbody = document.getElementById('knowledgeTbody');
       tbody.innerHTML = '';
@@ -370,7 +467,7 @@
       if (loadedKnowledge.length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 5;
+        td.colSpan = 6;
         td.className = 'px-4 py-8 text-center text-slate-500';
         td.textContent = 'データがありません。';
         tr.appendChild(td);
@@ -381,12 +478,13 @@
       const searchWord = document.getElementById('searchInput').value.toLowerCase();
       const typeFilter = document.getElementById('sourceTypeFilter').value;
       const activeFilter = document.getElementById('activeFilter').value;
+      const now = new Date();
 
       let filtered = loadedKnowledge.filter(item => {
         if (typeFilter && item.source_type !== typeFilter) return false;
         
         if (activeFilter !== "") {
-          const isActive = item.active !== false; // undefined/null means true
+          const isActive = item.active !== false;
           if (activeFilter === "true" && !isActive) return false;
           if (activeFilter === "false" && isActive) return false;
         }
@@ -395,11 +493,8 @@
           const titleMatch = (item.title || "").toLowerCase().includes(searchWord);
           const contentMatch = (item.content || "").toLowerCase().includes(searchWord);
           const sourceMatch = (item.source || "").toLowerCase().includes(searchWord);
-          if (!titleMatch && !contentMatch && !sourceMatch) {
-            return false;
-          }
+          if (!titleMatch && !contentMatch && !sourceMatch) return false;
         }
-
         return true;
       });
 
@@ -408,79 +503,111 @@
         tr.className = 'hover:bg-slate-800/30 transition group';
         
         const isActive = item.active !== false;
+        const statusInfo = getKnowledgeStatus(item, now);
 
-        // --- 状態 ---
         const tdState = document.createElement('td');
         tdState.className = 'px-4 py-3';
         const stateBadge = document.createElement('span');
-        stateBadge.className = `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${isActive ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`;
-        stateBadge.textContent = isActive ? '有効' : '無効';
+        stateBadge.className = `inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusInfo.className}`;
+        stateBadge.textContent = statusInfo.label;
         tdState.appendChild(stateBadge);
         tr.appendChild(tdState);
 
-        // --- タイトル / ソース ---
         const tdTitle = document.createElement('td');
         tdTitle.className = 'px-4 py-3 min-w-0';
         const titleDiv = document.createElement('div');
-        titleDiv.className = 'font-medium text-slate-200 truncate max-w-[200px] sm:max-w-xs';
+        titleDiv.className = 'font-medium text-slate-200 truncate max-w-[180px] sm:max-w-xs';
         titleDiv.textContent = item.title || '(無題)';
         tdTitle.appendChild(titleDiv);
 
         const sourceDiv = document.createElement('div');
-        sourceDiv.className = 'text-xs text-slate-500 truncate max-w-[200px] sm:max-w-xs mt-0.5';
+        sourceDiv.className = 'text-xs text-slate-500 truncate max-w-[180px] sm:max-w-xs mt-0.5';
         sourceDiv.textContent = item.source || item.url || '-';
         tdTitle.appendChild(sourceDiv);
         tr.appendChild(tdTitle);
 
-        // --- 種別 ---
         const tdType = document.createElement('td');
         tdType.className = 'px-4 py-3 text-xs text-slate-400';
         tdType.textContent = item.source_type || '-';
         tr.appendChild(tdType);
 
-        // --- 更新日時 ---
+        const tdPeriod = document.createElement('td');
+        tdPeriod.className = 'px-4 py-3 text-xs text-slate-400';
+        const formatJst = (isoStr) => {
+          if (!isoStr) return null;
+          const d = new Date(isoStr);
+          if (isNaN(d.getTime())) return isoStr;
+          return d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        };
+        const fromStr = formatJst(item.valid_from);
+        const untilStr = formatJst(item.valid_until);
+        if (!fromStr && !untilStr) {
+          tdPeriod.textContent = '期限なし';
+        } else {
+          const pDiv = document.createElement('div');
+          pDiv.className = 'space-y-0.5';
+          if (fromStr) {
+            const fSpan = document.createElement('div');
+            fSpan.className = 'text-[11px] text-slate-300';
+            fSpan.textContent = `自: ${fromStr}`;
+            pDiv.appendChild(fSpan);
+          }
+          if (untilStr) {
+            const uSpan = document.createElement('div');
+            uSpan.className = 'text-[11px] text-slate-300';
+            uSpan.textContent = `至: ${untilStr}`;
+            pDiv.appendChild(uSpan);
+          }
+          tdPeriod.appendChild(pDiv);
+        }
+        tr.appendChild(tdPeriod);
+
         const tdDate = document.createElement('td');
         tdDate.className = 'px-4 py-3 text-xs text-slate-400';
         try {
           if (item.updated_at) {
-            tdDate.textContent = new Date(item.updated_at).toLocaleString('ja-JP');
+            tdDate.textContent = new Date(item.updated_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
           } else {
             tdDate.textContent = '-';
           }
         } catch(e) {
-          tdDate.textContent = item.updated_at;
+          tdDate.textContent = item.updated_at || '-';
         }
         tr.appendChild(tdDate);
 
-        // --- 操作 ---
         const tdActions = document.createElement('td');
-        tdActions.className = 'px-4 py-3 text-center flex items-center justify-center gap-2';
+        tdActions.className = 'px-4 py-3 text-center flex items-center justify-center gap-1.5 flex-wrap';
         
         const previewBtn = document.createElement('button');
-        previewBtn.className = 'text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 rounded transition border border-slate-700';
+        previewBtn.className = 'text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition border border-slate-700';
         previewBtn.textContent = 'プレビュー';
         previewBtn.onclick = () => openPreview(item);
         tdActions.appendChild(previewBtn);
 
+        const expBtn = document.createElement('button');
+        expBtn.className = 'text-xs bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 px-2 py-1 rounded transition border border-amber-800/50';
+        expBtn.textContent = '期限設定';
+        expBtn.onclick = () => openExpirationModal(item);
+        tdActions.appendChild(expBtn);
+
         const toggleBtn = document.createElement('button');
         if (isActive) {
-          toggleBtn.className = 'text-xs bg-red-900/30 hover:bg-red-800/50 text-red-400 px-2.5 py-1.5 rounded transition border border-red-900/50';
-          toggleBtn.textContent = '無効にする';
+          toggleBtn.className = 'text-xs bg-red-900/30 hover:bg-red-800/50 text-red-400 px-2 py-1 rounded transition border border-red-900/50';
+          toggleBtn.textContent = '無効化';
         } else {
-          toggleBtn.className = 'text-xs bg-green-900/30 hover:bg-green-800/50 text-green-400 px-2.5 py-1.5 rounded transition border border-green-900/50';
-          toggleBtn.textContent = '再有効化';
+          toggleBtn.className = 'text-xs bg-green-900/30 hover:bg-green-800/50 text-green-400 px-2 py-1 rounded transition border border-green-900/50';
+          toggleBtn.textContent = '有効化';
         }
         toggleBtn.onclick = () => toggleActive(item.doc_id, isActive);
         tdActions.appendChild(toggleBtn);
 
         tr.appendChild(tdActions);
-
         tbody.appendChild(tr);
       });
     }
 
     // ==========================================
-    // プレビューモーダル
+    // モーダル制御
     // ==========================================
     function openPreview(item) {
       const modal = document.getElementById('previewModal');
@@ -507,7 +634,6 @@
       } else {
         urlContainer.textContent = '-';
       }
-
       modal.classList.remove('hidden');
       modal.classList.add('flex');
     }
@@ -516,6 +642,87 @@
       const modal = document.getElementById('previewModal');
       modal.classList.add('hidden');
       modal.classList.remove('flex');
+    }
+
+    function openExpirationModal(item) {
+      document.getElementById('expDocId').value = item.doc_id;
+      document.getElementById('expValidFrom').value = formatForJstInput(item.valid_from);
+      document.getElementById('expValidUntil').value = formatForJstInput(item.valid_until);
+
+      const modal = document.getElementById('expirationModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeExpirationModal() {
+      const modal = document.getElementById('expirationModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function clearExpirationInputs() {
+      document.getElementById('expValidFrom').value = "";
+      document.getElementById('expValidUntil').value = "";
+    }
+
+    async function saveExpiration() {
+      const docId = document.getElementById('expDocId').value;
+      const adminKey = document.getElementById('adminKeyInput').value.trim();
+      if (!adminKey) {
+        showStatus('error', '管理キーが必要です', '管理キーを入力してください。');
+        return;
+      }
+
+      const fromVal = document.getElementById('expValidFrom').value;
+      const untilVal = document.getElementById('expValidUntil').value;
+
+      const validFromIso = toJstIsoWithTz(fromVal);
+      const validUntilIso = toJstIsoWithTz(untilVal);
+
+      if (validFromIso && validUntilIso && new Date(validFromIso) > new Date(validUntilIso)) {
+        alert('有効開始日時は有効終了日時以前を指定してください。');
+        return;
+      }
+
+      const btn = document.getElementById('saveExpBtn');
+      btn.disabled = true;
+      btn.textContent = '保存中...';
+
+      try {
+        const response = await fetch(`${API_URL}/api/admin/knowledge/${encodeURIComponent(docId)}/expiration`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Key': adminKey
+          },
+          body: JSON.stringify({
+            valid_from: validFromIso,
+            valid_until: validUntilIso
+          })
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          showStatus('error', '更新失敗', `HTTP ${response.status}: ${text}`);
+          return;
+        }
+
+        const data = await response.json();
+        const target = loadedKnowledge.find(k => k.doc_id === docId);
+        if (target) {
+          target.valid_from = data.valid_from;
+          target.valid_until = data.valid_until;
+        }
+
+        closeExpirationModal();
+        renderTable();
+        showStatus('success', '更新完了', '有効期限を更新しました。');
+      } catch (err) {
+        showStatus('error', '通信エラー', err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '保存する';
+      }
     }
   </script>
 </body>

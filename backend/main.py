@@ -20,6 +20,7 @@ from fastapi.middleware.cors import (
 from pydantic import (
     BaseModel,
     Field,
+    ConfigDict,
 )
 
 from google import genai
@@ -1522,7 +1523,7 @@ def search_knowledge_base(
                     DistanceMeasure.COSINE,
 
                 limit=
-                    RAG_SEARCH_LIMIT + 15,
+                    min(RAG_SEARCH_LIMIT * 4, 40),
 
                 distance_result_field=
                     "vector_distance",
@@ -1531,6 +1532,9 @@ def search_knowledge_base(
 
 
         candidates = []
+
+
+        now_utc = datetime.now(timezone.utc)
 
 
         for doc in results.get():
@@ -1554,6 +1558,66 @@ def search_knowledge_base(
             if doc_data.get("active", True) is False:
                 print(f"[RAG除外] {doc.id} (inactive)")
                 continue
+
+            # valid_from 判定 (壊れたデータは安全に除外、now < valid_from なら期間外除外)
+            valid_from_val = doc_data.get("valid_from")
+            if valid_from_val is not None:
+                valid_from_dt = None
+                if isinstance(valid_from_val, datetime):
+                    if valid_from_val.tzinfo is None:
+                        print(f"[RAG除外] {doc.id} (valid_from naive datetime)")
+                        continue
+                    valid_from_dt = valid_from_val.astimezone(timezone.utc)
+                elif isinstance(valid_from_val, str):
+                    if not valid_from_val.strip():
+                        print(f"[RAG除外] {doc.id} (valid_from empty string)")
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(valid_from_val)
+                        if dt.tzinfo is None:
+                            print(f"[RAG除外] {doc.id} (valid_from string has no timezone)")
+                            continue
+                        valid_from_dt = dt.astimezone(timezone.utc)
+                    except Exception as e:
+                        print(f"[RAG除外] {doc.id} (valid_from parse error: {e})")
+                        continue
+                else:
+                    print(f"[RAG除外] {doc.id} (valid_from invalid type: {type(valid_from_val)})")
+                    continue
+
+                if valid_from_dt is not None and now_utc < valid_from_dt:
+                    print(f"[RAG除外] {doc.id} (valid_from 未到来)")
+                    continue
+
+            # valid_until 判定 (壊れたデータは安全に除外、now > valid_until なら期限切れ除外)
+            valid_until_val = doc_data.get("valid_until")
+            if valid_until_val is not None:
+                valid_until_dt = None
+                if isinstance(valid_until_val, datetime):
+                    if valid_until_val.tzinfo is None:
+                        print(f"[RAG除外] {doc.id} (valid_until naive datetime)")
+                        continue
+                    valid_until_dt = valid_until_val.astimezone(timezone.utc)
+                elif isinstance(valid_until_val, str):
+                    if not valid_until_val.strip():
+                        print(f"[RAG除外] {doc.id} (valid_until empty string)")
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(valid_until_val)
+                        if dt.tzinfo is None:
+                            print(f"[RAG除外] {doc.id} (valid_until string has no timezone)")
+                            continue
+                        valid_until_dt = dt.astimezone(timezone.utc)
+                    except Exception as e:
+                        print(f"[RAG除外] {doc.id} (valid_until parse error: {e})")
+                        continue
+                else:
+                    print(f"[RAG除外] {doc.id} (valid_until invalid type: {type(valid_until_val)})")
+                    continue
+
+                if valid_until_dt is not None and now_utc > valid_until_dt:
+                    print(f"[RAG除外] {doc.id} (valid_until 経過)")
+                    continue
 
 
             print(
@@ -3764,7 +3828,7 @@ def get_admin_knowledge(http_request: Request, limit: int = 50, source_type: str
         # 許可するフィールドリスト (embeddingは絶対に含めない)
         allowed_fields = [
             "content", "source", "source_type", "url", "title",
-            "active", "updated_at", "published_date", "source_id",
+            "active", "valid_from", "valid_until", "updated_at", "published_date", "source_id",
             "channel_id", "video_id", "summary",
             "formation_category", "formation_category_name",
             "formation_post_id", "formation_player_name", "formation_timestamp",
@@ -3806,6 +3870,7 @@ def get_admin_knowledge(http_request: Request, limit: int = 50, source_type: str
 
 
 class KnowledgeActiveUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     active: bool
 
 @app.patch("/api/admin/knowledge/{doc_id}/active")
@@ -3834,3 +3899,75 @@ def update_knowledge_active(doc_id: str, request: KnowledgeActiveUpdate, http_re
     except Exception as e:
         print(f"Error updating knowledge active status: {e}")
         raise HTTPException(status_code=500, detail="状態の更新に失敗しました。")
+
+
+class KnowledgeExpirationUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    valid_from: str | None = Field(...)
+    valid_until: str | None = Field(...)
+
+
+def _parse_and_validate_iso_datetime(value: str | None, field_name: str) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or value.strip() == "":
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name}に空文字は指定できません。期限解除はnullを指定してください。"
+        )
+    try:
+        dt = datetime.fromisoformat(value)
+    except Exception:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name}の形式が不正です。ISO 8601形式で指定してください。"
+        )
+    if dt.tzinfo is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_name}にはタイムゾーン指定（+09:00やZ等）が必須です。"
+        )
+    return dt.astimezone(timezone.utc)
+
+
+@app.patch("/api/admin/knowledge/{doc_id}/expiration")
+def update_knowledge_expiration(doc_id: str, request: KnowledgeExpirationUpdate, http_request: Request):
+    require_admin(http_request)
+    
+    if not doc_id or len(doc_id) > 200 or "/" in doc_id:
+        raise HTTPException(status_code=400, detail="不正なドキュメントIDです。")
+        
+    from_dt_utc = _parse_and_validate_iso_datetime(request.valid_from, "valid_from")
+    until_dt_utc = _parse_and_validate_iso_datetime(request.valid_until, "valid_until")
+    
+    if from_dt_utc and until_dt_utc and from_dt_utc > until_dt_utc:
+        raise HTTPException(
+            status_code=422,
+            detail="valid_from は valid_until 以前の日時を指定してください。"
+        )
+        
+    try:
+        doc_ref = db.collection("knowledge").document(doc_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="指定されたデータが見つかりません。")
+            
+        doc_ref.update({
+            "valid_from": from_dt_utc,
+            "valid_until": until_dt_utc,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        
+        return {
+            "status": "ok",
+            "message": "有効期限を更新しました。",
+            "doc_id": doc_id,
+            "valid_from": from_dt_utc.isoformat() if from_dt_utc else None,
+            "valid_until": until_dt_utc.isoformat() if until_dt_utc else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating knowledge expiration: {e}")
+        raise HTTPException(status_code=500, detail="有効期限の更新に失敗しました。")
+
