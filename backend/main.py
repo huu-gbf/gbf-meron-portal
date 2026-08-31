@@ -3,6 +3,7 @@ import re
 import hmac
 import hashlib
 from datetime import datetime, timezone, timedelta
+from typing import Any
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -2584,6 +2585,160 @@ async def admin_site_updates_pending_count_endpoint(http_request: Request):
     except Exception as e:
         print(f"Error fetching pending count: {e}")
         raise HTTPException(status_code=500, detail="未確認件数の取得中にエラーが発生しました。")
+
+
+# =========================================================
+# 今日のまとめ (Task 7)
+# =========================================================
+
+MAX_DAILY_SUMMARY_ITEMS = 200
+DAILY_SUMMARY_PAGE_SIZE = 100
+MAX_DAILY_SUMMARY_PAGES = 10
+
+def classify_site_update_source(data: dict) -> str:
+    """
+    site_updates の source を分類する ("official", "youtube", "other")
+    実データ:
+      公式: source_id="granblue_official", source_type="official_news"
+      YouTube: source_type="youtube_creator", source_id="youtube_..."
+    """
+    source_id = data.get("source_id", "")
+    source_type = data.get("source_type", "")
+    
+    if source_id == "granblue_official" or source_type == "official_news":
+        return "official"
+    if source_type == "youtube_creator" or (isinstance(source_id, str) and source_id.startswith("youtube_")):
+        return "youtube"
+    return "other"
+
+def format_datetime_for_json(val: Any) -> str | None:
+    """日時オブジェクトまたは文字列をJSON用文字列に変換"""
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    return str(val)
+
+def get_daily_site_updates(now: datetime | None = None) -> dict:
+    """
+    今日(JST)の site_updates を取得して整理する
+    将来のAIチャット再利用を想定して分離
+    
+    ページング方式:
+      seeded や未知ステータスが多数存在しても最新の有効ステータス(pending, registered, ignored)を
+      取りこぼさないよう、MAX_DAILY_SUMMARY_ITEMS + 1 (201件) 集まるまで、
+      または当日範囲のデータを読み切るまで cursor (start_after) でページング取得します。
+    """
+    JST = timezone(timedelta(hours=9))
+    if now is None:
+        now = datetime.now(JST)
+    now_jst = now.astimezone(JST) if now.tzinfo else now.replace(tzinfo=JST)
+    
+    # 当日 00:00:00 JST
+    start_of_day = datetime.combine(now_jst.date(), datetime.min.time(), tzinfo=JST)
+    # 翌日 00:00:00 JST
+    end_of_day = start_of_day + timedelta(days=1)
+
+    ALLOWED_STATUSES = {"pending", "registered", "ignored"}
+    
+    collected_valid_items = []
+    last_doc_snapshot = None
+    scan_complete = True
+    
+    for _ in range(MAX_DAILY_SUMMARY_PAGES):
+        query = (
+            db.collection("site_updates")
+            .where(filter=FieldFilter("detected_at", ">=", start_of_day))
+            .where(filter=FieldFilter("detected_at", "<", end_of_day))
+            .order_by("detected_at", direction=firestore.Query.DESCENDING)
+        )
+        if last_doc_snapshot is not None:
+            query = query.start_after(last_doc_snapshot)
+            
+        page_docs = list(query.limit(DAILY_SUMMARY_PAGE_SIZE).stream())
+        if not page_docs:
+            break
+            
+        last_doc_snapshot = page_docs[-1]
+        
+        for doc in page_docs:
+            data = doc.to_dict() or {}
+            status = data.get("status")
+            
+            # 未知のstatusやseededは除外
+            if status not in ALLOWED_STATUSES:
+                continue
+                
+            collected_valid_items.append((doc, data, status))
+            if len(collected_valid_items) > MAX_DAILY_SUMMARY_ITEMS:
+                break
+                
+        if len(collected_valid_items) > MAX_DAILY_SUMMARY_ITEMS:
+            # 201件以上集まったため最新200件取得という目的を達成 (scan_complete = True)
+            break
+            
+        if len(page_docs) < DAILY_SUMMARY_PAGE_SIZE:
+            # 当日範囲の全データを読み切った (scan_complete = True)
+            break
+    else:
+        # MAX_DAILY_SUMMARY_PAGES に到達し、かつ最後のページも満杯で有効データが201件未満
+        scan_complete = False
+
+    is_truncated = len(collected_valid_items) > MAX_DAILY_SUMMARY_ITEMS
+    target_items = collected_valid_items[:MAX_DAILY_SUMMARY_ITEMS]
+    
+    items = []
+    counts = {
+        "pending": 0,
+        "registered": 0,
+        "ignored": 0,
+        "official": 0,
+        "youtube": 0
+    }
+    
+    for doc, data, status in target_items:
+        source_category = classify_site_update_source(data)
+        if source_category == "official":
+            counts["official"] += 1
+        elif source_category == "youtube":
+            counts["youtube"] += 1
+            
+        counts[status] += 1
+        
+        items.append({
+            "site_update_id": doc.id,
+            "title": data.get("title", ""),
+            "url": data.get("url", ""),
+            "source_id": data.get("source_id", ""),
+            "source_type": data.get("source_type", ""),
+            "source_name": data.get("source_name", ""),
+            "status": status,
+            "detected_at": format_datetime_for_json(data.get("detected_at")),
+            "published_at": format_datetime_for_json(data.get("published_at", ""))
+        })
+
+    return {
+        "summary_date": start_of_day.strftime("%Y-%m-%d"),
+        "timezone": "Asia/Tokyo",
+        "total_count": len(items),
+        "truncated": is_truncated,
+        "scan_complete": scan_complete,
+        "counts": counts,
+        "items": items
+    }
+
+@app.get("/api/admin/daily-summary")
+async def admin_daily_summary_endpoint(http_request: Request):
+    require_admin(http_request)
+    try:
+        summary_data = get_daily_site_updates()
+        summary_data["status"] = "ok"
+        return summary_data
+    except Exception as e:
+        print(f"Error fetching daily summary: {e}")
+        raise HTTPException(status_code=500, detail="今日のまとめの取得に失敗しました。")
 
 
 # =========================================================
