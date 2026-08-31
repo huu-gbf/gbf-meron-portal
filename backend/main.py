@@ -341,6 +341,8 @@ class OfficialNewsRegisterRequest(
 
     published_date: str | None = None
 
+    site_update_id: str | None = None
+
 
 class OfficialNewsRegisterResponse(
     BaseModel
@@ -1194,16 +1196,61 @@ def calculate_official_news_hash(
 # 公式ニュース要約をknowledgeへ保存
 # =========================================================
 
+def normalize_url_for_comparison(raw_url: str) -> str:
+    """URL比較用ヘルパー: スキーム・ホスト名小文字化、末尾スラッシュ除去"""
+    try:
+        parsed = urlparse((raw_url or "").strip())
+        scheme = (parsed.scheme or "https").lower()
+        netloc = (parsed.netloc or "").lower()
+        path = parsed.path.rstrip('/')
+        return f"{scheme}://{netloc}{path}"
+    except Exception:
+        return (raw_url or "").strip().rstrip('/')
+
+
 def save_official_news_summary(
     title: str,
     url: str,
     published_date: str,
-    summary: str
+    summary: str,
+    site_update_id: str | None = None
 ) -> tuple[str, int]:
 
     summary = (
         summary.strip()
     )
+
+
+    update_ref_to_batch = None
+    if site_update_id is not None:
+        if not re.fullmatch(r"^[a-zA-Z0-9_\-]{1,100}$", site_update_id):
+            raise HTTPException(status_code=400, detail="不正な site_update_id です。")
+
+        try:
+            update_ref = db.collection("site_updates").document(site_update_id)
+            doc_snap = update_ref.get()
+        except Exception as e:
+            print(f"Error fetching site_update {site_update_id}: {e}")
+            raise HTTPException(status_code=500, detail="site_updates の状態確認に失敗しました。")
+
+        if not doc_snap.exists:
+            raise HTTPException(status_code=404, detail="指定された未確認情報が見つかりません。")
+
+        update_data = doc_snap.to_dict() or {}
+        
+        if update_data.get("status") != "pending":
+            raise HTTPException(status_code=409, detail="この情報はすでに確認済み、またはAI登録済みです。")
+            
+        doc_url = update_data.get("url", "")
+        if normalize_url_for_comparison(doc_url) != normalize_url_for_comparison(url):
+            raise HTTPException(status_code=409, detail="登録しようとしている公式ニュースのURLと一致しません。")
+            
+        # source_id が granblue_official であることの検証
+        source_id = update_data.get("source_id", "")
+        if source_id != "granblue_official":
+            raise HTTPException(status_code=409, detail="公式ニュース由来の情報ではありません。")
+
+        update_ref_to_batch = update_ref
 
 
     if not summary:
@@ -1466,6 +1513,14 @@ def save_official_news_summary(
             batch.delete(
                 old_doc.reference
             )
+
+
+    if update_ref_to_batch:
+        batch.update(update_ref_to_batch, {
+            "status": "registered",
+            "registered_at": firestore.SERVER_TIMESTAMP,
+            "knowledge_registered": True
+        })
 
 
     try:
@@ -2233,7 +2288,9 @@ async def register_official_news(
 
             published_date,
 
-            summary
+            summary,
+            
+            request.site_update_id
         )
     )
 
@@ -2254,21 +2311,6 @@ async def register_official_news(
                     document_count
             )
         )
-
-
-
-    # === NEW: Update pending site_updates to registered ===
-    try:
-        updates_ref = db.collection("site_updates").where(filter=FieldFilter("url", "==", url)).where(filter=FieldFilter("status", "==", "pending")).stream()
-        for doc in updates_ref:
-            doc.reference.update({
-                "status": "registered",
-                "registered_at": firestore.SERVER_TIMESTAMP,
-                "knowledge_registered": True
-            })
-    except Exception as e:
-        print(f"Error updating site_updates status: {e}")
-    # ====================================================
 
     return (
         OfficialNewsRegisterResponse(
@@ -2524,6 +2566,26 @@ async def chat_endpoint(
                 "AI応答の生成中に"
                 "エラーが発生しました。"
         )
+# =========================================================
+# 情報ウォッチ未確認件数API (GET /api/admin/site-updates/pending-count)
+# =========================================================
+
+@app.get("/api/admin/site-updates/pending-count")
+async def admin_site_updates_pending_count_endpoint(http_request: Request):
+    require_admin(http_request)
+    try:
+        count_query = db.collection("site_updates").where(filter=FieldFilter("status", "==", "pending")).count()
+        result = count_query.get()
+        count_val = result[0][0].value if result else 0
+        return {
+            "status": "ok",
+            "count": count_val
+        }
+    except Exception as e:
+        print(f"Error fetching pending count: {e}")
+        raise HTTPException(status_code=500, detail="未確認件数の取得中にエラーが発生しました。")
+
+
 # =========================================================
 # 情報ウォッチ管理API (GET /api/admin/site-updates)
 # =========================================================

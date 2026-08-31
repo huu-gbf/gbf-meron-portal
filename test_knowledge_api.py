@@ -777,3 +777,324 @@ print("PASS: すべてのテストで Gemini API, Embedding API 実呼び出し 
 print("\n============================================================")
 print("全テスト (Task 5 追加要件含む) 完了")
 print("============================================================")
+
+print("\n=== API挙動テスト: Task 6 /api/admin/site-updates/pending-count ===")
+
+# Test: No admin key -> 401
+res = client.get("/api/admin/site-updates/pending-count")
+assert res.status_code == 401
+
+# Mock Firestore count() behavior and capture FieldFilter
+mock_count_query = MagicMock()
+captured_filters = []
+
+def mock_where_for_count(filter=None, **kwargs):
+    captured_filters.append(filter)
+    m = MagicMock()
+    
+    # 状況に応じて件数を変えるモック
+    def get_mock():
+        if getattr(mock_count_query, 'raise_error', False):
+            raise Exception("Firestore count error")
+        mock_result = MagicMock()
+        mock_result.value = getattr(mock_count_query, 'mock_value', 5)
+        return [[mock_result]]
+        
+    m.count.return_value.get.side_effect = get_mock
+    return m
+
+def new_col_side_effect(c):
+    col = MagicMock()
+    if c == "site_updates":
+        col.where = mock_where_for_count
+    return col
+
+db.collection.side_effect = new_col_side_effect
+
+# Test: count = 5
+captured_filters.clear()
+mock_count_query.mock_value = 5
+mock_count_query.raise_error = False
+res = client.get("/api/admin/site-updates/pending-count", headers={"X-Admin-Key": "test_admin_key"})
+assert res.status_code == 200
+assert res.json()["count"] == 5
+assert len(captured_filters) > 0
+assert captured_filters[-1].field_path == "status"
+assert captured_filters[-1].value == "pending"
+print("PASS: pending-count が正しい件数を返す (Firestore count() + FieldFilter確認)")
+
+# Test: count = 0
+captured_filters.clear()
+mock_count_query.mock_value = 0
+res = client.get("/api/admin/site-updates/pending-count", headers={"X-Admin-Key": "test_admin_key"})
+assert res.status_code == 200
+assert res.json()["count"] == 0
+print("PASS: pending 0件の時は count=0 を返す")
+
+# Test: Firestore exception -> 500
+mock_count_query.raise_error = True
+res = client.get("/api/admin/site-updates/pending-count", headers={"X-Admin-Key": "test_admin_key"})
+assert res.status_code == 500
+print("PASS: pending-count で Firestore 例外発生時は 500 を返す")
+
+
+print("\n=== API挙動テスト: Task 6 /api/admin/official-news/register site_update_id ===")
+import backend.main
+mock_get_embedding = MagicMock(return_value=[0.1] * 768)
+backend.main.get_embedding = mock_get_embedding
+
+mock_batch = MagicMock()
+db.batch.return_value = mock_batch
+
+base_url = "https://granbluefantasy.com/ja/news/123/"
+req_body = {
+    "title": "T", "url": base_url, "summary": "S",
+    "site_update_id": "granblue_official_123"
+}
+
+mock_update_ref = MagicMock()
+mock_update_snap = MagicMock()
+
+def new_col_side_effect_2(c):
+    col = MagicMock()
+    if c == "site_updates":
+        col.document.return_value = mock_update_ref
+    elif c == "knowledge":
+        q = MagicMock()
+        q.where.return_value.stream.return_value = []
+        return q
+    return col
+
+db.collection.side_effect = new_col_side_effect_2
+
+# Test: 正常系 (実スキーマ: source_id="granblue_official", status="pending", URL一致)
+mock_update_snap.exists = True
+mock_update_snap.to_dict.return_value = {
+    "source_id": "granblue_official",
+    "source_type": "official_news",
+    "source_name": "グランブルーファンタジー公式",
+    "status": "pending",
+    "url": base_url,
+    "article_id": "123",
+}
+mock_update_ref.get.return_value = mock_update_snap
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 200
+assert any(call[0][0] == mock_update_ref for call in mock_batch.update.call_args_list)
+assert mock_batch.set.call_count > 0
+assert mock_batch.commit.call_count == 1
+assert mock_get_embedding.call_count > 0
+print("PASS: 正常系 (source_id=granblue_official, status=pending) -> 登録成功 & batch.set + batch.update + batch.commit + embedding生成")
+
+# Test: URL正規化 (末尾スラッシュの差異があっても正常登録される)
+req_body_no_slash = {
+    "title": "T", "url": "https://granbluefantasy.com/ja/news/123", "summary": "S",
+    "site_update_id": "granblue_official_123"
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body_no_slash)
+assert res.status_code == 200
+assert mock_batch.set.call_count > 0
+assert mock_batch.update.call_count > 0
+print("PASS: URL正規化 (末尾スラッシュ差異を許容して同一URL判定) -> 正常登録")
+
+# Test: 異常系 (site_update_id不存在) -> 404, 書き込みなし, embedding 0回
+mock_update_snap.exists = False
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 404
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (site_update_idが存在しない) -> 404 & 書き込み/embedding 0件")
+
+# Test: 異常系 (URL不一致) -> 409, 書き込みなし, embedding 0回
+mock_update_snap.exists = True
+mock_update_snap.to_dict.return_value = {
+    "source_id": "granblue_official",
+    "status": "pending",
+    "url": "https://granbluefantasy.com/ja/news/999/",
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 409
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (URL不一致) -> 409 & 書き込み/embedding 0件")
+
+# Test: 異常系 (status=ignored) -> 409, 書き込みなし, embedding 0回
+mock_update_snap.to_dict.return_value = {
+    "source_id": "granblue_official",
+    "status": "ignored",
+    "url": base_url,
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 409
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (status=ignored) -> 409 & 書き込み/embedding 0件")
+
+# Test: 異常系 (status=registered) -> 409, 書き込みなし, embedding 0回
+mock_update_snap.to_dict.return_value = {
+    "source_id": "granblue_official",
+    "status": "registered",
+    "url": base_url,
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 409
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (status=registered) -> 409 & 書き込み/embedding 0件")
+
+# Test: 異常系 (source_id="youtube_channel_x", source_type="official_news") -> 409, 書き込みなし, embedding 0回
+mock_update_snap.to_dict.return_value = {
+    "source_id": "youtube_channel_x",
+    "source_type": "official_news",
+    "status": "pending",
+    "url": base_url,
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 409
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (source_id=youtube_channel_x, source_type=official_news) -> 409 & 書き込み/embedding 0件")
+
+# Test: 異常系 (source_id欠落, source_type="official_news") -> 409, 書き込みなし, embedding 0回
+mock_update_snap.to_dict.return_value = {
+    "source_type": "official_news",
+    "status": "pending",
+    "url": base_url,
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 409
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (source_id欠落, source_type=official_news) -> 409 & 書き込み/embedding 0件")
+
+# Test: 異常系 (Firestore例外) -> 500, 書き込みなし, embedding 0回
+mock_update_ref.get.side_effect = Exception("Firestore Error")
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body)
+assert res.status_code == 500
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (Firestore取得例外) -> 500 & 書き込み/embedding 0件")
+mock_update_ref.get.side_effect = None  # restore
+
+# Test: 異常系 (不正なIDフォーマット - スラッシュ含む) -> 400
+req_body_slash = {
+    "title": "T", "url": base_url, "summary": "S",
+    "site_update_id": "invalid/format"
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body_slash)
+assert res.status_code == 400
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (スラッシュ含む不正なID) -> 400 & 書き込み/embedding 0件")
+
+# Test: 異常系 (末尾改行付きID) -> 400
+req_body_newline = {
+    "title": "T", "url": base_url, "summary": "S",
+    "site_update_id": "granblue_official_123\n"
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body_newline)
+assert res.status_code == 400
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (末尾改行付きID) -> 400 & 書き込み/embedding 0件")
+
+# Test: 異常系 (長すぎるID > 100文字) -> 400
+req_body_too_long = {
+    "title": "T", "url": base_url, "summary": "S",
+    "site_update_id": "a" * 101
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body_too_long)
+assert res.status_code == 400
+assert mock_batch.update.call_count == 0
+assert mock_batch.set.call_count == 0
+assert mock_batch.commit.call_count == 0
+assert mock_get_embedding.call_count == 0
+print("PASS: 異常系 (長すぎるID 101文字) -> 400 & 書き込み/embedding 0件")
+
+# Test: site_update_idなし -> 従来の手動登録成功 (site_updates更新なし)
+req_body_none = {
+    "title": "T", "url": base_url, "summary": "S",
+    "site_update_id": None
+}
+mock_batch.update.reset_mock()
+mock_batch.set.reset_mock()
+mock_batch.commit.reset_mock()
+mock_get_embedding.reset_mock()
+res = client.post("/api/admin/official-news/register", headers={"X-Admin-Key": "test_admin_key"}, json=req_body_none)
+assert res.status_code == 200
+assert mock_batch.update.call_count == 0  # site_updatesは更新されない
+assert mock_batch.set.call_count > 0     # Knowledgeは書き込まれる
+assert mock_batch.commit.call_count == 1
+assert mock_get_embedding.call_count > 0
+print("PASS: site_update_idなし -> 手動登録として成功 (site_updates更新0件, Knowledge書き込み実行)")
+
+print("\n============================================================")
+print("全テスト (Task 6 追加要件含む) 完了")
+print("============================================================")
