@@ -248,6 +248,7 @@ app.add_middleware(
     allow_methods=[
         "GET",
         "POST",
+        "PATCH",
         "OPTIONS",
     ],
 
@@ -1521,7 +1522,7 @@ def search_knowledge_base(
                     DistanceMeasure.COSINE,
 
                 limit=
-                    RAG_SEARCH_LIMIT,
+                    RAG_SEARCH_LIMIT + 15,
 
                 distance_result_field=
                     "vector_distance",
@@ -1550,6 +1551,11 @@ def search_knowledge_base(
                 continue
 
 
+            if doc_data.get("active", True) is False:
+                print(f"[RAG除外] {doc.id} (inactive)")
+                continue
+
+
             print(
 
                 f"[RAG候補] "
@@ -1570,6 +1576,8 @@ def search_knowledge_base(
                     distance,
             })
 
+
+        candidates = candidates[:RAG_SEARCH_LIMIT]
 
         if not candidates:
 
@@ -3730,3 +3738,99 @@ async def visit_stats_endpoint(
             status_code=500,
             detail="アクセス統計の取得中にエラーが発生しました。",
         )
+
+# =========================================================
+# AI Knowledge 管理 API
+# =========================================================
+
+@app.get("/api/admin/knowledge")
+def get_admin_knowledge(http_request: Request, limit: int = 50, source_type: str = None):
+    require_admin(http_request)
+    
+    try:
+        collection_ref = db.collection("knowledge")
+        query = collection_ref
+        
+        if source_type:
+            query = query.where("source_type", "==", source_type)
+            
+        # orderByを使わずに取得し、Python側でソートすることで複合インデックスを不要にする。
+        # 管理画面用なので一度に多めに取得して絞る。
+        query = query.limit(500)
+        
+        docs = query.stream()
+        results = []
+        
+        # 許可するフィールドリスト (embeddingは絶対に含めない)
+        allowed_fields = [
+            "content", "source", "source_type", "url", "title",
+            "active", "updated_at", "published_date", "source_id",
+            "channel_id", "video_id", "summary",
+            "formation_category", "formation_category_name",
+            "formation_post_id", "formation_player_name", "formation_timestamp",
+            "formation_image_count"
+        ]
+        
+        for doc in docs:
+            data = doc.to_dict()
+            safe_data = {"doc_id": doc.id}
+            
+            for field in allowed_fields:
+                if field in data:
+                    val = data[field]
+                    if hasattr(val, "isoformat"):
+                        val = val.isoformat()
+                    safe_data[field] = val
+                    
+            # 既存データでactiveが存在しない場合はデフォルトでTrue扱い
+            if "active" not in safe_data:
+                safe_data["active"] = True
+                
+            results.append(safe_data)
+            
+        # updated_atで降順ソート。存在しない場合は古いものとして扱う
+        def get_sort_key(item):
+            updated = item.get("updated_at")
+            if not updated:
+                return ""
+            return str(updated)
+            
+        results.sort(key=get_sort_key, reverse=True)
+        results = results[:limit]
+            
+        return {"status": "ok", "items": results}
+        
+    except Exception as e:
+        print(f"Error fetching knowledge: {e}")
+        raise HTTPException(status_code=500, detail="データ取得に失敗しました。")
+
+
+class KnowledgeActiveUpdate(BaseModel):
+    active: bool
+
+@app.patch("/api/admin/knowledge/{doc_id}/active")
+def update_knowledge_active(doc_id: str, request: KnowledgeActiveUpdate, http_request: Request):
+    require_admin(http_request)
+    
+    if not doc_id or len(doc_id) > 200 or "/" in doc_id:
+        raise HTTPException(status_code=400, detail="不正なドキュメントIDです。")
+        
+    try:
+        doc_ref = db.collection("knowledge").document(doc_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="指定されたデータが見つかりません。")
+            
+        doc_ref.update({
+            "active": request.active,
+            "updated_at": firestore.SERVER_TIMESTAMP
+        })
+        
+        status_str = "有効" if request.active else "無効"
+        return {"status": "ok", "message": f"状態を「{status_str}」に変更しました。"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating knowledge active status: {e}")
+        raise HTTPException(status_code=500, detail="状態の更新に失敗しました。")
