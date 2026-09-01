@@ -2,6 +2,7 @@ import os
 import re
 import hmac
 import hashlib
+import unicodedata
 from datetime import datetime, timezone, timedelta
 from typing import Any
 from urllib.parse import urlparse
@@ -344,6 +345,8 @@ class OfficialNewsRegisterRequest(
 
     site_update_id: str | None = None
 
+    allow_duplicate: StrictBool = False
+
 
 class OfficialNewsRegisterResponse(
     BaseModel
@@ -408,6 +411,7 @@ class YouTubeRegisterRequest(BaseModel):
     channel_id: str = Field(..., max_length=100)
     video_id: str = Field(..., max_length=50)
     site_update_id: str = Field(..., max_length=100)
+    allow_duplicate: StrictBool = False
 
 
 class SiteUpdateIgnoreRequest(BaseModel):
@@ -1193,6 +1197,77 @@ def calculate_official_news_hash(
     )
 
 
+def normalize_duplicate_text(text: str) -> str:
+    """Task 8: 重複検出用のテキスト正規化 (Unicode NFKC, 前後空白除去, 連続空白統一, 英字casefold)"""
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKC", str(text)).strip()
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.casefold()
+
+
+def calculate_duplicate_hash_v1(text: str) -> str:
+    """Task 8: 重複検出用ハッシュ v1 (正規化テキスト全体のSHA-256)"""
+    normalized = normalize_duplicate_text(text)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def normalize_duplicate_source_url(raw_url: str) -> str:
+    """Task 8: 重複比較用URL正規化 (scheme/host小文字化, 末尾スラッシュ除去, query保持, fragment除外)"""
+    try:
+        parsed = urlparse((raw_url or "").strip())
+        scheme = (parsed.scheme or "https").lower()
+        netloc = (parsed.netloc or "").lower()
+        path = parsed.path.rstrip('/')
+        query_part = f"?{parsed.query}" if parsed.query else ""
+        return f"{scheme}://{netloc}{path}{query_part}"
+    except Exception:
+        return (raw_url or "").strip().rstrip('/')
+
+
+def find_duplicate_knowledge(
+    duplicate_hash: str,
+    exclude_url: str | None = None,
+    exclude_doc_ids: set[str] | None = None
+) -> dict | None:
+    """
+    Task 8: duplicate_hash_v1 による重複チェック Query
+    - 固定 limit(5) は使わず、同一hashを持つ候補のみをstream
+    - 自己doc_id または 自己URL を除外
+    - 別ドキュメントの重複候補を1件見つけた時点で即 return
+    """
+    if not duplicate_hash:
+        return None
+    try:
+        query = (
+            db.collection("knowledge")
+            .where(filter=FieldFilter("duplicate_hash_v1", "==", duplicate_hash))
+            .stream()
+        )
+        norm_exclude_url = normalize_duplicate_source_url(exclude_url) if exclude_url else None
+        
+        for doc in query:
+            if exclude_doc_ids and doc.id in exclude_doc_ids:
+                continue
+            data = doc.to_dict() or {}
+            if norm_exclude_url:
+                doc_url = data.get("url", "")
+                if normalize_duplicate_source_url(doc_url) == norm_exclude_url:
+                    continue
+            return {
+                "doc_id": doc.id,
+                "title": data.get("title", ""),
+                "source_type": data.get("source_type", ""),
+                "url": data.get("url", ""),
+            }
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[DUPLICATE_CHECK] Error querying knowledge for duplicate: {e}")
+        raise HTTPException(status_code=500, detail="重複チェック中にエラーが発生しました。")
+
+
 # =========================================================
 # 公式ニュース要約をknowledgeへ保存
 # =========================================================
@@ -1214,7 +1289,8 @@ def save_official_news_summary(
     url: str,
     published_date: str,
     summary: str,
-    site_update_id: str | None = None
+    site_update_id: str | None = None,
+    allow_duplicate: bool = False
 ) -> tuple[str, int]:
 
     summary = (
@@ -1334,6 +1410,25 @@ def save_official_news_summary(
             return (
                 "unchanged",
                 len(existing_docs)
+            )
+
+
+    duplicate_hash_v1 = calculate_duplicate_hash_v1(summary)
+    # Task 8: 同一記事の更新（existing_docsが存在する）の場合は重複ゲートをスキップし従来の更新処理を維持
+    # 新規記事かつ allow_duplicate=False の場合のみ重複チェックを実行
+    if not existing_docs and not allow_duplicate:
+        dup = find_duplicate_knowledge(
+            duplicate_hash_v1,
+            exclude_url=url,
+        )
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "duplicate": True,
+                    "message": "同じ内容の情報がすでに登録されています。",
+                    "existing": dup,
+                }
             )
 
 
@@ -1457,6 +1552,9 @@ def save_official_news_summary(
 
                 "content_hash":
                     content_hash,
+
+                "duplicate_hash_v1":
+                    duplicate_hash_v1,
 
                 "ingest_version":
                     OFFICIAL_NEWS_INGEST_VERSION,
@@ -2291,7 +2389,9 @@ async def register_official_news(
 
             summary,
             
-            request.site_update_id
+            request.site_update_id,
+
+            request.allow_duplicate
         )
     )
 
@@ -3693,6 +3793,25 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
         print(f"Validation error: {e}")
         raise HTTPException(status_code=500, detail="データ検証中にエラーが発生しました。")
     
+    # 重複検出 (allow_duplicate=False の場合、Embedding生成前に実行)
+    duplicate_hash_v1 = calculate_duplicate_hash_v1(summary)
+    target_doc_id = f"youtube_{request.video_id.strip()}"
+    if not request.allow_duplicate:
+        dup = find_duplicate_knowledge(
+            duplicate_hash_v1,
+            exclude_url=request.url.strip(),
+            exclude_doc_ids={target_doc_id}
+        )
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "duplicate": True,
+                    "message": "同じ内容の情報がすでに登録されています。",
+                    "existing": dup,
+                }
+            )
+
     # 1. Create embedding
     content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
     
@@ -3723,6 +3842,7 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
             # source_type=youtube_summary でも判別可能だが、contentにも明示する
             "content": f"[第三者YouTube攻略情報]\n{summary}",
             "content_hash": content_hash,
+            "duplicate_hash_v1": duplicate_hash_v1,
             "active": True,
             "updated_at": firestore.SERVER_TIMESTAMP,
             "embedding_field": Vector(embedding)
