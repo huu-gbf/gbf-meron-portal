@@ -493,6 +493,16 @@ class YouTubeSummarizeRequest(BaseModel):
     description: str = Field(default="", max_length=25000)
     transcript: str = Field(default="", max_length=120000)
 
+# =========================================================
+# メタ情報 型定義
+# =========================================================
+
+KnowledgeElement = Literal["火", "水", "土", "風", "光", "闇", "全属性", "不明"]
+KnowledgeCategory = Literal["古戦場", "高難度", "周回", "キャラ情報", "武器情報", "召喚石情報", "アップデート情報", "初心者向け", "その他"]
+KnowledgeContentType = Literal["編成", "攻略", "解説", "検証", "比較", "評価", "ニュース", "その他"]
+KnowledgeStatus = Literal["最新", "参考", "古い可能性あり", "無効"]
+
+
 class YouTubeRegisterRequest(BaseModel):
     title: str = Field(..., max_length=300)
     channel_name: str = Field(..., max_length=150)
@@ -503,6 +513,12 @@ class YouTubeRegisterRequest(BaseModel):
     video_id: str = Field(..., max_length=50)
     site_update_id: str = Field(..., max_length=100)
     allow_duplicate: StrictBool = False
+    year: int | None = Field(default=None)
+    element: KnowledgeElement | None = Field(default=None)
+    category: KnowledgeCategory | None = Field(default=None)
+    content_type: KnowledgeContentType | None = Field(default=None)
+    tags: list[str] = Field(default_factory=list)
+    status: KnowledgeStatus = Field(default="最新")
 
 
 class SiteUpdateIgnoreRequest(BaseModel):
@@ -4028,6 +4044,18 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
             "updated_at": firestore.SERVER_TIMESTAMP,
             "embedding_field": Vector(embedding)
         }
+        
+        if request.year is not None:
+            doc_data["year"] = request.year
+        if request.element is not None:
+            doc_data["element"] = request.element
+        if request.category is not None:
+            doc_data["category"] = request.category
+        if request.content_type is not None:
+            doc_data["content_type"] = request.content_type
+        doc_data["tags"] = request.tags
+        if request.status is not None:
+            doc_data["status"] = request.status
         
         batch = db.batch()
         batch.set(knowledge_ref, doc_data)
