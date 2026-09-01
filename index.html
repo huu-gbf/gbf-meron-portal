@@ -1127,7 +1127,6 @@
             statusText.textContent = '🟢 Firestore リアルタイム同期中';
           }
 
-          listenToFirestoreFormations();
           console.log('Firebase Firestore & Messaging が有効化されました。');
         } catch (e) {
           console.warn('Firebase初期化エラー (localStorageモードへフォールバック):', e);
@@ -1160,14 +1159,6 @@
     document.addEventListener('DOMContentLoaded', () => {
       initFirebaseService();
       updateNotificationButtonUI();
-
-      // 登録済み名前を復元・固定表示
-      const savedName = localStorage.getItem(LAST_NAME_KEY);
-      if (savedName) {
-        applyLockedName(savedName);
-      }
-
-      renderFormations();
 
       const commentEl = document.getElementById('formationComment');
       if (commentEl) {
