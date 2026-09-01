@@ -779,6 +779,9 @@
         const API_URL =
             "https://meron-ai-api-281908486591.asia-northeast1.run.app/api/chat";
 
+        const FEEDBACK_API_URL =
+            API_URL.replace(/\/chat\/?$/, "/feedback");
+
 
         // =====================================================
         // 端末識別ID
@@ -1111,7 +1114,11 @@
 
                     data?.sources
                     ||
-                    []
+                    [],
+
+                    data?.response_id,
+
+                    data?.feedback_token
                 );
 
 
@@ -1350,7 +1357,9 @@
         function appendMessage(
             text,
             sender,
-            sources = []
+            sources = [],
+            responseId = null,
+            feedbackToken = null
         ) {
 
             const chatMessages =
@@ -1592,6 +1601,18 @@
                     bubble,
                     sources
                 );
+
+                if (
+                    responseId
+                    &&
+                    feedbackToken
+                ) {
+                    appendFeedbackUI(
+                        bubble,
+                        responseId,
+                        feedbackToken
+                    );
+                }
             }
 
 
@@ -1864,6 +1885,213 @@
 
 
             return cleaned;
+        }
+
+
+        // =====================================================
+        // Feedback UI (Task 9)
+        // =====================================================
+
+        function appendFeedbackUI(
+            bubble,
+            responseId,
+            feedbackToken
+        ) {
+            const container = document.createElement("div");
+            container.className = "mt-3 pt-2.5 border-t border-slate-800/80 flex flex-col gap-2";
+
+            let currentRating = null;
+            let currentReason = null;
+            let isSubmitting = false;
+
+            const headerRow = document.createElement("div");
+            headerRow.className = "flex items-center justify-between gap-2 flex-wrap";
+
+            const label = document.createElement("span");
+            label.className = "text-[11px] text-slate-400";
+            label.textContent =
+                "\u3053\u306e\u56de\u7b54\u306f\u5f79\u306b\u7acb\u3061\u307e\u3057\u305f\u304b\uff1f";
+            headerRow.appendChild(label);
+
+            const btnGroup = document.createElement("div");
+            btnGroup.className = "flex items-center gap-1.5";
+
+            // Positive button (Thumbs Up)
+            const posBtn = document.createElement("button");
+            posBtn.type = "button";
+            posBtn.className = "px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-xs border border-transparent";
+            
+            const posIcon = document.createElement("span");
+            posIcon.textContent = "\uD83D\uDC4D";
+            const posText = document.createElement("span");
+            posText.textContent = "\u5f79\u306b\u7acb\u3063\u305f";
+            posBtn.appendChild(posIcon);
+            posBtn.appendChild(posText);
+
+            // Negative button (Thumbs Down)
+            const negBtn = document.createElement("button");
+            negBtn.type = "button";
+            negBtn.className = "px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-xs border border-transparent";
+            
+            const negIcon = document.createElement("span");
+            negIcon.textContent = "\uD83D\uDC4E";
+            const negText = document.createElement("span");
+            negText.textContent = "\u6539\u5584\u3057\u3066\u307b\u3057\u3044";
+            negBtn.appendChild(negIcon);
+            negBtn.appendChild(negText);
+
+            btnGroup.appendChild(posBtn);
+            btnGroup.appendChild(negBtn);
+            headerRow.appendChild(btnGroup);
+            container.appendChild(headerRow);
+
+            // Reasons Box (for negative feedback)
+            const reasonsBox = document.createElement("div");
+            reasonsBox.className = "hidden pt-2 border-t border-slate-800/60 flex flex-col gap-1.5";
+
+            const reasonPrompt = document.createElement("div");
+            reasonPrompt.className = "text-[11px] text-amber-300/80 font-medium";
+            reasonPrompt.textContent =
+                "\u6539\u5584\u70b9\u3092\u6559\u3048\u3066\u304f\u3060\u3055\u3044\uff08\u9078\u629e\u3059\u308b\u3068\u9001\u4fe1\u3055\u308c\u307e\u3059\uff09";
+            reasonsBox.appendChild(reasonPrompt);
+
+            const reasonGrid = document.createElement("div");
+            reasonGrid.className = "grid grid-cols-2 sm:grid-cols-3 gap-1.5";
+
+            const reasonOptions = [
+                {
+                    key: "incorrect",
+                    label: "\u5185\u5bb9\u304c\u9593\u9055\u3063\u3066\u3044\u308b"
+                },
+                {
+                    key: "outdated",
+                    label: "\u60c5\u5831\u304c\u53e4\u3044"
+                },
+                {
+                    key: "missing_information",
+                    label: "\u60c5\u5831\u304c\u8db3\u308a\u306a\u3044"
+                },
+                {
+                    key: "hard_to_understand",
+                    label: "\u5206\u304b\u308a\u306b\u304f\u3044"
+                },
+                {
+                    key: "irrelevant",
+                    label: "\u8cea\u554f\u3068\u95a2\u4fc2\u306a\u3044"
+                },
+                {
+                    key: "other",
+                    label: "\u305d\u306e\u4ed6"
+                },
+            ];
+
+            const reasonBtnElements = {};
+
+            reasonOptions.forEach(opt => {
+                const rBtn = document.createElement("button");
+                rBtn.type = "button";
+                rBtn.className = "px-2 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 text-[11px] text-left border border-slate-700/50 transition truncate";
+                rBtn.textContent = opt.label;
+                rBtn.title = opt.label;
+                rBtn.onclick = () => handleSendFeedback("negative", opt.key);
+                reasonGrid.appendChild(rBtn);
+                reasonBtnElements[opt.key] = rBtn;
+            });
+
+            reasonsBox.appendChild(reasonGrid);
+            container.appendChild(reasonsBox);
+
+            // Status message
+            const statusMsg = document.createElement("div");
+            statusMsg.className = "text-[11px] text-emerald-400 hidden";
+            statusMsg.textContent =
+                "\u2713 \u30d5\u30a3\u30fc\u30c9\u30d0\u30c3\u30af\u3042\u308a\u304c\u3068\u3046\u3054\u3056\u3044\u307e\u3059";
+            container.appendChild(statusMsg);
+
+            // Error message
+            const errorMsg = document.createElement("div");
+            errorMsg.className = "text-[11px] text-rose-400 hidden";
+            errorMsg.textContent =
+                "\u26a0\ufe0f \u30d5\u30a3\u30fc\u30c9\u30d0\u30c3\u30af\u306e\u9001\u4fe1\u306b\u5931\u6557\u3057\u307e\u3057\u305f";
+            container.appendChild(errorMsg);
+
+            function updateUIState() {
+                // Reset styles
+                posBtn.className = "px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-xs border border-transparent";
+                negBtn.className = "px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-xs border border-transparent";
+                
+                Object.values(reasonBtnElements).forEach(btn => {
+                    btn.className = "px-2 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-300 text-[11px] text-left border border-slate-700/50 transition truncate";
+                });
+
+                if (currentRating === "positive") {
+                    posBtn.className = "px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition flex items-center gap-1 text-xs font-semibold shadow-sm";
+                    reasonsBox.classList.add("hidden");
+                } else if (currentRating === "negative") {
+                    negBtn.className = "px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 transition flex items-center gap-1 text-xs font-semibold shadow-sm";
+                    if (currentReason && reasonBtnElements[currentReason]) {
+                        reasonBtnElements[currentReason].className = "px-2 py-1.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/50 text-[11px] text-left font-semibold";
+                    }
+                }
+            }
+
+            async function handleSendFeedback(rating, reason = null) {
+                // Prevent duplicate submission for identical rating and reason
+                if (currentRating === rating && currentReason === reason) {
+                    return;
+                }
+
+                if (isSubmitting) return;
+                isSubmitting = true;
+                errorMsg.classList.add("hidden");
+                statusMsg.classList.add("hidden");
+
+                try {
+                    const res = await fetch(FEEDBACK_API_URL, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            response_id: responseId,
+                            feedback_token: feedbackToken,
+                            rating: rating,
+                            reason: reason
+                        })
+                    });
+
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}`);
+                    }
+
+                    currentRating = rating;
+                    currentReason = reason;
+                    updateUIState();
+                    statusMsg.classList.remove("hidden");
+
+                } catch (err) {
+                    console.error("Feedback submit error:", err);
+                    errorMsg.textContent =
+                        "\u26a0\ufe0f \u30d5\u30a3\u30fc\u30c9\u30d0\u30c3\u30af\u306e\u9001\u4fe1\u306b\u5931\u6557\u3057\u307e\u3057\u305f";
+                    errorMsg.classList.remove("hidden");
+                } finally {
+                    isSubmitting = false;
+                }
+            }
+
+            posBtn.onclick = () => {
+                handleSendFeedback("positive", null);
+            };
+
+            negBtn.onclick = () => {
+                if (currentRating === "negative" && !reasonsBox.classList.contains("hidden")) {
+                    reasonsBox.classList.add("hidden");
+                } else {
+                    reasonsBox.classList.remove("hidden");
+                }
+            };
+
+            bubble.appendChild(container);
         }
 
 

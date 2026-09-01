@@ -2,9 +2,10 @@ import os
 import re
 import hmac
 import hashlib
+import uuid
 import unicodedata
 from datetime import datetime, timezone, timedelta
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -112,6 +113,44 @@ OFFICIAL_NEWS_ALLOWED_HOSTS = {
 OFFICIAL_NEWS_INGEST_VERSION = (
     "official_news_summary_v1"
 )
+
+
+# =========================================================
+# フィードバック署名設定 (Task 9)
+#
+# FEEDBACK_SIGNING_KEY はCloud RunのSecret Managerから渡します。
+# 未設定時はfail-closed（秘密鍵なしでの動作を拒否）します。
+# =========================================================
+
+def get_feedback_signing_key() -> str:
+    key = os.getenv("FEEDBACK_SIGNING_KEY", "").strip()
+    if not key:
+        raise RuntimeError("FEEDBACK_SIGNING_KEY is not configured.")
+    return key
+
+def generate_feedback_token(response_id: str) -> str:
+    key = get_feedback_signing_key().encode("utf-8")
+    return hmac.new(
+        key,
+        response_id.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+
+def verify_feedback_token(response_id: str, feedback_token: str) -> bool:
+    if not isinstance(response_id, str) or not isinstance(feedback_token, str):
+        return False
+    try:
+        expected_token = generate_feedback_token(response_id)
+    except RuntimeError:
+        return False
+    return hmac.compare_digest(expected_token, feedback_token)
+
+_UUID_REGEX = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+def is_valid_uuid(val: str) -> bool:
+    if not isinstance(val, str) or len(val) != 36:
+        return False
+    return bool(_UUID_REGEX.fullmatch(val))
 
 
 # =========================================================
@@ -308,6 +347,58 @@ class ChatResponse(
         Field(
             default_factory=list
         )
+    )
+
+    response_id: str | None = None
+
+    feedback_token: str | None = None
+
+
+# =========================================================
+# フィードバックモデル (Task 9)
+# =========================================================
+
+FEEDBACK_ALLOWED_RATINGS = {"positive", "negative"}
+FEEDBACK_ALLOWED_REASONS = {
+    "incorrect",
+    "outdated",
+    "missing_information",
+    "hard_to_understand",
+    "irrelevant",
+    "other"
+}
+
+class FeedbackRequest(
+    BaseModel
+):
+    model_config = ConfigDict(extra="forbid")
+
+    response_id: str = Field(
+        ...,
+        min_length=36,
+        max_length=36,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    )
+
+    feedback_token: str = Field(
+        ...,
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-f]{64}$"
+    )
+
+    rating: Literal["positive", "negative"]
+
+    reason: Literal[
+        "incorrect",
+        "outdated",
+        "missing_information",
+        "hard_to_understand",
+        "irrelevant",
+        "other"
+    ] | None = Field(
+        default=None,
+        max_length=32
     )
 
 
@@ -2640,6 +2731,17 @@ async def chat_endpoint(
         )
 
 
+        response_id = None
+        feedback_token = None
+        try:
+            temp_response_id = str(uuid.uuid4())
+            feedback_token = generate_feedback_token(temp_response_id)
+            response_id = temp_response_id
+        except Exception:
+            print("[FEEDBACK] feedback token unavailable; feedback disabled")
+            response_id = None
+            feedback_token = None
+
         return ChatResponse(
 
             reply=
@@ -2648,7 +2750,13 @@ async def chat_endpoint(
                 "回答を生成できませんでした。",
 
             sources=
-                sources
+                sources,
+
+            response_id=
+                response_id,
+
+            feedback_token=
+                feedback_token
         )
 
 
@@ -2667,6 +2775,79 @@ async def chat_endpoint(
                 "AI応答の生成中に"
                 "エラーが発生しました。"
         )
+
+
+# =========================================================
+# AI回答フィードバックAPI (Task 9: POST /api/feedback)
+# =========================================================
+
+@app.post("/api/feedback")
+async def feedback_endpoint(
+    request: FeedbackRequest
+):
+    """
+    AI回答に対する団員フィードバックを保存する。
+    - 公開API (管理キー不要)
+    - HMAC署名検証 (Gemini/Embedding/Firestore Read不要)
+    - 質問/回答本文・IP・クライアントID等は一切保存しない
+    - Firestore 0 Read, 1 Write (同一response_idへの再送信は上書き)
+    """
+    # 1. 署名鍵設定検証 (未設定時は500でfail-closed)
+    try:
+        get_feedback_signing_key()
+    except RuntimeError as e:
+        print(f"Feedback signing key error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="サーバー設定エラーによりフィードバックを受け付けられません。"
+        )
+
+    response_id = request.response_id
+    feedback_token = request.feedback_token
+    rating = request.rating
+    reason = request.reason
+
+    # 2. feedback_token 署名検証 (署名不一致時はFirestoreへ一切書き込まず400)
+    if not verify_feedback_token(response_id, feedback_token):
+        raise HTTPException(
+            status_code=400,
+            detail="feedback_tokenが無効です。"
+        )
+
+    # 3. rating / reason 組み合わせ検証
+    if rating == "negative":
+        if reason is None:
+            raise HTTPException(
+                status_code=400,
+                detail="negative評価には有効なreasonの指定が必須です。"
+            )
+    else:  # positive
+        if reason is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="positive評価ではreasonを指定できません。"
+            )
+
+    # 4. Firestore書き込み (0 Read, 1 Write, doc全体上書き)
+    try:
+        doc_ref = db.collection("ai_feedback").document(response_id)
+        doc_ref.set({
+            "response_id": response_id,
+            "rating": rating,
+            "reason": reason,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+            "schema_version": 1,
+        })
+    except Exception as e:
+        print(f"Error saving ai_feedback: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="フィードバックの保存中にエラーが発生しました。"
+        )
+
+    return {
+        "status": "ok"
+    }
 # =========================================================
 # 情報ウォッチ未確認件数API (GET /api/admin/site-updates/pending-count)
 # =========================================================
