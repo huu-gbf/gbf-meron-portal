@@ -1144,17 +1144,6 @@
       }
     }
 
-    // Service Worker 登録
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./firebase-messaging-sw.js')
-        .then((registration) => {
-          if (messaging) messaging.useServiceWorker(registration);
-        })
-        .catch((err) => {
-          console.warn('Service Worker 登録失敗:', err);
-        });
-    }
-
     // コメント文字数カウンター & D&D & 通知UI初期化
     document.addEventListener('DOMContentLoaded', () => {
       initFirebaseService();
