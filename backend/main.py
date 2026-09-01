@@ -4249,6 +4249,77 @@ async def visit_endpoint(
 
 
 # =========================================================
+# Usage Dashboard API (GET /api/admin/usage-dashboard)
+# =========================================================
+
+@app.get("/api/admin/usage-dashboard")
+async def admin_usage_dashboard_endpoint(http_request: Request):
+    """Return usage dashboard data for administrators."""
+    require_admin(http_request)
+    
+    try:
+        now = datetime.now(JST)
+        today_key = now.strftime("%Y%m%d")
+        
+        # 1. Today's AI usage limits
+        global_day_ref = db.collection("ai_usage_limits").document(f"global_day_{today_key}")
+        global_day_snap = global_day_ref.get()
+        today_count = 0
+        
+        if global_day_snap.exists:
+            today_count = global_day_snap.to_dict().get("count", 0)
+            
+        daily_limit = DAILY_GLOBAL_LIMIT
+        remaining = max(daily_limit - today_count, 0)
+        usage_percent = round((today_count / daily_limit) * 100, 1) if daily_limit > 0 else 0.0
+        
+        # 2. Feedback stats
+        feedback_col = db.collection("ai_feedback")
+        
+        def get_count(query):
+            res = query.count().get()
+            return res[0][0].value if res else 0
+
+        # Total feedback count
+        total_feedback = get_count(feedback_col)
+        # Positive feedback count
+        positive_count = get_count(feedback_col.where(filter=FieldFilter("rating", "==", "positive")))
+        # Negative feedback count
+        negative_count = get_count(feedback_col.where(filter=FieldFilter("rating", "==", "negative")))
+        
+        # Reasons mapping
+        reasons_to_count = ["incorrect", "outdated", "missing_information", "hard_to_understand", "irrelevant", "other"]
+        reasons_counts = {}
+        for r in reasons_to_count:
+            reasons_counts[r] = get_count(feedback_col.where(filter=FieldFilter("reason", "==", r)))
+
+        return {
+            "status": "ok",
+            "date": now.strftime("%Y-%m-%d"),
+            "timezone": "Asia/Tokyo",
+            "ai_usage": {
+                "today_count": today_count,
+                "daily_limit": daily_limit,
+                "remaining": remaining,
+                "usage_percent": usage_percent
+            },
+            "feedback": {
+                "total": total_feedback,
+                "positive": positive_count,
+                "negative": negative_count,
+                "reasons": reasons_counts
+            }
+        }
+
+    except Exception as e:
+        print(f"Error in usage dashboard: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve usage dashboard data."
+        )
+
+
+# =========================================================
 # アクセス解析 管理者API
 # GET /api/admin/visit-stats
 #

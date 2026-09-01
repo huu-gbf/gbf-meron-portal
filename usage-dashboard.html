@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>めろ～ん王国 ポータル運用状況ダッシュボード</title>
+
+  <style>
+    :root {
+      --bg-color: #080b14;
+      --card-bg: rgba(18, 24, 41, 0.85);
+      --card-border: rgba(56, 189, 248, 0.2);
+      --card-border-subtle: rgba(148, 163, 184, 0.12);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-subtle: #64748b;
+      --accent-blue: #38bdf8;
+      --accent-blue-hover: #0284c7;
+      --accent-amber: #fbbf24;
+      --accent-green: #34d399;
+      --accent-rose: #fb7185;
+      --item-bg: rgba(15, 23, 42, 0.65);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0 24px 0;
+      border-bottom: 1px solid var(--card-border-subtle);
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .header-title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-icon {
+      width: 42px;
+      height: 42px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      background: var(--item-bg);
+      border: 1px solid var(--card-border-subtle);
+      border-radius: 8px;
+      padding: 8px 14px;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .nav-btn:hover {
+      color: var(--text-main);
+      border-color: var(--text-muted);
+    }
+
+    /* Auth & Control Card */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    @media (min-width: 640px) {
+      .auth-form {
+        flex-direction: row;
+      }
+    }
+
+    .auth-input {
+      flex: 1;
+      background: #060911;
+      border: 1px solid var(--card-border-subtle);
+      border-radius: 10px;
+      padding: 12px 16px;
+      color: var(--text-main);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .auth-input:focus {
+      border-color: var(--accent-blue);
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: #04101e;
+      font-weight: 700;
+      font-size: 0.95rem;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 24px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-blue-hover);
+      color: #fff;
+    }
+
+    .btn-secondary {
+      background: var(--item-bg);
+      color: var(--text-main);
+      font-weight: 600;
+      font-size: 0.85rem;
+      border: 1px solid var(--card-border-subtle);
+      border-radius: 8px;
+      padding: 8px 16px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--accent-blue);
+    }
+
+    /* Status & Alerts */
+    .alert-error {
+      background: rgba(244, 63, 94, 0.15);
+      border: 1px solid rgba(244, 63, 94, 0.35);
+      color: #fda4af;
+      padding: 14px 18px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .section-error {
+      color: var(--accent-rose);
+      font-size: 0.85rem;
+      padding: 8px 0;
+    }
+
+    /* Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    @media (min-width: 768px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border-subtle);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--card-border-subtle);
+      padding-bottom: 10px;
+    }
+
+    .panel-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .panel-icon {
+      font-size: 1.1rem;
+    }
+
+    /* Metrics & Numbers */
+    .metric-box {
+      background: var(--item-bg);
+      border: 1px solid var(--card-border-subtle);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+
+    .metric-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .metric-value-large {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .metric-value-highlight {
+      color: var(--accent-blue);
+    }
+
+    .metric-unit {
+      font-size: 0.85rem;
+      font-weight: normal;
+      color: var(--text-subtle);
+      margin-left: 4px;
+    }
+
+    .sub-metrics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .sub-metric-box {
+      background: var(--item-bg);
+      border: 1px solid var(--card-border-subtle);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+    }
+
+    .sub-metric-value {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Progress Bar */
+    .progress-bar-container {
+      width: 100%;
+      height: 10px;
+      background: #0f172a;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 12px 0 8px 0;
+      border: 1px solid var(--card-border-subtle);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      border-radius: 999px;
+      width: 0%;
+      max-width: 100%;
+      transition: width 0.4s ease;
+    }
+
+    /* Feedback List */
+    .reasons-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .reason-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      padding: 6px 10px;
+      background: #060911;
+      border-radius: 8px;
+      border: 1px solid var(--card-border-subtle);
+    }
+
+    .reason-name {
+      color: var(--text-muted);
+    }
+
+    .reason-count {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    /* Footer Controls */
+    .dashboard-footer {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--card-border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--text-subtle);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title-group">
+        <div class="header-icon">📊</div>
+        <div>
+          <h1>めろ～ん王国 ポータル運用状況ダッシュボード</h1>
+          <div class="subtitle">システム運用・アクセス・AI利用集計</div>
+        </div>
+      </div>
+      <a href="index.html" class="nav-btn">← ポータルへ</a>
+    </header>
+
+    <!-- 管理認証セクション -->
+    <div class="card">
+      <div class="auth-form">
+        <input
+          id="adminKey"
+          type="password"
+          class="auth-input"
+          placeholder="Cloud Run 管理キーを入力"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button id="btnFetch" type="button" class="btn-primary" onclick="handleFetchDashboard()">
+          <span>ダッシュボードを表示</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- エラーメッセージ領域 -->
+    <div id="globalError" class="alert-error"></div>
+
+    <!-- ダッシュボード本体 -->
+    <div id="dashboardContent" class="hidden">
+      <div class="dashboard-grid">
+        
+        <!-- 1. AI利用状況 -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">🤖</span>
+            <h2 class="panel-title">AI利用状況</h2>
+          </div>
+          <div id="secAiError" class="section-error hidden">取得できませんでした</div>
+          <div id="secAiBody">
+            <div class="metric-box">
+              <div class="metric-row">
+                <span class="metric-label">本日の利用回数</span>
+                <div class="metric-value-large">
+                  <span id="aiTodayCount">-</span>
+                  <span class="metric-unit">/ <span id="aiDailyLimit">-</span></span>
+                </div>
+              </div>
+              
+              <div class="progress-bar-container">
+                <div id="aiProgressBar" class="progress-bar-fill"></div>
+              </div>
+
+              <div class="metric-row" style="margin-top: 8px; margin-bottom: 0;">
+                <span class="metric-label">使用率: <strong id="aiUsagePercent" style="color: var(--text-main);">-</strong>%</span>
+                <span class="metric-label">残り: <strong id="aiRemaining" style="color: var(--text-main);">-</strong> 回</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. Feedback -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">💬</span>
+            <h2 class="panel-title">Feedback</h2>
+          </div>
+          <div id="secFbError" class="section-error hidden">取得できませんでした</div>
+          <div id="secFbBody">
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
+              <div class="sub-metric-box">
+                <div class="metric-label">総数</div>
+                <div id="fbTotal" class="sub-metric-value">-</div>
+              </div>
+              <div class="sub-metric-box">
+                <div class="metric-label">👍 Positive</div>
+                <div id="fbPositive" class="sub-metric-value" style="color: var(--accent-green);">-</div>
+              </div>
+            </div>
+
+            <div class="metric-box">
+              <div class="metric-row" style="border-bottom: 1px solid var(--card-border-subtle); padding-bottom: 8px; margin-bottom: 10px;">
+                <span class="metric-label">👎 Negative</span>
+                <div class="metric-value-large" style="color: var(--accent-rose); font-size: 1.25rem;">
+                  <span id="fbNegative">-</span>
+                </div>
+              </div>
+              
+              <div class="metric-label" style="margin-bottom: 6px;">Negative 理由別件数</div>
+              <ul class="reasons-list">
+                <li class="reason-item">
+                  <span class="reason-name">内容が間違っている</span>
+                  <span id="reason-incorrect" class="reason-count">-</span>
+                </li>
+                <li class="reason-item">
+                  <span class="reason-name">情報が古い</span>
+                  <span id="reason-outdated" class="reason-count">-</span>
+                </li>
+                <li class="reason-item">
+                  <span class="reason-name">情報が不足</span>
+                  <span id="reason-missing_information" class="reason-count">-</span>
+                </li>
+                <li class="reason-item">
+                  <span class="reason-name">分かりにくい</span>
+                  <span id="reason-hard_to_understand" class="reason-count">-</span>
+                </li>
+                <li class="reason-item">
+                  <span class="reason-name">質問と関係ない</span>
+                  <span id="reason-irrelevant" class="reason-count">-</span>
+                </li>
+                <li class="reason-item">
+                  <span class="reason-name">その他</span>
+                  <span id="reason-other" class="reason-count">-</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Visitor -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">👥</span>
+            <h2 class="panel-title">Visitor</h2>
+          </div>
+          <div id="secVisitError" class="section-error hidden">取得できませんでした</div>
+          <div id="secVisitBody">
+            <div class="sub-metrics-grid">
+              <div class="sub-metric-box">
+                <div class="metric-label">今日のページビュー (PV)</div>
+                <div id="visitTodayPv" class="sub-metric-value" style="color: var(--accent-blue);">-</div>
+              </div>
+              <div class="sub-metric-box">
+                <div class="metric-label">今日のユニーク訪問者 (UU)</div>
+                <div id="visitTodayUu" class="sub-metric-value" style="color: var(--accent-amber);">-</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. Site Updates -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">📡</span>
+            <h2 class="panel-title">Site Updates</h2>
+          </div>
+          <div id="secUpdatesError" class="section-error hidden">取得できませんでした</div>
+          <div id="secUpdatesBody">
+            <div class="sub-metrics-grid">
+              <div class="sub-metric-box">
+                <div class="metric-label">未確認情報</div>
+                <div id="updatesPending" class="sub-metric-value" style="color: var(--accent-amber);">-</div>
+              </div>
+              <div class="sub-metric-box">
+                <div class="metric-label">今日検出した更新</div>
+                <div id="updatesDetectedToday" class="sub-metric-value" style="color: #ffffff;">-</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- 最終更新時刻 & リロードボタン -->
+      <footer class="dashboard-footer">
+        <div>
+          最終更新時刻: <span id="lastUpdatedTime" style="color: var(--text-main); font-weight: 600;">-</span> (JST)
+        </div>
+        <button type="button" class="btn-secondary" onclick="handleRefresh()">
+          <span>最新情報に更新</span>
+        </button>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================
+    // API ベース URL 定義
+    // =========================================================
+    const API_URL = "https://meron-ai-api-281908486591.asia-northeast1.run.app";
+
+    // 管理キーはメモリ変数のみで保持（Storage/Cookie保存禁止）
+    let activeAdminKey = "";
+
+    // 数値安全反映ヘルパー (0.0 などを整数値として自然に表示)
+    function formatCount(val) {
+      if (val === null || val === undefined || val === "-") return "-";
+      const num = Number(val);
+      return isNaN(num) ? "-" : String(Math.round(num));
+    }
+
+    function setElementText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    // 初回表示トリガー
+    function handleFetchDashboard() {
+      const keyInput = document.getElementById("adminKey");
+      const keyVal = keyInput ? keyInput.value.trim() : "";
+      if (!keyVal) {
+        showGlobalError("管理キーを入力してください。");
+        return;
+      }
+      activeAdminKey = keyVal;
+      fetchDashboardData();
+    }
+
+    // 再読み込みトリガー
+    function handleRefresh() {
+      if (!activeAdminKey) {
+        showGlobalError("管理キーが入力されていません。");
+        return;
+      }
+      fetchDashboardData();
+    }
+
+    function showGlobalError(msg) {
+      const errEl = document.getElementById("globalError");
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.style.display = "block";
+      }
+    }
+
+    function clearGlobalError() {
+      const errEl = document.getElementById("globalError");
+      if (errEl) {
+        errEl.textContent = "";
+        errEl.style.display = "none";
+      }
+    }
+
+    // メイン取得ロジック (並列取得 & セクション別耐障害性)
+    async function fetchDashboardData() {
+      clearGlobalError();
+
+      const fetchOptions = {
+        method: "GET",
+        headers: {
+          "X-Admin-Key": activeAdminKey
+        }
+      };
+
+      // 4つのAPIを並列取得 (Promise.allSettled)
+      const results = await Promise.allSettled([
+        fetch(`${API_URL}/api/admin/usage-dashboard`, fetchOptions),
+        fetch(`${API_URL}/api/admin/visit-stats`, fetchOptions),
+        fetch(`${API_URL}/api/admin/site-updates/pending-count`, fetchOptions),
+        fetch(`${API_URL}/api/admin/daily-summary`, fetchOptions)
+      ]);
+
+      const [usageResult, visitResult, pendingResult, summaryResult] = results;
+
+      // 401 Unauthorized の検知（いずれかのAPIが401を返した場合）
+      let hasUnauthorized = false;
+      for (const res of results) {
+        if (res.status === "fulfilled" && res.value.status === 401) {
+          hasUnauthorized = true;
+          break;
+        }
+      }
+
+      if (hasUnauthorized) {
+        document.getElementById("dashboardContent").classList.add("hidden");
+        showGlobalError("管理キーが正しくありません。");
+        return;
+      }
+
+      // ダッシュボードコンテナを表示
+      document.getElementById("dashboardContent").classList.remove("hidden");
+
+      // 1. AI利用状況 & Feedback セクション反映
+      if (usageResult.status === "fulfilled" && usageResult.value.ok) {
+        try {
+          const usageData = await usageResult.value.json();
+          renderUsageAndFeedback(usageData);
+          document.getElementById("secAiError").classList.add("hidden");
+          document.getElementById("secFbError").classList.add("hidden");
+        } catch (e) {
+          resetUsageAndFeedback();
+          document.getElementById("secAiError").classList.remove("hidden");
+          document.getElementById("secFbError").classList.remove("hidden");
+        }
+      } else {
+        resetUsageAndFeedback();
+        document.getElementById("secAiError").classList.remove("hidden");
+        document.getElementById("secFbError").classList.remove("hidden");
+      }
+
+      // 2. Visitor セクション反映
+      if (visitResult.status === "fulfilled" && visitResult.value.ok) {
+        try {
+          const visitData = await visitResult.value.json();
+          renderVisitor(visitData);
+          document.getElementById("secVisitError").classList.add("hidden");
+        } catch (e) {
+          resetVisitor();
+          document.getElementById("secVisitError").classList.remove("hidden");
+        }
+      } else {
+        resetVisitor();
+        document.getElementById("secVisitError").classList.remove("hidden");
+      }
+
+      // 3. Site Updates セクション反映
+      let pendingOk = false;
+      let summaryOk = false;
+
+      if (pendingResult.status === "fulfilled" && pendingResult.value.ok) {
+        try {
+          const pData = await pendingResult.value.json();
+          setElementText("updatesPending", formatCount(pData.count));
+          pendingOk = true;
+        } catch (e) {
+          setElementText("updatesPending", "-");
+        }
+      } else {
+        setElementText("updatesPending", "-");
+      }
+
+      if (summaryResult.status === "fulfilled" && summaryResult.value.ok) {
+        try {
+          const sData = await summaryResult.value.json();
+          setElementText("updatesDetectedToday", formatCount(sData.total_count));
+          summaryOk = true;
+        } catch (e) {
+          setElementText("updatesDetectedToday", "-");
+        }
+      } else {
+        setElementText("updatesDetectedToday", "-");
+      }
+
+      if (pendingOk && summaryOk) {
+        document.getElementById("secUpdatesError").classList.add("hidden");
+      } else {
+        document.getElementById("secUpdatesError").classList.remove("hidden");
+      }
+
+      // 最終更新時刻の更新 (JST)
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString("ja-JP", {
+        hour12: false,
+        timeZone: "Asia/Tokyo"
+      });
+      setElementText("lastUpdatedTime", timeStr);
+    }
+
+    // リセット用関数
+    function resetUsageAndFeedback() {
+      setElementText("aiTodayCount", "-");
+      setElementText("aiDailyLimit", "-");
+      setElementText("aiRemaining", "-");
+      setElementText("aiUsagePercent", "-");
+      const barEl = document.getElementById("aiProgressBar");
+      if (barEl) barEl.style.width = "0%";
+
+      setElementText("fbTotal", "-");
+      setElementText("fbPositive", "-");
+      setElementText("fbNegative", "-");
+      setElementText("reason-incorrect", "-");
+      setElementText("reason-outdated", "-");
+      setElementText("reason-missing_information", "-");
+      setElementText("reason-hard_to_understand", "-");
+      setElementText("reason-irrelevant", "-");
+      setElementText("reason-other", "-");
+    }
+
+    function resetVisitor() {
+      setElementText("visitTodayPv", "-");
+      setElementText("visitTodayUu", "-");
+    }
+
+    // AI利用状況 & Feedback レンダリング
+    function renderUsageAndFeedback(data) {
+      if (!data) return;
+
+      // AI利用状況
+      if (data.ai_usage) {
+        const todayCount = formatCount(data.ai_usage.today_count);
+        const dailyLimit = formatCount(data.ai_usage.daily_limit);
+        const remaining = formatCount(data.ai_usage.remaining);
+        const usagePercent = Number(data.ai_usage.usage_percent) || 0;
+
+        setElementText("aiTodayCount", todayCount);
+        setElementText("aiDailyLimit", dailyLimit);
+        setElementText("aiRemaining", remaining);
+        setElementText("aiUsagePercent", String(usagePercent));
+
+        // ゲージの反映 (最大100%にクランプ)
+        const clampedPercent = Math.min(Math.max(usagePercent, 0), 100);
+        const barEl = document.getElementById("aiProgressBar");
+        if (barEl) {
+          barEl.style.width = clampedPercent + "%";
+        }
+      }
+
+      // Feedback
+      if (data.feedback) {
+        setElementText("fbTotal", formatCount(data.feedback.total));
+        setElementText("fbPositive", formatCount(data.feedback.positive));
+        setElementText("fbNegative", formatCount(data.feedback.negative));
+
+        if (data.feedback.reasons) {
+          const r = data.feedback.reasons;
+          setElementText("reason-incorrect", formatCount(r.incorrect));
+          setElementText("reason-outdated", formatCount(r.outdated));
+          setElementText("reason-missing_information", formatCount(r.missing_information));
+          setElementText("reason-hard_to_understand", formatCount(r.hard_to_understand));
+          setElementText("reason-irrelevant", formatCount(r.irrelevant));
+          setElementText("reason-other", formatCount(r.other));
+        }
+      }
+    }
+
+    // Visitor レンダリング
+    function renderVisitor(data) {
+      if (!data || !data.today) return;
+      setElementText("visitTodayPv", formatCount(data.today.page_views));
+      setElementText("visitTodayUu", formatCount(data.today.unique_visitors));
+    }
+  </script>
+</body>
+</html>
