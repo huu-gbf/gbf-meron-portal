@@ -123,7 +123,7 @@
         <div class="flex items-center gap-3">
           <button 
             onclick="handleLogout()" 
-            class="text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700 transition"
+            class="min-h-[44px] px-4 text-sm sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
           >
             ログアウト
           </button>
@@ -444,6 +444,17 @@
             <span>AI機能を表示</span>
           </summary>
           <div class="px-5 sm:px-6 pb-6 border-t border-slate-800 pt-4">
+            <!-- AIと外部情報についての案内 -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 sm:p-5 mb-5">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-base">📚</span>
+                <h3 class="text-sm font-bold text-slate-200">AIと外部情報について</h3>
+              </div>
+              <p class="text-sm text-slate-400 leading-relaxed">
+                このAIでは、Webサイト・YouTube動画・各種資料などの外部情報を利用する際、著作権や制作者への配慮を大切にし、内容を要約・整理したうえで登録しています。元コンテンツの全文転載や、元コンテンツの代替を目的としたものではありません。可能な範囲で出典・参考元を明記し、詳しい内容については元のサイトや動画をご確認いただくようお願いします。各コンテンツの著作権は、それぞれの権利者に帰属します。
+              </p>
+            </div>
+
             <a href="ai-chat.html" target="_blank" rel="noopener noreferrer" class="glass-panel rounded-2xl p-6 sm:p-8 hover:border-amber-400 transition group border-amber-500/40 block shadow-xl shadow-amber-500/5 hover:shadow-amber-500/15">
               <div class="flex items-center gap-4 mb-4">
                 <div class="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center text-3xl group-hover:scale-110 transition shadow-lg shadow-amber-500/10">
@@ -472,7 +483,7 @@
                 <div class="w-8 h-8 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-base">📰</div>
                 <h3 class="text-lg font-bold text-white">登録済み情報</h3>
               </div>
-              <button id="btn-refresh-registered" onclick="fetchRegisteredUpdates()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg px-3 py-1.5 flex items-center gap-1 transition disabled:opacity-50">
+              <button id="btn-refresh-registered" onclick="fetchRegisteredUpdates()" class="min-h-[44px] px-4 text-sm sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg flex items-center gap-1 transition disabled:opacity-50">
                 <span>↻</span><span>最新状態を確認</span>
               </button>
             </div>
@@ -646,7 +657,7 @@
             <button 
               onclick="copyRecruitText()" 
               id="copyRecruitBtn"
-              class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 whitespace-nowrap"
+              class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 text-sm sm:min-h-0 sm:px-4 sm:py-2 sm:text-xs bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 whitespace-nowrap"
             >
               <span>📋</span>
               <span id="copyRecruitTextLabel">募集全文をコピー</span>
