@@ -286,6 +286,17 @@
       gap: 12px;
     }
 
+    .sub-metrics-grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 500px) {
+      .sub-metrics-grid-3 {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+    }
+
     .sub-metric-box {
       background: var(--item-bg);
       border: 1px solid var(--card-border-subtle);
@@ -366,6 +377,41 @@
     .hidden {
       display: none !important;
     }
+
+    /* Update Item styles */
+    .update-item {
+      background: #060911;
+      border-radius: 8px;
+      border: 1px solid var(--card-border-subtle);
+      padding: 10px;
+      font-size: 0.85rem;
+    }
+    .update-item-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .update-badge {
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(148, 163, 184, 0.2);
+      color: var(--text-muted);
+    }
+    .update-title {
+      font-weight: 600;
+      color: var(--text-main);
+      word-break: break-all;
+    }
+    .update-link {
+      color: var(--accent-blue);
+      text-decoration: none;
+      font-size: 0.8rem;
+      word-break: break-all;
+    }
+    .update-link:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -404,7 +450,7 @@
     <!-- ダッシュボード本体 -->
     <div id="dashboardContent" class="hidden">
       <div class="dashboard-grid">
-        
+
         <!-- 1. AI利用状況 -->
         <section class="panel">
           <div class="panel-header">
@@ -421,7 +467,7 @@
                   <span class="metric-unit">/ <span id="aiDailyLimit">-</span></span>
                 </div>
               </div>
-              
+
               <div class="progress-bar-container">
                 <div id="aiProgressBar" class="progress-bar-fill"></div>
               </div>
@@ -460,7 +506,7 @@
                   <span id="fbNegative">-</span>
                 </div>
               </div>
-              
+
               <div class="metric-label" style="margin-bottom: 6px;">Negative 理由別件数</div>
               <ul class="reasons-list">
                 <li class="reason-item">
@@ -500,15 +546,56 @@
           </div>
           <div id="secVisitError" class="section-error hidden">取得できませんでした</div>
           <div id="secVisitBody">
-            <div class="sub-metrics-grid">
+            <div class="metric-label" style="margin-bottom: 6px;">今日</div>
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
               <div class="sub-metric-box">
-                <div class="metric-label">今日のページビュー (PV)</div>
+                <div class="metric-label">PV</div>
                 <div id="visitTodayPv" class="sub-metric-value" style="color: var(--accent-blue);">-</div>
               </div>
               <div class="sub-metric-box">
-                <div class="metric-label">今日のユニーク訪問者 (UU)</div>
+                <div class="metric-label">UU</div>
                 <div id="visitTodayUu" class="sub-metric-value" style="color: var(--accent-amber);">-</div>
               </div>
+            </div>
+
+            <div class="metric-label" style="margin-bottom: 6px;">昨日</div>
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
+              <div class="sub-metric-box">
+                <div class="metric-label">PV</div>
+                <div id="visitYestPv" class="sub-metric-value">-</div>
+              </div>
+              <div class="sub-metric-box">
+                <div class="metric-label">UU</div>
+                <div id="visitYestUu" class="sub-metric-value">-</div>
+              </div>
+            </div>
+
+            <div class="metric-label" style="margin-bottom: 6px;">期間UU</div>
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
+              <div class="sub-metric-box">
+                <div class="metric-label">過去7日</div>
+                <div id="visit7dUu" class="sub-metric-value">-</div>
+              </div>
+              <div class="sub-metric-box">
+                <div class="metric-label">過去30日</div>
+                <div id="visit30dUu" class="sub-metric-value">-</div>
+              </div>
+            </div>
+
+            <div class="metric-label" style="margin-bottom: 6px;">累計</div>
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
+              <div class="sub-metric-box">
+                <div class="metric-label">PV</div>
+                <div id="visitTotalPv" class="sub-metric-value">-</div>
+              </div>
+              <div class="sub-metric-box">
+                <div class="metric-label">UU</div>
+                <div id="visitTotalUu" class="sub-metric-value">-</div>
+              </div>
+            </div>
+
+            <div style="font-size: 0.75rem; color: var(--text-subtle); text-align: right;">
+              集計更新: <span id="visitLastUpdated">-</span>
             </div>
           </div>
         </section>
@@ -521,15 +608,48 @@
           </div>
           <div id="secUpdatesError" class="section-error hidden">取得できませんでした</div>
           <div id="secUpdatesBody">
-            <div class="sub-metrics-grid">
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
               <div class="sub-metric-box">
-                <div class="metric-label">未確認情報</div>
+                <div class="metric-label">未確認情報 (全体)</div>
                 <div id="updatesPending" class="sub-metric-value" style="color: var(--accent-amber);">-</div>
               </div>
               <div class="sub-metric-box">
-                <div class="metric-label">今日検出した更新</div>
+                <div class="metric-label">今日の総検出数</div>
                 <div id="updatesDetectedToday" class="sub-metric-value" style="color: #ffffff;">-</div>
               </div>
+            </div>
+
+            <div class="metric-label" style="margin-bottom: 6px;">今日の検出内訳 (Status)</div>
+            <div class="sub-metrics-grid-3" style="margin-bottom: 12px;">
+              <div class="sub-metric-box" style="padding: 8px;">
+                <div class="metric-label">Pending</div>
+                <div id="updCountPending" class="sub-metric-value" style="font-size:1.1rem;">-</div>
+              </div>
+              <div class="sub-metric-box" style="padding: 8px;">
+                <div class="metric-label">Registered</div>
+                <div id="updCountRegistered" class="sub-metric-value" style="font-size:1.1rem;">-</div>
+              </div>
+              <div class="sub-metric-box" style="padding: 8px;">
+                <div class="metric-label">Ignored</div>
+                <div id="updCountIgnored" class="sub-metric-value" style="font-size:1.1rem;">-</div>
+              </div>
+            </div>
+
+            <div class="metric-label" style="margin-bottom: 6px;">今日の検出内訳 (Source)</div>
+            <div class="sub-metrics-grid" style="margin-bottom: 16px;">
+              <div class="sub-metric-box" style="padding: 8px;">
+                <div class="metric-label">Official</div>
+                <div id="updCountOfficial" class="sub-metric-value" style="font-size:1.1rem;">-</div>
+              </div>
+              <div class="sub-metric-box" style="padding: 8px;">
+                <div class="metric-label">YouTube</div>
+                <div id="updCountYoutube" class="sub-metric-value" style="font-size:1.1rem;">-</div>
+              </div>
+            </div>
+
+            <div class="metric-label" style="margin-bottom: 6px; border-bottom: 1px solid var(--card-border-subtle); padding-bottom: 6px;">今日の検出一覧 (最新10件)</div>
+            <div id="updatesListContainer" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+              <!-- 検出一覧が入る -->
             </div>
           </div>
         </section>
@@ -562,6 +682,39 @@
       if (val === null || val === undefined || val === "-") return "-";
       const num = Number(val);
       return isNaN(num) ? "-" : String(Math.round(num));
+    }
+
+    // JST日時整形ヘルパー (YYYY/MM/DD HH:mm:ss (JST))
+    function formatDateTimeJST(dateVal) {
+      if (!dateVal) return "-";
+      try {
+        const d = new Date(dateVal);
+        if (isNaN(d.getTime())) return "-";
+        const formatter = new Intl.DateTimeFormat("ja-JP", {
+          timeZone: "Asia/Tokyo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false
+        });
+        const parts = formatter.formatToParts(d);
+        let year = "", month = "", day = "", hour = "", minute = "", second = "";
+        for (const p of parts) {
+          if (p.type === "year") year = p.value;
+          else if (p.type === "month") month = p.value;
+          else if (p.type === "day") day = p.value;
+          else if (p.type === "hour") hour = p.value;
+          else if (p.type === "minute") minute = p.value;
+          else if (p.type === "second") second = p.value;
+        }
+        if (!year || !month || !day || !hour || !minute || !second) return "-";
+        return year + "/" + month + "/" + day + " " + hour + ":" + minute + ":" + second + " (JST)";
+      } catch (e) {
+        return "-";
+      }
     }
 
     function setElementText(id, text) {
@@ -679,37 +832,34 @@
       }
 
       // 3. Site Updates セクション反映
-      let pendingOk = false;
-      let summaryOk = false;
+      let pData = null;
+      let sData = null;
 
       if (pendingResult.status === "fulfilled" && pendingResult.value.ok) {
-        try {
-          const pData = await pendingResult.value.json();
-          setElementText("updatesPending", formatCount(pData.count));
-          pendingOk = true;
-        } catch (e) {
-          setElementText("updatesPending", "-");
-        }
-      } else {
-        setElementText("updatesPending", "-");
+        try { pData = await pendingResult.value.json(); } catch(e) {}
       }
-
       if (summaryResult.status === "fulfilled" && summaryResult.value.ok) {
-        try {
-          const sData = await summaryResult.value.json();
-          setElementText("updatesDetectedToday", formatCount(sData.total_count));
-          summaryOk = true;
-        } catch (e) {
-          setElementText("updatesDetectedToday", "-");
-        }
-      } else {
-        setElementText("updatesDetectedToday", "-");
+        try { sData = await summaryResult.value.json(); } catch(e) {}
       }
 
-      if (pendingOk && summaryOk) {
-        document.getElementById("secUpdatesError").classList.add("hidden");
+      if (pData && sData) {
+        renderUpdates(pData, sData);
+        const errEl = document.getElementById("secUpdatesError");
+        errEl.classList.add("hidden");
+        errEl.textContent = "取得できませんでした";
+        errEl.style.color = "";
+      } else if (pData || sData) {
+        renderUpdates(pData, sData);
+        const errEl = document.getElementById("secUpdatesError");
+        errEl.classList.remove("hidden");
+        errEl.textContent = "一部の情報を取得できませんでした";
+        errEl.style.color = "var(--accent-amber)";
       } else {
-        document.getElementById("secUpdatesError").classList.remove("hidden");
+        resetUpdates();
+        const errEl = document.getElementById("secUpdatesError");
+        errEl.classList.remove("hidden");
+        errEl.textContent = "取得できませんでした";
+        errEl.style.color = "";
       }
 
       // 最終更新時刻の更新 (JST)
@@ -744,6 +894,27 @@
     function resetVisitor() {
       setElementText("visitTodayPv", "-");
       setElementText("visitTodayUu", "-");
+      setElementText("visitYestPv", "-");
+      setElementText("visitYestUu", "-");
+      setElementText("visit7dUu", "-");
+      setElementText("visit30dUu", "-");
+      setElementText("visitTotalPv", "-");
+      setElementText("visitTotalUu", "-");
+      setElementText("visitLastUpdated", "-");
+    }
+
+    function resetUpdates() {
+      setElementText("updatesPending", "-");
+      setElementText("updatesDetectedToday", "-");
+      setElementText("updCountPending", "-");
+      setElementText("updCountRegistered", "-");
+      setElementText("updCountIgnored", "-");
+      setElementText("updCountOfficial", "-");
+      setElementText("updCountYoutube", "-");
+      const listContainer = document.getElementById("updatesListContainer");
+      if (listContainer) {
+        listContainer.innerHTML = "";
+      }
     }
 
     // AI利用状況 & Feedback レンダリング
@@ -790,9 +961,130 @@
 
     // Visitor レンダリング
     function renderVisitor(data) {
-      if (!data || !data.today) return;
-      setElementText("visitTodayPv", formatCount(data.today.page_views));
-      setElementText("visitTodayUu", formatCount(data.today.unique_visitors));
+      resetVisitor();
+      if (!data) return;
+      if (data.today) {
+        setElementText("visitTodayPv", formatCount(data.today.page_views));
+        setElementText("visitTodayUu", formatCount(data.today.unique_visitors));
+      }
+      if (data.yesterday) {
+        setElementText("visitYestPv", formatCount(data.yesterday.page_views));
+        setElementText("visitYestUu", formatCount(data.yesterday.unique_visitors));
+      }
+      if (data.last_7_days) {
+        setElementText("visit7dUu", formatCount(data.last_7_days.unique_visitors));
+      }
+      if (data.last_30_days) {
+        setElementText("visit30dUu", formatCount(data.last_30_days.unique_visitors));
+      }
+      if (data.total) {
+        setElementText("visitTotalPv", formatCount(data.total.page_views));
+        setElementText("visitTotalUu", formatCount(data.total.unique_visitors));
+      }
+      setElementText("visitLastUpdated", formatDateTimeJST(data.last_updated));
+    }
+
+    // Site Updates レンダリング
+    function renderUpdates(pendingData, summaryData) {
+      resetUpdates();
+      if (pendingData) {
+        setElementText("updatesPending", formatCount(pendingData.count));
+      }
+
+      if (summaryData) {
+        setElementText("updatesDetectedToday", formatCount(summaryData.total_count));
+
+        if (summaryData.counts) {
+          setElementText("updCountPending", formatCount(summaryData.counts.pending));
+          setElementText("updCountRegistered", formatCount(summaryData.counts.registered));
+          setElementText("updCountIgnored", formatCount(summaryData.counts.ignored));
+          setElementText("updCountOfficial", formatCount(summaryData.counts.official));
+          setElementText("updCountYoutube", formatCount(summaryData.counts.youtube));
+        }
+
+        const listContainer = document.getElementById("updatesListContainer");
+        if (listContainer) {
+          listContainer.innerHTML = ""; // safe clear
+
+          const items = summaryData.items || [];
+          if (items.length === 0) {
+            const emptyEl = document.createElement("div");
+            emptyEl.style.color = "var(--text-muted)";
+            emptyEl.style.fontSize = "0.85rem";
+            emptyEl.style.textAlign = "center";
+            emptyEl.style.padding = "10px";
+            emptyEl.textContent = "今日検出された更新はありません";
+            listContainer.appendChild(emptyEl);
+          } else {
+            // max 10 items
+            const displayItems = items.slice(0, 10);
+            displayItems.forEach(item => {
+              // Create elements safely (XSS protection)
+              const wrapper = document.createElement("div");
+              wrapper.className = "update-item";
+
+              const header = document.createElement("div");
+              header.className = "update-item-header";
+
+              const typeBadge = document.createElement("span");
+              typeBadge.className = "update-badge";
+              typeBadge.textContent = item.source_type || "Unknown";
+
+              const statusBadge = document.createElement("span");
+              statusBadge.className = "update-badge";
+              statusBadge.textContent = item.status || "Unknown";
+              if (item.status === "pending") {
+                statusBadge.style.color = "var(--accent-amber)";
+                statusBadge.style.background = "rgba(251, 191, 36, 0.1)";
+              }
+              if (item.status === "registered") {
+                statusBadge.style.color = "var(--accent-green)";
+                statusBadge.style.background = "rgba(52, 211, 153, 0.1)";
+              }
+              if (item.status === "ignored") {
+                statusBadge.style.color = "var(--text-subtle)";
+              }
+
+              const badgesContainer = document.createElement("div");
+              badgesContainer.style.display = "flex";
+              badgesContainer.style.gap = "6px";
+              badgesContainer.appendChild(typeBadge);
+              badgesContainer.appendChild(statusBadge);
+
+              header.appendChild(badgesContainer);
+
+              const titleEl = document.createElement("div");
+              titleEl.className = "update-title";
+              titleEl.textContent = item.title || "No Title";
+
+              wrapper.appendChild(header);
+              wrapper.appendChild(titleEl);
+
+              // Safe URL binding
+              if (item.url) {
+                try {
+                  const parsedUrl = new URL(item.url);
+                  if (parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:") {
+                    const linkEl = document.createElement("a");
+                    linkEl.className = "update-link";
+                    linkEl.href = parsedUrl.href;
+                    linkEl.target = "_blank";
+                    linkEl.rel = "noopener noreferrer";
+                    linkEl.textContent = parsedUrl.href;
+                    linkEl.style.display = "block";
+                    linkEl.style.marginTop = "4px";
+                    wrapper.appendChild(linkEl);
+                  }
+                } catch (e) {
+                  // Invalid URL, do nothing
+                }
+              }
+
+              listContainer.appendChild(wrapper);
+            });
+          }
+        }
+      }
     }
   </script>
 </body>
