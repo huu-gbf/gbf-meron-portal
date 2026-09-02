@@ -318,6 +318,58 @@ def record_generation_usage_event(usage_event):
         print(f"[Firestore Usage Metrics Error] Failed to record usage to Firestore: {type(e).__name__}, operation={safe_operation}, model={safe_model}")
 
 
+def record_embedding_usage_event(usage_event):
+    safe_operation = "unknown"
+    safe_model = "unknown"
+    try:
+        if not isinstance(usage_event, dict):
+            usage_event = {}
+
+        now = datetime.now(JST)
+        date_str = now.strftime("%Y-%m-%d")
+        doc_date = now.strftime("%Y%m%d")
+
+        valid_ops = {"rag_query", "official_news_register", "youtube_register"}
+        op_val = usage_event.get("operation")
+        if isinstance(op_val, str) and op_val in valid_ops:
+            safe_operation = op_val
+
+        mod_val = usage_event.get("model")
+        if isinstance(mod_val, str) and mod_val.strip():
+            safe_model = mod_val.strip()
+
+        doc_model_id = safe_model.replace(".", "_").replace("/", "_").replace("-", "_")
+        doc_id = f"{doc_date}__embedding__{doc_model_id}"
+        doc_ref = db.collection("ai_usage_daily").document(doc_id)
+
+        def _safe_int(val) -> int:
+            if isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+                return val
+            return 0
+
+        calls = _safe_int(usage_event.get("calls"))
+        in_texts = _safe_int(usage_event.get("input_text_count"))
+        in_chars = _safe_int(usage_event.get("input_characters"))
+
+        update_data = {
+            "date": date_str,
+            "usage_type": "embedding",
+            "model": safe_model,
+            "calls": firestore.Increment(calls),
+            "input_text_count": firestore.Increment(in_texts),
+            "input_characters": firestore.Increment(in_chars),
+            "last_updated": firestore.SERVER_TIMESTAMP
+        }
+
+        update_data[f"{safe_operation}_calls"] = firestore.Increment(calls)
+        update_data[f"{safe_operation}_input_text_count"] = firestore.Increment(in_texts)
+        update_data[f"{safe_operation}_input_characters"] = firestore.Increment(in_chars)
+
+        doc_ref.set(update_data, merge=True)
+    except Exception as e:
+        print(f"[Firestore Usage Metrics Error] Failed to record embedding usage: {type(e).__name__}, operation={safe_operation}, model={safe_model}")
+
+
 def generate_content_with_metrics(client_instance, operation: str, **kwargs):
     response = client_instance.models.generate_content(**kwargs)
     try:
@@ -1164,7 +1216,8 @@ def check_and_reserve_usage(
 # =========================================================
 
 def get_embedding(
-    text: str
+    text: str,
+    operation: str = "unknown"
 ) -> list[float]:
 
     response = (
@@ -1185,12 +1238,31 @@ def get_embedding(
         )
     )
 
-
-    return (
+    vector = (
         response
         .embeddings[0]
         .values
     )
+
+    try:
+        usage_event = {
+            "operation": operation,
+            "model": EMBEDDING_MODEL,
+            "calls": 1,
+            "input_text_count": 1,
+            "input_characters": len(text) if isinstance(text, str) else 0
+        }
+        print(
+            f"[Embedding Usage Metrics] operation={usage_event['operation']}, "
+            f"model={usage_event['model']}, calls={usage_event['calls']}, "
+            f"texts={usage_event['input_text_count']}, characters={usage_event['input_characters']}"
+        )
+        record_embedding_usage_event(usage_event)
+    except Exception as e:
+        print(f"[Wrapper Error] Failed during embedding metrics handling: {type(e).__name__}")
+
+
+    return vector
 
 
 # =========================================================
@@ -1863,7 +1935,8 @@ def save_official_news_summary(
 
             vector = (
                 get_embedding(
-                    chunk
+                    chunk,
+                    operation="official_news_register"
                 )
             )
 
@@ -2086,7 +2159,8 @@ def search_knowledge_base(
 
         query_vector = (
             get_embedding(
-                query_text
+                query_text,
+                operation="rag_query"
             )
         )
 
@@ -4778,7 +4852,7 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
     content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
     
     try:
-        embedding = get_embedding(summary)
+        embedding = get_embedding(summary, operation="youtube_register")
     except Exception as e:
         print(f"Embedding error: {e}")
         raise HTTPException(status_code=500, detail="Embedding生成時にエラーが発生しました。")
