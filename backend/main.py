@@ -230,6 +230,58 @@ db = firestore.Client(
 )
 
 
+def extract_generation_usage_metrics(response) -> dict:
+    metrics = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "thinking_tokens": 0,
+        "cached_tokens": 0,
+    }
+    try:
+        if hasattr(response, "usage_metadata") and response.usage_metadata is not None:
+            um = response.usage_metadata
+
+            def _safe_token_count(val) -> int:
+                if isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+                    return val
+                return 0
+
+            metrics["input_tokens"] = _safe_token_count(getattr(um, "prompt_token_count", 0))
+            metrics["output_tokens"] = _safe_token_count(getattr(um, "candidates_token_count", 0))
+            metrics["total_tokens"] = _safe_token_count(getattr(um, "total_token_count", 0))
+            metrics["thinking_tokens"] = _safe_token_count(getattr(um, "thoughts_token_count", 0))
+            metrics["cached_tokens"] = _safe_token_count(getattr(um, "cached_content_token_count", 0))
+    except Exception as e:
+        print(f"[Metrics Extraction Error] Failed to extract usage metadata: {e}")
+    return metrics
+
+
+def generate_content_with_metrics(client_instance, operation: str, **kwargs):
+    response = client_instance.models.generate_content(**kwargs)
+    try:
+        metrics = extract_generation_usage_metrics(response)
+        model = kwargs.get("model", "unknown")
+        usage_event = {
+            "operation": operation,
+            "model": model,
+            "input_tokens": metrics["input_tokens"],
+            "output_tokens": metrics["output_tokens"],
+            "total_tokens": metrics["total_tokens"],
+            "thinking_tokens": metrics["thinking_tokens"],
+            "cached_tokens": metrics["cached_tokens"],
+        }
+        print(
+            f"[Usage Metrics] operation={usage_event['operation']}, model={usage_event['model']}, "
+            f"input={usage_event['input_tokens']}, output={usage_event['output_tokens']}, "
+            f"total={usage_event['total_tokens']}, thinking={usage_event['thinking_tokens']}, "
+            f"cached={usage_event['cached_tokens']}"
+        )
+    except Exception as e:
+        print(f"[Wrapper Error] Failed during metrics handling: {e}")
+    return response
+
+
 # =========================================================
 # Embedding設定
 # =========================================================
@@ -2568,7 +2620,9 @@ async def summarize_official_news(
     try:
 
         response = (
-            client.models.generate_content(
+            generate_content_with_metrics(
+                client_instance=client,
+                operation="official_news_summary",
 
                 model=
                     GENERATION_MODEL,
@@ -2933,7 +2987,9 @@ async def chat_endpoint(
     try:
 
         response = (
-            client.models.generate_content(
+            generate_content_with_metrics(
+                client_instance=client,
+                operation="chat",
 
                 model=
                     GENERATION_MODEL,
@@ -4500,7 +4556,9 @@ async def youtube_summarize_endpoint(request: YouTubeSummarizeRequest, http_requ
             response_mime_type="application/json",
             temperature=0.2
         )
-        response = client.models.generate_content(
+        response = generate_content_with_metrics(
+            client_instance=client,
+            operation="youtube_summary",
             model=GENERATION_MODEL,
             contents=prompt,
             config=config
@@ -4519,7 +4577,9 @@ async def youtube_summarize_endpoint(request: YouTubeSummarizeRequest, http_requ
         print(f"[YouTube Summarize] Structured output failed: {e}. Falling back to plain text.")
         try:
             # フォールバック：通常テキスト生成
-            fallback_response = client.models.generate_content(
+            fallback_response = generate_content_with_metrics(
+                client_instance=client,
+                operation="youtube_summary_fallback",
                 model=GENERATION_MODEL,
                 contents=prompt
             )
