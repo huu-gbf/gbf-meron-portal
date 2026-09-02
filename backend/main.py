@@ -453,13 +453,10 @@ class OfficialNewsRegisterResponse(
 
 from urllib.parse import urlparse, parse_qs
 
-def validate_youtube_url(url: str) -> str:
+def extract_youtube_video_id(url: str) -> str:
+    if not url or not isinstance(url, str):
+        return ""
     value = url.strip()
-    if not value:
-        raise HTTPException(status_code=400, detail="YouTube URLが必要です。")
-    if not value.startswith("https://"):
-        raise HTTPException(status_code=400, detail="https:// で始まる正規のYouTube動画URLを入力してください。")
-    
     parsed = urlparse(value)
     hostname = (parsed.hostname or "").lower()
     
@@ -471,13 +468,28 @@ def validate_youtube_url(url: str) -> str:
             if v_list and v_list[0].strip():
                 video_id = v_list[0].strip()
         elif parsed.path.startswith("/shorts/"):
-            video_id = parsed.path.split("/")[2].strip() if len(parsed.path.split("/")) > 2 else ""
+            parts = [p for p in parsed.path.split("/") if p]
+            if len(parts) >= 2 and parts[0] == "shorts":
+                video_id = parts[1].strip()
     elif hostname == "youtu.be":
         path_parts = [p for p in parsed.path.split("/") if p]
         if path_parts:
             video_id = path_parts[0].strip()
             
-    if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{6,15}", video_id):
+    if re.fullmatch(r"[A-Za-z0-9_-]{6,15}", video_id):
+        return video_id
+    return ""
+
+
+def validate_youtube_url(url: str) -> str:
+    value = url.strip()
+    if not value:
+        raise HTTPException(status_code=400, detail="YouTube URLが必要です。")
+    if not value.startswith("https://"):
+        raise HTTPException(status_code=400, detail="https:// で始まる正規のYouTube動画URLを入力してください。")
+    
+    video_id = extract_youtube_video_id(value)
+    if not video_id:
         raise HTTPException(status_code=400, detail="有効な動画IDを含む正規のYouTube動画URLを入力してください。")
         
     return value
@@ -603,7 +615,7 @@ class YouTubeRegisterRequest(BaseModel):
     summary: str = Field(..., max_length=MAX_ADMIN_SUMMARY_LENGTH)
     channel_id: str = Field(..., max_length=100)
     video_id: str = Field(..., max_length=50)
-    site_update_id: str = Field(..., max_length=100)
+    site_update_id: str | None = Field(default=None, max_length=100)
     allow_duplicate: StrictBool = False
     year: int | None = Field(default=None)
     element: KnowledgeElement | None = Field(default=None)
@@ -3366,6 +3378,12 @@ async def registered_updates_endpoint():
 async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request: Request):
     require_admin(http_request)
     url = validate_youtube_url(request.url)
+    video_id = extract_youtube_video_id(url)
+    
+    title = ""
+    channel_name = ""
+    channel_id = ""
+    published_date = ""
     
     description = ""
     transcript = ""
@@ -3423,6 +3441,11 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
     except ImportError:
         print("Playwright not installed, skipping transcript.")
         return {
+            "video_id": video_id,
+            "title": "",
+            "channel_name": "",
+            "channel_id": "",
+            "published_date": "",
             "description": "",
             "transcript": "",
             "transcript_status": "playwright_missing",
@@ -3517,6 +3540,104 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                         
                 # 描画安定のための短い待機
                 await page.wait_for_timeout(2000)
+
+                # 2.5 メタデータ抽出 (JSON-LD, metaタグ, DOM要素)
+                try:
+                    meta_eval = await page.evaluate(r'''() => {
+                        const res = {
+                            title: "",
+                            channel_name: "",
+                            channel_id: "",
+                            published_date: ""
+                        };
+
+                        // 1. JSON-LD
+                        const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                        for (const s of scripts) {
+                            try {
+                                const data = JSON.parse(s.textContent);
+                                const obj = Array.isArray(data) ? data[0] : data;
+                                if (obj && (obj['@type'] === 'VideoObject' || obj.name)) {
+                                    if (obj.name && !res.title) res.title = String(obj.name).trim();
+                                    if (obj.author && !res.channel_name) {
+                                        res.channel_name = typeof obj.author === 'string' ? obj.author.trim() : (obj.author.name || '').trim();
+                                    }
+                                    if (obj.uploadDate && !res.published_date) res.published_date = String(obj.uploadDate).trim();
+                                    if (obj.datePublished && !res.published_date) res.published_date = String(obj.datePublished).trim();
+                                    if (obj.channelId && !res.channel_id) res.channel_id = String(obj.channelId).trim();
+                                }
+                            } catch (e) {}
+                        }
+
+                        // 2. Meta tags
+                        const getMeta = (names) => {
+                            for (const n of names) {
+                                const el = document.querySelector(`meta[name="${n}"], meta[property="${n}"], meta[itemprop="${n}"]`);
+                                if (el && el.getAttribute('content')) {
+                                    const val = el.getAttribute('content').trim();
+                                    if (val) return val;
+                                }
+                            }
+                            return "";
+                        };
+
+                        if (!res.title) res.title = getMeta(['title', 'og:title', 'name', 'twitter:title']);
+                        if (!res.channel_id) res.channel_id = getMeta(['channelId', 'itemprop:channelId']);
+                        if (!res.published_date) res.published_date = getMeta(['datePublished', 'uploadDate']);
+
+                        if (!res.channel_name) {
+                            const authorLink = document.querySelector('span[itemprop="author"] link[itemprop="name"]');
+                            if (authorLink && authorLink.getAttribute('content')) {
+                                res.channel_name = authorLink.getAttribute('content').trim();
+                            }
+                        }
+                        if (!res.channel_id) {
+                            const authorUri = document.querySelector('span[itemprop="author"] link[itemprop="url"]');
+                            if (authorUri && authorUri.getAttribute('href')) {
+                                const href = authorUri.getAttribute('href').trim();
+                                const parts = href.split('/').filter(Boolean);
+                                res.channel_id = parts[parts.length - 1] || href;
+                            }
+                        }
+
+                        // 3. Fallback to DOM elements
+                        if (!res.title) {
+                            const titleEl = document.querySelector('h1.ytd-watch-metadata, #title h1, ytd-watch-metadata #title');
+                            if (titleEl && titleEl.textContent) res.title = titleEl.textContent.trim();
+                        }
+                        if (!res.channel_name) {
+                            const chEl = document.querySelector('ytd-watch-metadata #channel-name a, #owner #channel-name a, ytd-channel-name #text a');
+                            if (chEl && chEl.textContent) res.channel_name = chEl.textContent.trim();
+                        }
+                        if (!res.channel_id) {
+                            const chLink = document.querySelector('ytd-watch-metadata #channel-name a, #owner #channel-name a');
+                            if (chLink && chLink.getAttribute('href')) {
+                                const href = chLink.getAttribute('href').trim();
+                                const m = href.match(/channel\/([^/?#]+)/) || href.match(/@([^/?#]+)/);
+                                if (m) res.channel_id = m[1] || m[0];
+                                else res.channel_id = href.replace(/^\\//, '');
+                            }
+                        }
+                        if (!res.published_date) {
+                            const dateEl = document.querySelector('#info-strings yt-formatted-string, ytd-watch-info-text #info-strings');
+                            if (dateEl && dateEl.textContent) res.published_date = dateEl.textContent.trim();
+                        }
+
+                        return res;
+                    ''')
+                    if isinstance(meta_eval, dict):
+                        title = meta_eval.get("title") or ""
+                        channel_name = meta_eval.get("channel_name") or ""
+                        channel_id = meta_eval.get("channel_id") or ""
+                        published_date = meta_eval.get("published_date") or ""
+                except Exception as e:
+                    print(f"Playwright metadata extraction error: {e}")
+
+                if not title and page_title:
+                    t = page_title
+                    if t.endswith(" - YouTube"):
+                        t = t[:-10].strip()
+                    title = t
                 
                 # 3. 説明欄の展開と取得 (フォールバック)
                 # 3-1. 展開ボタンを探してクリック
@@ -3926,6 +4047,11 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
     }
     
     return {
+        "video_id": video_id,
+        "title": title,
+        "channel_name": channel_name,
+        "channel_id": channel_id,
+        "published_date": published_date,
         "description": description,
         "transcript": transcript,
         "transcript_status": transcript_status,
@@ -4137,33 +4263,76 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
         if pattern in summary:
             raise HTTPException(status_code=400, detail="無効な要約テキストまたはエラー文は知識登録できません。")
             
-    if not request.site_update_id.strip():
-        raise HTTPException(status_code=400, detail="site_update_idが必要です。")
+    site_update_id = (request.site_update_id or "").strip()
+    doc_ref = None
         
-    # Verify site_update_id safety
-    try:
-        doc_ref = db.collection("site_updates").document(request.site_update_id.strip())
-        doc = doc_ref.get()
-        if not doc.exists:
-            raise HTTPException(status_code=400, detail="指定された更新情報が見つかりません。")
-            
-        data = doc.to_dict()
-        if data.get("status") != "pending":
-            raise HTTPException(status_code=400, detail="対象情報のステータスがpendingではありません。")
-        if data.get("source_type") != "youtube_creator":
-            raise HTTPException(status_code=400, detail="対象情報がYouTubeのものではありません。")
-        if data.get("video_id") != request.video_id.strip() or data.get("channel_id") != request.channel_id.strip() or data.get("url") != request.url.strip():
-            raise HTTPException(status_code=400, detail="リクエストと対象情報の内容が一致しません。")
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Validation error: {e}")
-        raise HTTPException(status_code=500, detail="データ検証中にエラーが発生しました。")
+    # Verify site_update_id safety if provided (監視経由の登録)
+    if site_update_id:
+        try:
+            doc_ref = db.collection("site_updates").document(site_update_id)
+            doc = doc_ref.get()
+            if not doc.exists:
+                raise HTTPException(status_code=400, detail="指定された更新情報が見つかりません。")
+                
+            data = doc.to_dict()
+            if data.get("status") != "pending":
+                raise HTTPException(status_code=400, detail="対象情報のステータスがpendingではありません。")
+            if data.get("source_type") != "youtube_creator":
+                raise HTTPException(status_code=400, detail="対象情報がYouTubeのものではありません。")
+            if data.get("video_id") != request.video_id.strip() or data.get("channel_id") != request.channel_id.strip() or data.get("url") != request.url.strip():
+                raise HTTPException(status_code=400, detail="リクエストと対象情報の内容が一致しません。")
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"Validation error: {e}")
+            raise HTTPException(status_code=500, detail="データ検証中にエラーが発生しました。")
     
-    # 重複検出 (allow_duplicate=False の場合、Embedding生成前に実行)
-    duplicate_hash_v1 = calculate_duplicate_hash_v1(summary)
     target_doc_id = f"youtube_{request.video_id.strip()}"
+    knowledge_ref = db.collection("knowledge").document(target_doc_id)
+
+    # 1. 同一video_idの既存knowledgeチェック (allow_duplicate=False の場合、Embedding生成前に実行)
+    if not request.allow_duplicate:
+        try:
+            existing_doc = knowledge_ref.get()
+            if existing_doc.exists:
+                # 監視経由の場合（有効なsite_update_idが指定されている場合）:
+                # knowledgeは書き換えずにsite_updatesのみ「登録済み」へ更新して正常終了する
+                if site_update_id and doc_ref is not None:
+                    doc_ref.update({
+                        "status": "registered",
+                        "registered_at": firestore.SERVER_TIMESTAMP,
+                        "knowledge_registered": True
+                    })
+                    return {
+                        "status": "already_registered",
+                        "message": "このYouTube動画はすでにAI知識に登録済みです。監視項目を登録済みに更新しました。",
+                        "document_id": target_doc_id
+                    }
+
+                # 任意登録の場合（site_update_idなし）:
+                existing_data = existing_doc.to_dict() or {}
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "duplicate": True,
+                        "duplicate_type": "same_youtube_video",
+                        "message": "このYouTube動画はすでにAI知識に登録されています。",
+                        "existing": {
+                            "doc_id": target_doc_id,
+                            "title": existing_data.get("title", ""),
+                            "url": existing_data.get("url", request.url),
+                        }
+                    }
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"Error checking existing knowledge document: {e}")
+            raise HTTPException(status_code=500, detail="重複確認中にエラーが発生しました。")
+
+    # 2. 別ドキュメントとの内容重複検出 (allow_duplicate=False の場合、Embedding生成前に実行)
+    duplicate_hash_v1 = calculate_duplicate_hash_v1(summary)
     if not request.allow_duplicate:
         dup = find_duplicate_knowledge(
             duplicate_hash_v1,
@@ -4175,12 +4344,13 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
                 status_code=409,
                 detail={
                     "duplicate": True,
+                    "duplicate_type": "duplicate_content",
                     "message": "同じ内容の情報がすでに登録されています。",
                     "existing": dup,
                 }
             )
 
-    # 1. Create embedding
+    # 3. Create embedding
     content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
     
     try:
@@ -4189,14 +4359,13 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
         print(f"Embedding error: {e}")
         raise HTTPException(status_code=500, detail="Embedding生成時にエラーが発生しました。")
         
-    # 2. Firestore Batch で knowledge 保存と site_updates 更新をアトミックに commit
+    # 2. Firestore Batch で knowledge 保存 (および監視経由なら site_updates 更新) をアトミックに commit
     try:
         published_date = (request.published_date or "").strip()[:50]
         title = request.title.strip()[:300]
         channel_name = request.channel_name.strip()[:150]
         
-        doc_id = f"youtube_{request.video_id.strip()}"
-        knowledge_ref = db.collection("knowledge").document(doc_id)
+        doc_id = target_doc_id
         doc_data = {
             "source_type": "youtube_summary",
             "source": f"{channel_name}: {title}",
@@ -4230,11 +4399,12 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
         
         batch = db.batch()
         batch.set(knowledge_ref, doc_data)
-        batch.update(doc_ref, {
-            "status": "registered",
-            "registered_at": firestore.SERVER_TIMESTAMP,
-            "knowledge_registered": True
-        })
+        if doc_ref is not None:
+            batch.update(doc_ref, {
+                "status": "registered",
+                "registered_at": firestore.SERVER_TIMESTAMP,
+                "knowledge_registered": True
+            })
         batch.commit()
             
         return {"status": "saved", "message": "YouTubeの要約をAI knowledgeへ登録しました。"}
