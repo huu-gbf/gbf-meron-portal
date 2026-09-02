@@ -3541,7 +3541,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                 # 描画安定のための短い待機
                 await page.wait_for_timeout(2000)
 
-                # 2.5 メタデータ抽出 (JSON-LD, metaタグ, DOM要素)
+                # 2.5 メタデータ抽出 (ytInitialPlayerResponse最優先, JSON-LD/meta/DOM/page.title fallback)
                 try:
                     meta_eval = await page.evaluate(r'''() => {
                         const res = {
@@ -3551,25 +3551,53 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                             published_date: ""
                         };
 
-                        // 1. JSON-LD
-                        const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-                        for (const s of scripts) {
-                            try {
-                                const data = JSON.parse(s.textContent);
-                                const obj = Array.isArray(data) ? data[0] : data;
-                                if (obj && (obj['@type'] === 'VideoObject' || obj.name)) {
-                                    if (obj.name && !res.title) res.title = String(obj.name).trim();
-                                    if (obj.author && !res.channel_name) {
-                                        res.channel_name = typeof obj.author === 'string' ? obj.author.trim() : (obj.author.name || '').trim();
+                        // 1. window.ytInitialPlayerResponse (最優先・確実)
+                        try {
+                            const p = window.ytInitialPlayerResponse;
+                            if (p && typeof p === 'object') {
+                                if (p.videoDetails && typeof p.videoDetails === 'object') {
+                                    if (p.videoDetails.title && !res.title) {
+                                        res.title = String(p.videoDetails.title).trim();
                                     }
-                                    if (obj.uploadDate && !res.published_date) res.published_date = String(obj.uploadDate).trim();
-                                    if (obj.datePublished && !res.published_date) res.published_date = String(obj.datePublished).trim();
-                                    if (obj.channelId && !res.channel_id) res.channel_id = String(obj.channelId).trim();
+                                    if (p.videoDetails.author && !res.channel_name) {
+                                        res.channel_name = String(p.videoDetails.author).trim();
+                                    }
+                                    if (p.videoDetails.channelId && !res.channel_id) {
+                                        res.channel_id = String(p.videoDetails.channelId).trim();
+                                    }
                                 }
-                            } catch (e) {}
+                                if (p.microformat && p.microformat.playerMicroformatRenderer) {
+                                    const mf = p.microformat.playerMicroformatRenderer;
+                                    if (mf.publishDate && !res.published_date) {
+                                        res.published_date = String(mf.publishDate).trim();
+                                    } else if (mf.uploadDate && !res.published_date) {
+                                        res.published_date = String(mf.uploadDate).trim();
+                                    }
+                                }
+                            }
+                        } catch (e) {}
+
+                        // 2. JSON-LD (フォールバック)
+                        if (!res.title || !res.channel_name || !res.channel_id || !res.published_date) {
+                            const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                            for (const s of scripts) {
+                                try {
+                                    const data = JSON.parse(s.textContent);
+                                    const obj = Array.isArray(data) ? data[0] : data;
+                                    if (obj && (obj['@type'] === 'VideoObject' || obj.name)) {
+                                        if (obj.name && !res.title) res.title = String(obj.name).trim();
+                                        if (obj.author && !res.channel_name) {
+                                            res.channel_name = typeof obj.author === 'string' ? obj.author.trim() : (obj.author.name || '').trim();
+                                        }
+                                        if (obj.uploadDate && !res.published_date) res.published_date = String(obj.uploadDate).trim();
+                                        if (obj.datePublished && !res.published_date) res.published_date = String(obj.datePublished).trim();
+                                        if (obj.channelId && !res.channel_id) res.channel_id = String(obj.channelId).trim();
+                                    }
+                                } catch (e) {}
+                            }
                         }
 
-                        // 2. Meta tags
+                        // 3. Meta tags (フォールバック)
                         const getMeta = (names) => {
                             for (const n of names) {
                                 const el = document.querySelector(`meta[name="${n}"], meta[property="${n}"], meta[itemprop="${n}"]`);
@@ -3600,9 +3628,9 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                             }
                         }
 
-                        // 3. Fallback to DOM elements
+                        // 4. Fallback to DOM elements
                         if (!res.title) {
-                            const titleEl = document.querySelector('h1.ytd-watch-metadata, #title h1, ytd-watch-metadata #title');
+                            const titleEl = document.querySelector('h1.ytd-watch-metadata, #title h1, ytd-watch-metadata #title, #title.ytd-watch-metadata');
                             if (titleEl && titleEl.textContent) res.title = titleEl.textContent.trim();
                         }
                         if (!res.channel_name) {
@@ -3615,7 +3643,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                                 const href = chLink.getAttribute('href').trim();
                                 const m = href.match(/channel\/([^/?#]+)/) || href.match(/@([^/?#]+)/);
                                 if (m) res.channel_id = m[1] || m[0];
-                                else res.channel_id = href.replace(/^\\//, '');
+                                else res.channel_id = href.replace(/^\//, '');
                             }
                         }
                         if (!res.published_date) {
@@ -3633,11 +3661,22 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                 except Exception as e:
                     print(f"Playwright metadata extraction error: {e}")
 
-                if not title and page_title:
-                    t = page_title
+                # 5. page.title fallback (無効タイトル判定・サニタイズ付き)
+                if not title:
+                    try:
+                        current_page_title = (await page.title()) or page_title or ""
+                    except Exception:
+                        current_page_title = page_title or ""
+
+                    t = current_page_title.strip()
                     if t.endswith(" - YouTube"):
                         t = t[:-10].strip()
-                    title = t
+                    elif t.endswith("- YouTube"):
+                        t = t[:-9].strip()
+
+                    # 無効タイトル ("- YouTube", "YouTube" 等) は破棄
+                    if t and t not in ["- YouTube", "YouTube", "-"]:
+                        title = t
                 
                 # 3. 説明欄の展開と取得 (フォールバック)
                 # 3-1. 展開ボタンを探してクリック
