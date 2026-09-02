@@ -5119,6 +5119,185 @@ async def visit_endpoint(
 # Usage Dashboard API (GET /api/admin/usage-dashboard)
 # =========================================================
 
+def _safe_non_negative_int(val: Any) -> int:
+    """0以上の整数（bool除外）のみそのまま返し、それ以外は0を返す。"""
+    if isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+        return val
+    return 0
+
+
+# =========================================================
+# 生成AI 推定料金表
+#
+# 料金単位: USD / 1,000,000 tokens
+# 根拠: Gemini Developer API Standard paid-tier list price
+# =========================================================
+
+GENERATION_PRICING = {
+    "gemini-3.7-flash": [
+        {
+            "end_date": "2026-12-31",
+            "input_rate": 0.75,
+            "output_rate": 3.75,
+            "cached_input_rate": 0.075,
+        },
+        {
+            "end_date": None,  # 2027-01-01 以降
+            "input_rate": 1.50,
+            "output_rate": 7.50,
+            "cached_input_rate": 0.15,
+        },
+    ]
+}
+
+
+def get_generation_pricing(model: str, doc_date: str) -> dict[str, Any] | None:
+    """モデル名と利用日付に基づき、適用すべき料金レート（USD / 1M tokens）を返す。"""
+    tiers = GENERATION_PRICING.get(model)
+    if not tiers:
+        return None
+    for tier in tiers:
+        if tier["end_date"] is None or doc_date <= tier["end_date"]:
+            return tier
+    return None
+
+
+def get_ai_usage_stats():
+    now = datetime.now(JST)
+    date_str_today = now.strftime("%Y-%m-%d")
+    month_start_str = now.strftime("%Y-%m-01")
+
+    summary = {
+        "today": {"generation": {}, "embedding": {}},
+        "month": {"generation": {}, "embedding": {}}
+    }
+
+    cost = {
+        "currency": "USD",
+        "basis": "Gemini Developer API Standard paid-tier list price",
+        "today_generation_usd": 0.0,
+        "month_generation_usd": 0.0,
+        "today_generation_cost_available": True,
+        "month_generation_cost_available": True,
+        "cache_storage_cost_included": False,
+        "embedding_available": False,
+        "is_actual_billing": False,
+        "measurement_note": "AI利用量計測開始後の記録のみ"
+    }
+
+    usage_col = db.collection("ai_usage_daily")
+    docs = (
+        usage_col
+        .where(filter=FieldFilter("date", ">=", month_start_str))
+        .where(filter=FieldFilter("date", "<=", date_str_today))
+        .stream()
+    )
+
+    for doc in docs:
+        data = doc.to_dict()
+        doc_date = data.get("date")
+        if not doc_date or not isinstance(doc_date, str) or doc_date < month_start_str or doc_date > date_str_today:
+            continue
+
+        usage_type = data.get("usage_type")
+        model = data.get("model", "unknown")
+        if not isinstance(model, str) or not model.strip():
+            model = "unknown"
+        else:
+            model = model.strip()
+
+        is_today = (doc_date == date_str_today)
+
+        if usage_type == "generation":
+            in_tok = _safe_non_negative_int(data.get("input_tokens"))
+            out_tok = _safe_non_negative_int(data.get("output_tokens"))
+            think_tok = _safe_non_negative_int(data.get("thinking_tokens"))
+            cache_tok = _safe_non_negative_int(data.get("cached_tokens"))
+            total_tok = _safe_non_negative_int(data.get("total_tokens"))
+            calls = _safe_non_negative_int(data.get("calls"))
+
+            pricing = get_generation_pricing(model, doc_date)
+            doc_cost = None
+            if pricing is not None:
+                uncached = max(in_tok - cache_tok, 0)
+                billable_out = out_tok + think_tok
+                doc_cost = (
+                    uncached * pricing["input_rate"]
+                    + cache_tok * pricing["cached_input_rate"]
+                    + billable_out * pricing["output_rate"]
+                ) / 1000000.0
+
+            def add_gen_stats(target_dict):
+                is_known = (pricing is not None)
+                m = target_dict.setdefault(model, {
+                    "calls": 0, "input_tokens": 0, "output_tokens": 0, "thinking_tokens": 0,
+                    "cached_tokens": 0, "total_tokens": 0,
+                    "estimated_cost_usd": 0.0 if is_known else None,
+                    "cost_available": is_known,
+                    "operation_calls": {}
+                })
+                m["calls"] += calls
+                m["input_tokens"] += in_tok
+                m["output_tokens"] += out_tok
+                m["thinking_tokens"] += think_tok
+                m["cached_tokens"] += cache_tok
+                m["total_tokens"] += total_tok
+
+                if is_known and doc_cost is not None:
+                    if m["cost_available"] and m["estimated_cost_usd"] is not None:
+                        m["estimated_cost_usd"] += doc_cost
+                else:
+                    m["cost_available"] = False
+                    m["estimated_cost_usd"] = None
+
+                for op in ["chat", "official_news_summary", "youtube_summary", "youtube_summary_fallback", "unknown"]:
+                    key = f"{op}_calls"
+                    if key in data:
+                        c = _safe_non_negative_int(data.get(key))
+                        if c > 0:
+                            m["operation_calls"][op] = m["operation_calls"].get(op, 0) + c
+
+            add_gen_stats(summary["month"]["generation"])
+            if doc_cost is not None:
+                cost["month_generation_usd"] += doc_cost
+
+            if is_today:
+                add_gen_stats(summary["today"]["generation"])
+                if doc_cost is not None:
+                    cost["today_generation_usd"] += doc_cost
+
+        elif usage_type == "embedding":
+            calls = _safe_non_negative_int(data.get("calls"))
+            in_texts = _safe_non_negative_int(data.get("input_text_count"))
+            in_chars = _safe_non_negative_int(data.get("input_characters"))
+
+            def add_emb_stats(target_dict):
+                m = target_dict.setdefault(model, {
+                    "calls": 0, "input_text_count": 0, "input_characters": 0, "operation_calls": {}
+                })
+                m["calls"] += calls
+                m["input_text_count"] += in_texts
+                m["input_characters"] += in_chars
+                for op in ["rag_query", "official_news_register", "youtube_register", "unknown"]:
+                    key = f"{op}_calls"
+                    if key in data:
+                        c = _safe_non_negative_int(data.get(key))
+                        if c > 0:
+                            m["operation_calls"][op] = m["operation_calls"].get(op, 0) + c
+
+            add_emb_stats(summary["month"]["embedding"])
+            if is_today:
+                add_emb_stats(summary["today"]["embedding"])
+
+    # トップレベル料金の完全性判定
+    # 対象期間内のgenerationモデルがすべて料金計算可能ならTrue、未知モデルが1つでもあればFalse
+    month_gen = summary["month"]["generation"]
+    today_gen = summary["today"]["generation"]
+    cost["month_generation_cost_available"] = not any(not m.get("cost_available", False) for m in month_gen.values())
+    cost["today_generation_cost_available"] = not any(not m.get("cost_available", False) for m in today_gen.values())
+
+    return summary, cost
+
 @app.get("/api/admin/usage-dashboard")
 async def admin_usage_dashboard_endpoint(http_request: Request):
     """Return usage dashboard data for administrators."""
@@ -5160,6 +5339,18 @@ async def admin_usage_dashboard_endpoint(http_request: Request):
         for r in reasons_to_count:
             reasons_counts[r] = get_count(feedback_col.where(filter=FieldFilter("reason", "==", r)))
 
+        # 3. AI Usage & Estimated Cost
+        gemini_usage = {}
+        estimated_cost = {}
+        try:
+            summary, cost = get_ai_usage_stats()
+            gemini_usage = summary
+            estimated_cost = cost
+        except Exception as e:
+            print(f"[Admin API Error] Failed to aggregate AI usage: {type(e).__name__}")
+            gemini_usage = {"available": False}
+            estimated_cost = {"available": False}
+
         return {
             "status": "ok",
             "date": now.strftime("%Y-%m-%d"),
@@ -5175,7 +5366,9 @@ async def admin_usage_dashboard_endpoint(http_request: Request):
                 "positive": positive_count,
                 "negative": negative_count,
                 "reasons": reasons_counts
-            }
+            },
+            "gemini_usage": gemini_usage,
+            "estimated_cost": estimated_cost
         }
 
     except Exception as e:
