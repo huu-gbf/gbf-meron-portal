@@ -4035,6 +4035,128 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                         transcript_panel_text_chars = len(transcript)
                         transcript_status = "available"
 
+                # 6. 【Second-Pass】不足メタデータの再取得・補完 (Polymer playerData / 描画完了DOM / page.title)
+                if not title or not channel_name or not channel_id or not published_date:
+                    try:
+                        second_meta = await page.evaluate(r'''() => {
+                            const res = {
+                                title: "",
+                                channel_name: "",
+                                channel_id: "",
+                                published_date: ""
+                            };
+
+                            // A. ytd-watch-flexy の playerData
+                            try {
+                                const flexy = document.querySelector('ytd-watch-flexy');
+                                const pData = flexy && flexy.playerData;
+                                if (pData && typeof pData === 'object') {
+                                    if (pData.videoDetails) {
+                                        if (pData.videoDetails.title) res.title = String(pData.videoDetails.title).trim();
+                                        if (pData.videoDetails.author) res.channel_name = String(pData.videoDetails.author).trim();
+                                        if (pData.videoDetails.channelId) res.channel_id = String(pData.videoDetails.channelId).trim();
+                                    }
+                                    if (pData.microformat && pData.microformat.playerMicroformatRenderer) {
+                                        const mf = pData.microformat.playerMicroformatRenderer;
+                                        if (mf.publishDate) res.published_date = String(mf.publishDate).trim();
+                                        else if (mf.uploadDate) res.published_date = String(mf.uploadDate).trim();
+                                    }
+                                }
+                            } catch (e) {}
+
+                            // B. window.ytInitialPlayerResponse (遅延更新確認)
+                            try {
+                                if (!res.title || !res.channel_name || !res.channel_id || !res.published_date) {
+                                    const p = window.ytInitialPlayerResponse;
+                                    if (p && typeof p === 'object') {
+                                        if (p.videoDetails) {
+                                            if (!res.title && p.videoDetails.title) res.title = String(p.videoDetails.title).trim();
+                                            if (!res.channel_name && p.videoDetails.author) res.channel_name = String(p.videoDetails.author).trim();
+                                            if (!res.channel_id && p.videoDetails.channelId) res.channel_id = String(p.videoDetails.channelId).trim();
+                                        }
+                                        if (p.microformat && p.microformat.playerMicroformatRenderer) {
+                                            const mf = p.microformat.playerMicroformatRenderer;
+                                            if (!res.published_date && mf.publishDate) res.published_date = String(mf.publishDate).trim();
+                                            else if (!res.published_date && mf.uploadDate) res.published_date = String(mf.uploadDate).trim();
+                                        }
+                                    }
+                                }
+                            } catch (e) {}
+
+                            // C. 描画済みDOM要素からのフォールバック
+                            if (!res.title) {
+                                const titleEl = document.querySelector('ytd-watch-metadata #title yt-formatted-string, h1.ytd-watch-metadata, #title.ytd-watch-metadata, #title h1');
+                                if (titleEl && titleEl.textContent) {
+                                    const tText = titleEl.textContent.trim();
+                                    if (tText && ![' - YouTube', '- YouTube', 'YouTube', '-'].includes(tText)) {
+                                        res.title = tText;
+                                    }
+                                }
+                            }
+
+                            if (!res.channel_name) {
+                                const chEl = document.querySelector('#owner #channel-name a, ytd-watch-metadata #channel-name a, ytd-channel-name #text a, #channel-name');
+                                if (chEl && chEl.textContent) res.channel_name = chEl.textContent.trim();
+                            }
+
+                            if (!res.channel_id) {
+                                const chLink = document.querySelector('#owner #channel-name a, ytd-watch-metadata #channel-name a, ytd-channel-name #text a');
+                                if (chLink && chLink.getAttribute('href')) {
+                                    const href = chLink.getAttribute('href').trim();
+                                    const m = href.match(/channel\/([^/?#]+)/) || href.match(/@([^/?#]+)/);
+                                    if (m) res.channel_id = m[1] || m[0];
+                                    else res.channel_id = href.replace(/^\//, '');
+                                }
+                            }
+
+                            if (!res.published_date) {
+                                const dateEl = document.querySelector('#info-strings yt-formatted-string, ytd-watch-info-text #info-strings, #date yt-formatted-string');
+                                if (dateEl && dateEl.textContent) {
+                                    const rawDate = dateEl.textContent.trim();
+                                    const dm = rawDate.match(/(\d{4})[年/\-](\d{1,2})[月/\-](\d{1,2})/);
+                                    if (dm) {
+                                        const y = dm[1];
+                                        const m = dm[2].padStart(2, '0');
+                                        const d = dm[3].padStart(2, '0');
+                                        res.published_date = `${y}-${m}-${d}`;
+                                    } else if (rawDate && !rawDate.includes('前') && !rawDate.includes('視聴')) {
+                                        res.published_date = rawDate;
+                                    }
+                                }
+                            }
+
+                            return res;
+                        }''')
+                        if isinstance(second_meta, dict):
+                            if not title and second_meta.get("title"):
+                                st = second_meta["title"].strip()
+                                if st and st not in ["- YouTube", " - YouTube", "YouTube", "-"]:
+                                    title = st
+                            if not channel_name and second_meta.get("channel_name"):
+                                channel_name = second_meta["channel_name"].strip()
+                            if not channel_id and second_meta.get("channel_id"):
+                                channel_id = second_meta["channel_id"].strip()
+                            if not published_date and second_meta.get("published_date"):
+                                published_date = second_meta["published_date"].strip()
+                    except Exception as e:
+                        print(f"Second-pass metadata extraction error: {e}")
+
+                # 7. 最終的な page.title フォールバック (titleが未取得の場合のみ)
+                if not title:
+                    try:
+                        current_page_title = (await page.title()) or page_title or ""
+                    except Exception:
+                        current_page_title = page_title or ""
+
+                    t = current_page_title.strip()
+                    if t.endswith(" - YouTube"):
+                        t = t[:-10].strip()
+                    elif t.endswith("- YouTube"):
+                        t = t[:-9].strip()
+
+                    if t and t not in ["- YouTube", "YouTube", "-", ""]:
+                        title = t
+
             finally:
                 await browser.close()
     except Exception as e:
