@@ -257,6 +257,67 @@ def extract_generation_usage_metrics(response) -> dict:
     return metrics
 
 
+def record_generation_usage_event(usage_event):
+    safe_operation = "unknown"
+    safe_model = "unknown"
+    try:
+        if not isinstance(usage_event, dict):
+            usage_event = {}
+
+        now = datetime.now(JST)
+        date_str = now.strftime("%Y-%m-%d")
+        doc_date = now.strftime("%Y%m%d")
+
+        valid_ops = {"chat", "official_news_summary", "youtube_summary", "youtube_summary_fallback"}
+        op_val = usage_event.get("operation")
+        if isinstance(op_val, str) and op_val in valid_ops:
+            safe_operation = op_val
+
+        mod_val = usage_event.get("model")
+        if isinstance(mod_val, str) and mod_val.strip():
+            safe_model = mod_val.strip()
+
+        doc_model_id = safe_model.replace(".", "_").replace("/", "_").replace("-", "_")
+        doc_id = f"{doc_date}__generation__{doc_model_id}"
+        doc_ref = db.collection("ai_usage_daily").document(doc_id)
+
+        def _safe_token(val) -> int:
+            if isinstance(val, int) and not isinstance(val, bool) and val >= 0:
+                return val
+            return 0
+
+        in_t = _safe_token(usage_event.get("input_tokens"))
+        out_t = _safe_token(usage_event.get("output_tokens"))
+        tot_t = _safe_token(usage_event.get("total_tokens"))
+        think_t = _safe_token(usage_event.get("thinking_tokens"))
+        cache_t = _safe_token(usage_event.get("cached_tokens"))
+        calls = 1
+
+        update_data = {
+            "date": date_str,
+            "usage_type": "generation",
+            "model": safe_model,
+            "calls": firestore.Increment(calls),
+            "input_tokens": firestore.Increment(in_t),
+            "output_tokens": firestore.Increment(out_t),
+            "total_tokens": firestore.Increment(tot_t),
+            "thinking_tokens": firestore.Increment(think_t),
+            "cached_tokens": firestore.Increment(cache_t),
+            "last_updated": firestore.SERVER_TIMESTAMP
+        }
+
+        update_data[f"{safe_operation}_calls"] = firestore.Increment(calls)
+        update_data[f"{safe_operation}_input_tokens"] = firestore.Increment(in_t)
+        update_data[f"{safe_operation}_output_tokens"] = firestore.Increment(out_t)
+        update_data[f"{safe_operation}_total_tokens"] = firestore.Increment(tot_t)
+        update_data[f"{safe_operation}_thinking_tokens"] = firestore.Increment(think_t)
+        update_data[f"{safe_operation}_cached_tokens"] = firestore.Increment(cache_t)
+
+        doc_ref.set(update_data, merge=True)
+    except Exception as e:
+        print(f"[Firestore Usage Metrics Error] Failed to record usage to Firestore: {type(e).__name__}, operation={safe_operation}, model={safe_model}")
+
+
 def generate_content_with_metrics(client_instance, operation: str, **kwargs):
     response = client_instance.models.generate_content(**kwargs)
     try:
@@ -277,6 +338,7 @@ def generate_content_with_metrics(client_instance, operation: str, **kwargs):
             f"total={usage_event['total_tokens']}, thinking={usage_event['thinking_tokens']}, "
             f"cached={usage_event['cached_tokens']}"
         )
+        record_generation_usage_event(usage_event)
     except Exception as e:
         print(f"[Wrapper Error] Failed during metrics handling: {e}")
     return response
