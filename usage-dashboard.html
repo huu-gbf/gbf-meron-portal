@@ -207,6 +207,7 @@
       display: grid;
       grid-template-columns: 1fr;
       gap: 20px;
+      align-items: start;
     }
 
     @media (min-width: 768px) {
@@ -480,7 +481,51 @@
           </div>
         </section>
 
-        <!-- 2. Feedback -->
+        <!-- 2. Gemini API Usage & Cost -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-icon">💎</span>
+            <h2 class="panel-title">Gemini API 利用状況</h2>
+          </div>
+          <div id="secGeminiError" class="section-error hidden">AI詳細利用量を取得できませんでした</div>
+          <div id="secGeminiBody">
+            <div style="font-size: 0.75rem; color: var(--text-muted); background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 8px; border: 1px solid var(--card-border-subtle); margin-bottom: 16px; line-height: 1.5;">
+              <div style="font-weight: 700; color: var(--text-main); margin-bottom: 4px;">⚠️ 料金に関する注意事項</div>
+              <ul style="padding-left: 16px; margin: 0; display: flex; flex-direction: column; gap: 4px;">
+                <li>実際のGoogle Cloud請求額ではありません。</li>
+                <li>Gemini Developer API Standard paid-tier list priceによる推定です。</li>
+                <li>AI利用量計測開始後の記録のみを集計しています。</li>
+                <li>無料枠、クレジット、割引、税等は反映されません。</li>
+                <li>Context Cacheのstorage保持料金は含まれません。</li>
+                <li>Embedding料金は正確なtoken数を取得していないため未算出です。</li>
+              </ul>
+            </div>
+
+            <div class="metric-label" style="font-size: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border-subtle); padding-bottom: 6px; margin-bottom: 12px;">【本日】の利用状況</div>
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
+              <div class="sub-metric-box" style="padding: 12px; grid-column: 1 / -1;">
+                <div class="metric-label">生成 API 推定料金</div>
+                <div id="gemTodayCost" class="sub-metric-value" style="color: var(--accent-amber); font-size: 1.2rem;">-</div>
+                <div id="gemTodayCostWarn" class="hidden" style="font-size: 0.75rem; color: var(--accent-amber); margin-top: 4px;">※ 一部モデルの料金は算出不能のため除外されています</div>
+              </div>
+            </div>
+            <div id="gemTodayGenContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;"></div>
+            <div id="gemTodayEmbContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;"></div>
+
+            <div class="metric-label" style="font-size: 1rem; color: var(--text-main); border-bottom: 1px solid var(--card-border-subtle); padding-bottom: 6px; margin-bottom: 12px;">【今月累計】の利用状況</div>
+            <div class="sub-metrics-grid" style="margin-bottom: 12px;">
+              <div class="sub-metric-box" style="padding: 12px; grid-column: 1 / -1;">
+                <div class="metric-label">生成 API 推定料金</div>
+                <div id="gemMonthCost" class="sub-metric-value" style="color: var(--accent-amber); font-size: 1.2rem;">-</div>
+                <div id="gemMonthCostWarn" class="hidden" style="font-size: 0.75rem; color: var(--accent-amber); margin-top: 4px;">※ 一部モデルの料金は算出不能のため除外されています</div>
+              </div>
+            </div>
+            <div id="gemMonthGenContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px;"></div>
+            <div id="gemMonthEmbContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px;"></div>
+          </div>
+        </section>
+
+        <!-- 3. Feedback -->
         <section class="panel">
           <div class="panel-header">
             <span class="panel-icon">💬</span>
@@ -684,6 +729,176 @@
       return isNaN(num) ? "-" : String(Math.round(num));
     }
 
+    // USD料金フォーマットヘルパー (6桁表示)
+    function formatUSD(val) {
+      if (val === null || val === undefined || val === "" || val === "-") return "-";
+      const num = Number(val);
+      if (isNaN(num)) return "-";
+      return "$" + num.toFixed(6);
+    }
+
+    // 安全なDOM生成ヘルパー
+    function createStatItem(label, value, boldValue) {
+      const wrapper = document.createElement("div");
+      wrapper.textContent = label + ": ";
+      const valSpan = document.createElement("span");
+      valSpan.style.color = "var(--text-main)";
+      if (boldValue) valSpan.style.fontWeight = "600";
+      valSpan.textContent = value;
+      wrapper.appendChild(valSpan);
+      return wrapper;
+    }
+
+    // モデル別レンダリング
+    function renderGeminiModels(containerId, modelsObj, isEmbedding) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.textContent = "";
+
+      if (!modelsObj || Object.keys(modelsObj).length === 0) return;
+
+      Object.entries(modelsObj).forEach(([modelName, data]) => {
+        const card = document.createElement("div");
+        card.className = "metric-box";
+        card.style.padding = "12px";
+
+        // Title
+        const header = document.createElement("div");
+        header.style.display = "flex";
+        header.style.justifyContent = "space-between";
+        header.style.alignItems = "baseline";
+        header.style.marginBottom = "8px";
+        header.style.borderBottom = "1px solid var(--card-border-subtle)";
+        header.style.paddingBottom = "6px";
+
+        const title = document.createElement("div");
+        title.style.fontWeight = "700";
+        title.style.color = "var(--text-main)";
+        title.style.fontSize = "0.95rem";
+        title.textContent = modelName;
+
+        const typeBadge = document.createElement("div");
+        typeBadge.style.fontSize = "0.7rem";
+        typeBadge.style.padding = "2px 6px";
+        typeBadge.style.borderRadius = "4px";
+        typeBadge.style.background = isEmbedding ? "rgba(52, 211, 153, 0.1)" : "rgba(56, 189, 248, 0.1)";
+        typeBadge.style.color = isEmbedding ? "var(--accent-green)" : "var(--accent-blue)";
+        typeBadge.textContent = isEmbedding ? "Embedding" : "Generation";
+
+        header.appendChild(title);
+        header.appendChild(typeBadge);
+        card.appendChild(header);
+
+        // Stats grid
+        const statsGrid = document.createElement("div");
+        statsGrid.className = "sub-metrics-grid";
+        statsGrid.style.marginBottom = "8px";
+
+        const callsBox = document.createElement("div");
+        callsBox.className = "sub-metric-box";
+        callsBox.style.padding = "8px";
+        const callsLabel = document.createElement("div");
+        callsLabel.className = "metric-label";
+        callsLabel.textContent = "Calls";
+        const callsVal = document.createElement("div");
+        callsVal.style.fontSize = "1.1rem";
+        callsVal.style.fontWeight = "700";
+        callsVal.style.marginTop = "4px";
+        callsVal.textContent = formatCount(data.calls);
+        callsBox.appendChild(callsLabel);
+        callsBox.appendChild(callsVal);
+        statsGrid.appendChild(callsBox);
+
+        if (!isEmbedding) {
+          const costBox = document.createElement("div");
+          costBox.className = "sub-metric-box";
+          costBox.style.padding = "8px";
+          const costLabel = document.createElement("div");
+          costLabel.className = "metric-label";
+          costLabel.textContent = "推定料金";
+          const costVal = document.createElement("div");
+          costVal.style.fontSize = "1rem";
+          costVal.style.fontWeight = "700";
+          costVal.style.marginTop = "4px";
+          costVal.style.color = "var(--accent-amber)";
+
+          if (data.cost_available === false) {
+             costVal.textContent = "算出不能";
+          } else {
+             costVal.textContent = formatUSD(data.estimated_cost_usd);
+          }
+          costBox.appendChild(costLabel);
+          costBox.appendChild(costVal);
+          statsGrid.appendChild(costBox);
+        }
+
+        card.appendChild(statsGrid);
+
+        // Tokens/Chars
+        const detailsDiv = document.createElement("div");
+        detailsDiv.style.display = "flex";
+        detailsDiv.style.flexWrap = "wrap";
+        detailsDiv.style.columnGap = "12px";
+        detailsDiv.style.rowGap = "6px";
+        detailsDiv.style.fontSize = "0.8rem";
+        detailsDiv.style.color = "var(--text-subtle)";
+        detailsDiv.style.background = "rgba(0,0,0,0.2)";
+        detailsDiv.style.padding = "10px";
+        detailsDiv.style.borderRadius = "8px";
+
+        if (!isEmbedding) {
+          detailsDiv.appendChild(createStatItem("Total", formatCount(data.total_tokens), true));
+          detailsDiv.appendChild(createStatItem("In", formatCount(data.input_tokens), false));
+          detailsDiv.appendChild(createStatItem("Out", formatCount(data.output_tokens), false));
+          detailsDiv.appendChild(createStatItem("Think", formatCount(data.thinking_tokens), false));
+          detailsDiv.appendChild(createStatItem("Cache", formatCount(data.cached_tokens), false));
+        } else {
+          detailsDiv.appendChild(createStatItem("Text", formatCount(data.input_text_count), false));
+          detailsDiv.appendChild(createStatItem("Chars", formatCount(data.input_characters), false));
+        }
+        card.appendChild(detailsDiv);
+
+        // Operation calls
+        if (data.operation_calls) {
+          const whitelist = isEmbedding ?
+            ["rag_query", "official_news_register", "youtube_register"] :
+            ["chat", "official_news_summary", "youtube_summary", "youtube_summary_fallback"];
+
+          const validOps = Object.entries(data.operation_calls).filter(([k, v]) => v > 0 && whitelist.includes(k));
+          if (validOps.length > 0) {
+            const opsDiv = document.createElement("div");
+            opsDiv.style.marginTop = "12px";
+            opsDiv.style.fontSize = "0.75rem";
+            opsDiv.style.color = "var(--text-muted)";
+
+            const opsTitle = document.createElement("div");
+            opsTitle.textContent = "用途別:";
+            opsTitle.style.marginBottom = "6px";
+            opsDiv.appendChild(opsTitle);
+
+            const opsWrap = document.createElement("div");
+            opsWrap.style.display = "flex";
+            opsWrap.style.flexWrap = "wrap";
+            opsWrap.style.gap = "6px";
+
+            validOps.forEach(([opName, opCount]) => {
+              const opTag = document.createElement("div");
+              opTag.style.background = "var(--item-bg)";
+              opTag.style.border = "1px solid var(--card-border-subtle)";
+              opTag.style.padding = "3px 8px";
+              opTag.style.borderRadius = "6px";
+              opTag.textContent = `${opName} ${formatCount(opCount)}回`;
+              opsWrap.appendChild(opTag);
+            });
+            opsDiv.appendChild(opsWrap);
+            card.appendChild(opsDiv);
+          }
+        }
+
+        container.appendChild(card);
+      });
+    }
+
     // JST日時整形ヘルパー (YYYY/MM/DD HH:mm:ss (JST))
     function formatDateTimeJST(dateVal) {
       if (!dateVal) return "-";
@@ -808,11 +1023,15 @@
         } catch (e) {
           resetUsageAndFeedback();
           document.getElementById("secAiError").classList.remove("hidden");
+          document.getElementById("secGeminiError").classList.remove("hidden");
+          document.getElementById("secGeminiBody").classList.add("hidden");
           document.getElementById("secFbError").classList.remove("hidden");
         }
       } else {
         resetUsageAndFeedback();
         document.getElementById("secAiError").classList.remove("hidden");
+        document.getElementById("secGeminiError").classList.remove("hidden");
+        document.getElementById("secGeminiBody").classList.add("hidden");
         document.getElementById("secFbError").classList.remove("hidden");
       }
 
@@ -880,6 +1099,22 @@
       const barEl = document.getElementById("aiProgressBar");
       if (barEl) barEl.style.width = "0%";
 
+      setElementText("gemTodayCost", "-");
+      const w1 = document.getElementById("gemTodayCostWarn");
+      if(w1) w1.classList.add("hidden");
+      setElementText("gemMonthCost", "-");
+      const w2 = document.getElementById("gemMonthCostWarn");
+      if(w2) w2.classList.add("hidden");
+
+      const tc = document.getElementById("gemTodayGenContainer");
+      if(tc) tc.textContent = "";
+      const te = document.getElementById("gemTodayEmbContainer");
+      if(te) te.textContent = "";
+      const mc = document.getElementById("gemMonthGenContainer");
+      if(mc) mc.textContent = "";
+      const me = document.getElementById("gemMonthEmbContainer");
+      if(me) me.textContent = "";
+
       setElementText("fbTotal", "-");
       setElementText("fbPositive", "-");
       setElementText("fbNegative", "-");
@@ -939,6 +1174,60 @@
         if (barEl) {
           barEl.style.width = clampedPercent + "%";
         }
+      }
+
+      // Gemini API Usage & Cost
+      if (!data.estimated_cost || data.estimated_cost.available === false) {
+        setElementText("gemTodayCost", "推定料金を取得できませんでした");
+        setElementText("gemMonthCost", "推定料金を取得できませんでした");
+        const w1 = document.getElementById("gemTodayCostWarn");
+        const w2 = document.getElementById("gemMonthCostWarn");
+        if (w1) w1.classList.add("hidden");
+        if (w2) w2.classList.add("hidden");
+      } else {
+        const cost = data.estimated_cost;
+
+        const todayEl = document.getElementById("gemTodayCost");
+        const todayWarn = document.getElementById("gemTodayCostWarn");
+        if (todayEl) {
+          todayEl.textContent = formatUSD(cost.today_generation_usd);
+          if (cost.today_generation_cost_available === false) {
+            if (todayWarn) todayWarn.classList.remove("hidden");
+          } else {
+            if (todayWarn) todayWarn.classList.add("hidden");
+          }
+        }
+
+        const monthEl = document.getElementById("gemMonthCost");
+        const monthWarn = document.getElementById("gemMonthCostWarn");
+        if (monthEl) {
+          monthEl.textContent = formatUSD(cost.month_generation_usd);
+          if (cost.month_generation_cost_available === false) {
+            if (monthWarn) monthWarn.classList.remove("hidden");
+          } else {
+            if (monthWarn) monthWarn.classList.add("hidden");
+          }
+        }
+      }
+
+      if (!data.gemini_usage || data.gemini_usage.available === false) {
+        const errEl = document.getElementById("secGeminiError");
+        const bodyEl = document.getElementById("secGeminiBody");
+        if (errEl) errEl.classList.remove("hidden");
+        if (bodyEl) bodyEl.classList.add("hidden");
+      } else {
+        const errEl = document.getElementById("secGeminiError");
+        const bodyEl = document.getElementById("secGeminiBody");
+        if (errEl) errEl.classList.add("hidden");
+        if (bodyEl) bodyEl.classList.remove("hidden");
+
+        const today = data.gemini_usage.today || {};
+        const month = data.gemini_usage.month || {};
+
+        renderGeminiModels("gemTodayGenContainer", today.generation, false);
+        renderGeminiModels("gemTodayEmbContainer", today.embedding, true);
+        renderGeminiModels("gemMonthGenContainer", month.generation, false);
+        renderGeminiModels("gemMonthEmbContainer", month.embedding, true);
       }
 
       // Feedback
