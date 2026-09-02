@@ -1918,11 +1918,57 @@ def is_valid_source_type(stype: str) -> bool:
     return True
 
 
+def extract_metadata_hints_from_query(query: str) -> dict:
+    hints = {
+        "year": None,
+        "element": None,
+        "category": None
+    }
+    
+    if not isinstance(query, str):
+        return hints
+
+    # 1. year
+    year_match = re.search(r"(?<!\d)(20\d{2}|2100)(?:年)?(?!\d)", query)
+    if year_match:
+        hints["year"] = int(year_match.group(1))
+        
+    # 2. element
+    if "全属性" in query:
+        hints["element"] = "全属性"
+    else:
+        elem_match = re.search(r"(火|水|土|風|光|闇)(?:古戦場|有利|属性|編成|パ|マグナ|神石|キャラ|武器|召喚石)", query)
+        if elem_match:
+            hints["element"] = elem_match.group(1)
+
+    # 3. category
+    if "古戦場" in query:
+        hints["category"] = "古戦場"
+    elif "高難度" in query:
+        hints["category"] = "高難度"
+    elif "周回" in query:
+        hints["category"] = "周回"
+    elif "キャラ" in query or "キャラクター" in query:
+        hints["category"] = "キャラ情報"
+    elif "武器" in query:
+        hints["category"] = "武器情報"
+    elif "召喚石" in query:
+        hints["category"] = "召喚石情報"
+    elif "アップデート" in query or "更新情報" in query:
+        hints["category"] = "アップデート情報"
+    elif "初心者" in query:
+        hints["category"] = "初心者向け"
+        
+    return hints
+
+
 def search_knowledge_base(
     query_text: str
 ) -> tuple[str, list[dict]]:
 
     try:
+        
+        metadata_hints = extract_metadata_hints_from_query(query_text)
 
         query_vector = (
             get_embedding(
@@ -2116,8 +2162,6 @@ def search_knowledge_base(
             })
 
 
-        candidates = candidates[:RAG_SEARCH_LIMIT]
-
         if not candidates:
 
             print(
@@ -2185,12 +2229,24 @@ def search_knowledge_base(
         ]
 
 
-        selected.sort(
+        for item in selected:
+            doc_data = item["data"]
+            bonus = 0.0
+            
+            if metadata_hints["year"] is not None and doc_data.get("year") == metadata_hints["year"]:
+                bonus += 0.015
+                
+            if metadata_hints["element"] is not None and doc_data.get("element") == metadata_hints["element"]:
+                bonus += 0.020
+                
+            if metadata_hints["category"] is not None and doc_data.get("category") == metadata_hints["category"]:
+                bonus += 0.020
+                
+            item["rerank_score"] = item["distance"] - bonus
 
-            key=lambda item:
-                item["distance"]
-        )
+        selected.sort(key=lambda item: item["rerank_score"])
 
+        selected = selected[:RAG_SEARCH_LIMIT]
 
         retrieved_texts = []
 
@@ -2214,11 +2270,14 @@ def search_knowledge_base(
             )
 
 
+            rerank_score = item.get("rerank_score", distance)
+
             print(
 
                 f"[RAG採用] "
                 f"{doc_id} "
-                f"distance={distance}"
+                f"distance={distance:.4f} "
+                f"rerank={rerank_score:.4f}"
             )
 
 
