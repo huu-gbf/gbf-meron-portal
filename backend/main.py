@@ -495,6 +495,47 @@ def validate_youtube_url(url: str) -> str:
     return value
 
 
+def fetch_youtube_data_api_snippet(video_id: str, api_key: str, timeout: float = 7.0) -> tuple[dict[str, Any] | None, int]:
+    """
+    YouTube Data API v3 videos.list(part=snippet, id=video_id) を呼び出し、
+    (snippet辞書, items件数) を返す。
+    APIキーや機密情報はログやエラー情報へ漏洩させない。
+    """
+    if not api_key or not video_id:
+        return None, 0
+
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+    
+    url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={urllib.parse.quote(video_id)}"
+    headers = {
+        "X-Goog-Api-Key": api_key,
+        "User-Agent": "GBF-Portal-Backend/1.0",
+        "Accept": "application/json",
+    }
+    
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status == 200:
+                raw = response.read().decode("utf-8")
+                data = json.loads(raw)
+                items = data.get("items", [])
+                items_count = len(items) if isinstance(items, list) else 0
+                if items_count > 0:
+                    snippet = items[0].get("snippet", {})
+                    return snippet, items_count
+                return None, items_count
+    except urllib.error.HTTPError as e:
+        print(f"[YouTube Data API] HTTP error: {e.code}")
+    except Exception as e:
+        print(f"[YouTube Data API] Request error: {type(e).__name__}")
+        
+    return None, 0
+
+
+
 class YouTubePrepareRequest(BaseModel):
     url: str
 
@@ -3388,6 +3429,35 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
     description = ""
     transcript = ""
     transcript_status = "unavailable"
+    description_method = "none"
+
+    youtube_api_key = os.getenv("YOUTUBE_API_KEY", "").strip()
+    youtube_data_api_used = bool(youtube_api_key)
+    youtube_data_api_success = False
+    youtube_data_api_items_count = 0
+
+    if youtube_api_key:
+        try:
+            import asyncio
+            snippet, items_count = await asyncio.to_thread(
+                fetch_youtube_data_api_snippet, video_id, youtube_api_key, 7.0
+            )
+            youtube_data_api_items_count = items_count
+            if snippet and isinstance(snippet, dict):
+                youtube_data_api_success = True
+                if snippet.get("title"):
+                    title = str(snippet["title"]).strip()
+                if snippet.get("channelTitle"):
+                    channel_name = str(snippet["channelTitle"]).strip()
+                if snippet.get("channelId"):
+                    channel_id = str(snippet["channelId"]).strip()
+                if snippet.get("publishedAt"):
+                    published_date = str(snippet["publishedAt"]).strip()
+                if snippet.get("description"):
+                    description = str(snippet["description"]).strip()
+                    description_method = "youtube_data_api"
+        except Exception as e:
+            print(f"[YouTube Data API] Execution error: {type(e).__name__}")
     
     page_loaded = False
     page_title = ""
@@ -3405,7 +3475,6 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
     transcript_panel_text_chars = 0
     challenge_detected = False
     
-    description_method = "none"
     transcript_renderer_found = False
     transcript_renderer_visible = False
     transcript_renderer_button_count = 0
@@ -3442,21 +3511,24 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
         print("Playwright not installed, skipping transcript.")
         return {
             "video_id": video_id,
-            "title": "",
-            "channel_name": "",
-            "channel_id": "",
-            "published_date": "",
-            "description": "",
+            "title": title,
+            "channel_name": channel_name,
+            "channel_id": channel_id,
+            "published_date": published_date,
+            "description": description,
             "transcript": "",
             "transcript_status": "playwright_missing",
             "transcript_chars": 0,
-            "description_chars": 0,
+            "description_chars": len(description),
             "diagnostics": {
+                "youtube_data_api_used": youtube_data_api_used,
+                "youtube_data_api_success": youtube_data_api_success,
+                "youtube_data_api_items_count": youtube_data_api_items_count,
                 "page_loaded": False,
                 "page_title": "",
                 "final_host": "",
                 "watch_page_found": False,
-                "description_found": False,
+                "description_found": len(description) > 0,
                 "transcript_button_found": False,
                 "transcript_button_candidate_found": False,
                 "transcript_button_method": "none",
@@ -3468,7 +3540,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                 "transcript_segment_count": 0,
                 "transcript_panel_text_chars": 0,
                 "challenge_detected": False,
-                "description_method": "none",
+                "description_method": description_method,
                 "transcript_renderer_found": False,
                 "transcript_renderer_visible": False,
                 "transcript_renderer_button_count": 0,
@@ -3496,6 +3568,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                 "error": "playwright_not_installed"
             }
         }
+
 
     try:
         async with async_playwright() as p:
@@ -3654,10 +3727,14 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                         return res;
                     ''')
                     if isinstance(meta_eval, dict):
-                        title = meta_eval.get("title") or ""
-                        channel_name = meta_eval.get("channel_name") or ""
-                        channel_id = meta_eval.get("channel_id") or ""
-                        published_date = meta_eval.get("published_date") or ""
+                        if not title and meta_eval.get("title"):
+                            title = meta_eval.get("title") or ""
+                        if not channel_name and meta_eval.get("channel_name"):
+                            channel_name = meta_eval.get("channel_name") or ""
+                        if not channel_id and meta_eval.get("channel_id"):
+                            channel_id = meta_eval.get("channel_id") or ""
+                        if not published_date and meta_eval.get("published_date"):
+                            published_date = meta_eval.get("published_date") or ""
                 except Exception as e:
                     print(f"Playwright metadata extraction error: {e}")
 
@@ -3678,8 +3755,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                     if t and t not in ["- YouTube", "YouTube", "-"]:
                         title = t
                 
-                # 3. 説明欄の展開と取得 (フォールバック)
-                # 3-1. 展開ボタンを探してクリック
+                # 3. 説明欄の展開 (文字起こしボタン探索の前提として常に試行)
                 expand_selectors = [
                     "#expand",
                     "ytd-text-inline-expander #expand",
@@ -3699,37 +3775,40 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                     except Exception:
                         continue
                         
-                # 3-2. 説明欄テキストの取得
-                desc_selectors = [
-                    "#description-inline-expander ytd-attributed-string#content",
-                    "#description-inline-expander yt-attributed-string",
-                    "#description-inline-expander",
-                    "ytd-text-inline-expander#description-inline-expander",
-                    "#description-inner",
-                    "#description ytd-attributed-string",
-                    "#description"
-                ]
-                for desc_sel in desc_selectors:
-                    try:
-                        desc_el = page.locator(desc_sel).first
-                        if await desc_el.is_visible():
-                            desc_text = await desc_el.inner_text()
-                            if desc_text and desc_text.strip():
-                                description = desc_text.strip()
-                                description_method = "dom"
-                                break
-                    except Exception:
-                        continue
-                        
-                # meta tag からのフォールバック取得
+                # 3-2. 説明欄テキストの取得 (フォールバック: 未取得時のみ実行)
                 if not description:
-                    try:
-                        meta_desc = await page.get_attribute('meta[name="description"]', 'content')
-                        if meta_desc and meta_desc.strip():
-                            description = meta_desc.strip()
-                            description_method = "meta"
-                    except Exception:
-                        pass
+                    desc_selectors = [
+                        "#description-inline-expander ytd-attributed-string#content",
+                        "#description-inline-expander yt-attributed-string",
+                        "#description-inline-expander",
+                        "ytd-text-inline-expander#description-inline-expander",
+                        "#description-inner",
+                        "#description ytd-attributed-string",
+                        "#description"
+                    ]
+                    for desc_sel in desc_selectors:
+                        try:
+                            desc_el = page.locator(desc_sel).first
+                            if await desc_el.is_visible():
+                                desc_text = await desc_el.inner_text()
+                                if desc_text and desc_text.strip():
+                                    description = desc_text.strip()
+                                    description_method = "dom"
+                                    break
+                        except Exception:
+                            continue
+                            
+                    # meta tag からのフォールバック取得
+                    if not description:
+                        try:
+                            meta_desc = await page.get_attribute('meta[name="description"]', 'content')
+                            if meta_desc and meta_desc.strip():
+                                description = meta_desc.strip()
+                                description_method = "meta"
+                        except Exception:
+                            pass
+
+
 
                 # 4. 文字起こしボタンの探索とクリック、パネル展開確認
                 # 4-1. まず専用 renderer の遅延描画を待機する
@@ -4164,6 +4243,9 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
         transcript_status = "error"
         
     diagnostics = {
+        "youtube_data_api_used": youtube_data_api_used,
+        "youtube_data_api_success": youtube_data_api_success,
+        "youtube_data_api_items_count": youtube_data_api_items_count,
         "page_loaded": page_loaded,
         "page_title": page_title[:100] if page_title else "",
         "final_host": final_host,
