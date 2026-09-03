@@ -697,13 +697,15 @@
                         handleSendMessage(event)
                     " class="
                         flex
+                        flex-col
+                        sm:flex-row
+                        sm:items-end
                         gap-2
                     ">
 
-                    <input type="text" id="userInput" placeholder="
-                            例：ヴェルサシアの編成はありますか？
-                        " required autocomplete="off" maxlength="1500" class="
+                    <textarea id="userInput" placeholder="例：ヴェルサシアの編成はありますか？" required autocomplete="off" maxlength="1500" rows="2" class="
                             flex-1
+                            min-w-0
                             bg-slate-900/90
                             border
                             border-slate-700
@@ -718,10 +720,14 @@
                             placeholder-slate-500
                             outline-none
                             transition
-                        ">
+                            resize-none
+                        " onkeydown="if(event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); document.getElementById('sendButton').click(); }"></textarea>
 
 
                     <button type="submit" id="sendButton" class="
+                            w-full
+                            sm:w-auto
+                            justify-center
                             bg-gradient-to-r
                             from-amber-500
                             to-yellow-400
