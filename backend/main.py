@@ -333,7 +333,7 @@ def record_embedding_usage_event(usage_event):
         date_str = now.strftime("%Y-%m-%d")
         doc_date = now.strftime("%Y%m%d")
 
-        valid_ops = {"rag_query", "official_news_register", "youtube_register"}
+        valid_ops = {"rag_query", "official_news_register", "youtube_register", "file_register"}
         op_val = usage_event.get("operation")
         if isinstance(op_val, str) and op_val in valid_ops:
             safe_operation = op_val
@@ -676,6 +676,60 @@ class FileKnowledgeExtractResponse(BaseModel):
     default_source_key: str
     source_id: str
     source_content_hash: str
+
+
+class FileKnowledgeRegisterRequest(BaseModel):
+    filename: str
+    title: str
+    source_key: str
+    text: str
+    registration_mode: Literal["original"] = "original"
+    allow_duplicate: StrictBool = False
+    year: int | None = Field(default=None)
+    element: KnowledgeElement | None = Field(default=None)
+    category: KnowledgeCategory | None = Field(default=None)
+    content_type: KnowledgeContentType | None = Field(default=None)
+    tags: list[str] | None = Field(default=None)
+    status: KnowledgeStatus | None = Field(default=None)
+
+
+class FileKnowledgeRegisterResponse(BaseModel):
+    status: str
+    source_type: str
+    registration_mode: str
+    filename: str
+    title: str
+    source_key: str
+    source_id: str
+    chunk_count: int
+    source_content_hash: str
+    knowledge_content_hash: str
+
+
+def validate_and_clean_file_knowledge_filename(raw_filename: str | None) -> str:
+    if not raw_filename or not isinstance(raw_filename, str):
+        raise HTTPException(status_code=400, detail="ファイル名が不正です。")
+
+    if "\x00" in raw_filename:
+        raise HTTPException(status_code=400, detail="ファイル名に不正な文字が含まれています。")
+
+    if "/" in raw_filename or "\\" in raw_filename:
+        raise HTTPException(
+            status_code=400,
+            detail="パスを含むファイル名は指定できません。純粋なファイル名のみ指定してください。"
+        )
+
+    clean_name = raw_filename.strip()
+    if not clean_name or clean_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="ファイル名が不正です。")
+
+    if not clean_name.lower().endswith(".txt"):
+        raise HTTPException(
+            status_code=400,
+            detail="未対応のファイル形式です。現在は .txt ファイルのみ対応しています。"
+        )
+
+    return clean_name
 
 
 from urllib.parse import urlparse, parse_qs
@@ -3321,31 +3375,8 @@ async def extract_file_knowledge(
 ):
     require_admin(http_request)
 
-    # 1. filename 安全性検証
-    raw_filename = file.filename
-    if not raw_filename or not isinstance(raw_filename, str):
-        raise HTTPException(status_code=400, detail="ファイル名が不正です。")
-
-    if "\x00" in raw_filename:
-        raise HTTPException(status_code=400, detail="ファイル名に不正な文字が含まれています。")
-
-    # パスを含むfilenameは救済せずHTTP 400として拒否 (Windows/Linux両パスセパレータ検証)
-    if "/" in raw_filename or "\\" in raw_filename:
-        raise HTTPException(
-            status_code=400,
-            detail="パスを含むファイル名は指定できません。純粋なファイル名のみ指定してください。"
-        )
-
-    clean_name = raw_filename.strip()
-    if not clean_name or clean_name in (".", ".."):
-        raise HTTPException(status_code=400, detail="ファイル名が不正です。")
-
-    # 2. 拡張子検証 (case-insensitive で .txt のみ許可)
-    if not clean_name.lower().endswith(".txt"):
-        raise HTTPException(
-            status_code=400,
-            detail="未対応のファイル形式です。現在は .txt ファイルのみ対応しています。"
-        )
+    # 1-2. filename 安全性検証 & 拡張子検証
+    clean_name = validate_and_clean_file_knowledge_filename(file.filename)
 
     # 3. 最大byte数検証 (MAX_TXT_UPLOAD_BYTES + 1 まで読み込む)
     content_bytes = await file.read(MAX_TXT_UPLOAD_BYTES + 1)
@@ -3416,6 +3447,165 @@ async def extract_file_knowledge(
         source_content_hash=source_content_hash
     )
 
+
+
+def get_existing_file_knowledge_docs(source_id: str):
+    query = (
+        db.collection("knowledge")
+        .where(filter=FieldFilter("source_type", "==", "file"))
+        .where(filter=FieldFilter("source_id", "==", source_id))
+    )
+    return list(query.stream())
+
+
+@app.post(
+    "/api/admin/file-knowledge/register",
+    response_model=FileKnowledgeRegisterResponse
+)
+def register_file_knowledge(
+    request: FileKnowledgeRegisterRequest,
+    http_request: Request
+):
+    require_admin(http_request)
+
+    clean_name = validate_and_clean_file_knowledge_filename(request.filename)
+
+    title = request.title.strip() if request.title else ""
+    if not title:
+        raise HTTPException(status_code=400, detail="タイトルが空です。")
+    if len(title) > 200:
+        raise HTTPException(status_code=400, detail="タイトルが長すぎます。200文字以内にしてください。")
+
+    source_key = request.source_key.strip() if request.source_key else ""
+    if not source_key or "\x00" in source_key:
+        raise HTTPException(status_code=400, detail="source_keyが空、または不正な文字を含んでいます。")
+    if len(source_key) > 200:
+        raise HTTPException(status_code=400, detail="source_keyが長すぎます。200文字以内にしてください。")
+
+    source_id = build_file_source_id(source_key)
+
+    normalized_text = normalize_knowledge_content_for_hash(request.text)
+    if not normalized_text:
+        raise HTTPException(status_code=400, detail="本文が空、または空白のみです。")
+    if len(normalized_text) > MAX_ADMIN_SOURCE_LENGTH:
+        raise HTTPException(status_code=400, detail=f"本文が長すぎます。{MAX_ADMIN_SOURCE_LENGTH}文字以内にしてください。")
+
+    source_content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+    knowledge_content_hash = source_content_hash
+
+    duplicate_hash_v1 = calculate_duplicate_hash_v1(normalized_text)
+
+    existing_docs = get_existing_file_knowledge_docs(source_id)
+
+    # 1. unchanged判定 (同一source_idに同一knowledge_content_hashがあれば即unchanged)
+    for doc in existing_docs:
+        data = doc.to_dict() or {}
+        if data.get("knowledge_content_hash") == knowledge_content_hash:
+            return FileKnowledgeRegisterResponse(
+                status="unchanged",
+                source_type="file",
+                registration_mode="original",
+                filename=clean_name,
+                title=title,
+                source_key=source_key,
+                source_id=source_id,
+                chunk_count=0,
+                source_content_hash=source_content_hash,
+                knowledge_content_hash=knowledge_content_hash
+            )
+
+    # 2. duplicate判定 (unchangedでなく、allow_duplicate=Falseなら新規/更新問わず重複チェック)
+    if not request.allow_duplicate:
+        exclude_doc_ids = {doc.id for doc in existing_docs}
+        dup = find_duplicate_knowledge(duplicate_hash_v1, exclude_doc_ids=exclude_doc_ids)
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "duplicate": True,
+                    "message": "同じ内容の情報がすでに登録されています。",
+                    "existing": dup,
+                }
+            )
+
+    # 3. chunk & embedding & Firestore保存
+    chunks = split_knowledge_text(normalized_text)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="保存できる本文がありません。")
+
+    prepared = []
+    for index, chunk in enumerate(chunks):
+        try:
+            vector = get_embedding(chunk, operation="file_register")
+        except Exception as e:
+            print(f"File knowledge embedding failed: {e}")
+            raise HTTPException(status_code=500, detail="AI知識用データの作成に失敗しました。")
+
+        doc_id = f"file_{source_id}_chunk_{index}"
+
+        doc_data = {
+            "content": chunk,
+            "source": clean_name,
+            "source_type": "file",
+            "file_type": ".txt",
+            "filename": clean_name,
+            "title": title,
+            "source_key": source_key,
+            "source_id": source_id,
+            "registration_mode": request.registration_mode,
+            "source_content_hash": source_content_hash,
+            "knowledge_content_hash": knowledge_content_hash,
+            "duplicate_hash_v1": duplicate_hash_v1,
+            "chunk_index": index,
+            "total_chunks": len(chunks),
+            "active": True,
+            "embedding_field": Vector(vector),
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+
+        if request.year is not None:
+            doc_data["year"] = request.year
+        if request.element is not None:
+            doc_data["element"] = request.element
+        if request.category is not None:
+            doc_data["category"] = request.category
+        if request.content_type is not None:
+            doc_data["content_type"] = request.content_type
+        if request.tags is not None:
+            doc_data["tags"] = normalize_and_validate_tags(request.tags)
+        if request.status is not None:
+            doc_data["status"] = request.status
+
+        prepared.append((doc_id, doc_data))
+
+    batch = db.batch()
+    collection_ref = db.collection("knowledge")
+
+    for doc_id, doc_data in prepared:
+        batch.set(collection_ref.document(doc_id), doc_data, merge=True)
+
+    new_doc_ids = {doc_id for doc_id, _ in prepared}
+    for doc in existing_docs:
+        if doc.id.startswith(f"file_{source_id}_chunk_"):
+            if doc.id not in new_doc_ids:
+                batch.delete(doc.reference)
+
+    batch.commit()
+
+    status = "updated" if existing_docs else "registered"
+
+    return FileKnowledgeRegisterResponse(
+        status=status,
+        source_type="file",
+        registration_mode="original",
+        filename=clean_name,
+        title=title,
+        source_key=source_key,
+        source_id=source_id,
+        chunk_count=len(chunks),
+        source_content_hash=source_content_hash,
+        knowledge_content_hash=knowledge_content_hash
+    )
 
 
 # =========================================================
