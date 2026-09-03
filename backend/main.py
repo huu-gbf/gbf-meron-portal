@@ -2970,7 +2970,7 @@ async def summarize_official_news(
                             0.1,
 
                         max_output_tokens=
-                            1800,
+                            4096,
 
                         response_mime_type=
                             "application/json"
