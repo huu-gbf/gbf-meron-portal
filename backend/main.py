@@ -272,7 +272,7 @@ def record_generation_usage_event(usage_event):
         date_str = now.strftime("%Y-%m-%d")
         doc_date = now.strftime("%Y%m%d")
 
-        valid_ops = {"chat", "official_news_summary", "official_news_metadata", "youtube_summary", "youtube_summary_fallback"}
+        valid_ops = {"chat", "official_news_summary", "official_news_metadata", "youtube_summary", "youtube_summary_fallback", "file_summary"}
         op_val = usage_event.get("operation")
         if isinstance(op_val, str) and op_val in valid_ops:
             safe_operation = op_val
@@ -705,6 +705,20 @@ class FileKnowledgeRegisterResponse(BaseModel):
     source_content_hash: str
     knowledge_content_hash: str
 
+class FileKnowledgeSummarizeRequest(BaseModel):
+    filename: str
+    title: str
+    text: str
+
+class FileKnowledgeSummarizeResponse(BaseModel):
+    summary: str
+    year: int | None
+    element: KnowledgeElement
+    category: KnowledgeCategory
+    content_type: KnowledgeContentType
+    tags: list[str]
+    status: KnowledgeStatus
+
 
 def validate_and_clean_file_knowledge_filename(raw_filename: str | None) -> str:
     if not raw_filename or not isinstance(raw_filename, str):
@@ -1023,6 +1037,76 @@ OFFICIAL_NEWS_METADATA_INSTRUCTION = """
 6. tags: 本文・タイトルに基づく検索に有用な具体語を最大5件程度（配列）。本文にない情報は勝手に補完しないでください。
 7. 【厳禁】element, category, content_type, status に上記で指定した正規の列挙値以外の文字列（例: "イベント", "公式ニュース", "全属性対象" など）を絶対に出力しないでください。
 """
+
+FILE_KNOWLEDGE_METADATA_INSTRUCTION = """
+あなたは、提供されたグラブル（グランブルーファンタジー）に関するテキスト資料を要約し、メタデータを付与するアシスタントです。
+以下の要件と分類ルールを厳守し、指定のJSONオブジェクトのみを出力してください。
+
+【要約要件】
+1. 言語は日本語。
+2. 原文の事実を正確に維持し、原文にない情報を絶対に追加（捏造）しないでください。
+3. 数値、条件、手順を必要以上に落とさず、編成や攻略なら具体的な手順や役割を残してください。
+4. 一言だけの短すぎる要約は禁止します。また不要に冗長にせず、簡潔なMarkdown記述は可とします。
+
+【メタデータ分類ルール】
+titleは重要な分類ヒントですが、本文と矛盾する場合は本文の内容を優先してください。
+
+1. element（属性）: 以下のいずれか1つのみを選択
+   ["火", "水", "土", "風", "光", "闇", "全属性", "不明"]
+   - 特定の1属性が主題 → その属性（火/水/土/風/光/闇）
+   - 複数属性にまたがる、全属性向け、またはゲーム全体・システム全般 → "全属性"
+   - 本文から属性が本当に判定不能な場合のみ → "不明"
+   ※"光属性" などの代替表記は禁止。
+
+2. category（カテゴリ - 資料が「何について書かれているか」）: 以下のいずれか1つのみを選択
+   ["古戦場", "高難度", "周回", "キャラ情報", "武器情報", "召喚石情報", "アップデート情報", "初心者向け", "その他"]
+   - 古戦場が主題（編成、日程、肉集め、HELL攻略等） → 最優先で "古戦場"
+   - ルシゼロ、天元、スパバハ等の高難度マルチ攻略 → "高難度"
+   - イベント周回、素材集め、日常の周回手順 → "周回"
+   - 特定キャラクターの性能、評価、運用中心 → "キャラ情報"
+   - 武器性能、スキル、編成での武器運用中心 → "武器情報"
+   - 召喚石性能、加護、召喚効果中心 → "召喚石情報"
+   - ゲーム更新、アプデ、仕様変更の記録 → "アップデート情報"
+   - 序盤の進め方、初心者向け解説・ガイド → "初心者向け"
+   - 上記のいずれにも明確に該当しない場合 → "その他"
+
+3. content_type（コンテンツ種別 - 資料の「目的・形式」）: 以下のいずれか1つのみを選択
+   ["編成", "攻略", "解説", "検証", "比較", "評価", "ニュース", "その他"]
+   - 編成例、装備編成、キャラ編成のメモ → "編成"
+   - ボス討伐手順、ギミック対応、タイムライン攻略 → "攻略"
+   - ゲームシステムやアビリティの仕組み説明 → "解説"
+   - ダメージ計算、確率実測、仕様検証記録 → "検証"
+   - 複数候補（キャラ、武器、石）の比較 → "比較"
+   - 個別要素（キャラ、武器）の強さ・使い道評価 → "評価"
+   - 公式告知やニュース内容の記録 → "ニュース"
+   - 上記のいずれにも判定不能な場合 → "その他"
+   ※categoryとcontent_typeを混同しないこと（例: 古戦場編成メモ → category="古戦場", content_type="編成" / ルシゼロ攻略手順 → category="高難度", content_type="攻略"）。
+
+4. status: 以下のいずれか1つのみを選択
+   ["最新", "参考", "古い可能性あり"]
+   ※AIは "無効" を出力してはいけません。
+
+5. tags: タイトルおよび本文に基づく有用な検索キーワードのリスト（最大5個程度）。
+   - 本文にない情報の捏造禁止。
+   - element="光属性"、category="イベント"、content_type="攻略情報" などのEnum代替語はタグとしても出力禁止。
+
+6. year: 明確な対象年（西暦4桁）が本文またはタイトルから特定できる場合は整数、不明な場合は null。
+
+【出力形式】
+以下のキーを持つJSONオブジェクトのみを出力してください。Markdownのコードブロック（```json ... ```）は含めても構いませんが、JSON以外の余計な解説文は絶対に出力しないでください。
+※以下の例の値は形式を示すサンプルであり、分類ルールより優先してはいけません。
+
+{
+  "summary": "要約文...",
+  "year": 2026,
+  "element": "光",
+  "category": "古戦場",
+  "content_type": "攻略",
+  "tags": ["古戦場", "光"],
+  "status": "最新"
+}
+"""
+
 
 
 class YouTubeRegisterRequest(BaseModel):
@@ -3457,6 +3541,107 @@ def get_existing_file_knowledge_docs(source_id: str):
     )
     return list(query.stream())
 
+
+@app.post(
+    "/api/admin/file-knowledge/summarize",
+    response_model=FileKnowledgeSummarizeResponse
+)
+async def summarize_file_knowledge(req: FileKnowledgeSummarizeRequest):
+    try:
+        # 1. filename validation
+        clean_filename = validate_and_clean_file_knowledge_filename(req.filename)
+
+        # 2. title validation
+        if not isinstance(req.title, str):
+            raise HTTPException(status_code=400, detail="タイトルが不正です。")
+        if "\x00" in req.title:
+            raise HTTPException(status_code=400, detail="タイトルにNUL文字を含めることはできません。")
+        clean_title = req.title.strip()
+        if not clean_title:
+            raise HTTPException(status_code=400, detail="タイトルを入力してください。")
+        if len(clean_title) > 200:
+            raise HTTPException(status_code=400, detail="タイトルは200文字以内で入力してください。")
+
+        # 3. text validation
+        if not isinstance(req.text, str):
+            raise HTTPException(status_code=400, detail="本文が不正です。")
+        normalized_text = normalize_knowledge_content_for_hash(req.text)
+        if not normalized_text:
+            raise HTTPException(status_code=400, detail="本文を入力してください。")
+        if len(normalized_text) > MAX_ADMIN_SOURCE_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"本文が長すぎます（最大{MAX_ADMIN_SOURCE_LENGTH}文字）。"
+            )
+
+        prompt = (
+            f"{FILE_KNOWLEDGE_METADATA_INSTRUCTION}\n\n"
+            f"タイトル: {clean_title}\n\n"
+            f"対象テキスト:\n{normalized_text}"
+        )
+
+        response = generate_content_with_metrics(
+            client_instance=client,
+            operation="file_summary",
+            model=GENERATION_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                max_output_tokens=4096,
+                response_mime_type="application/json"
+            )
+        )
+
+        raw_text = (response.text or "").strip()
+        if raw_text.startswith("```"):
+            raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+            raw_text = re.sub(r"\s*```$", "", raw_text)
+
+        try:
+            data = json.loads(raw_text)
+        except Exception as e:
+            print(f"File knowledge summarize JSON decode failed: {type(e).__name__}")
+            raise HTTPException(
+                status_code=502,
+                detail="AI応答のJSON解析に失敗しました。"
+            )
+
+        if not isinstance(data, dict):
+            print("File knowledge summarize response is not a JSON object")
+            raise HTTPException(
+                status_code=502,
+                detail="AI応答がオブジェクト形式ではありません。"
+            )
+
+        summary_val = data.get("summary")
+        if not isinstance(summary_val, str):
+            raise HTTPException(
+                status_code=502,
+                detail="AI要約の形式が不正です。"
+            )
+        clean_summary = summary_val.strip()
+        if not clean_summary:
+            raise HTTPException(
+                status_code=502,
+                detail="AI要約が空です。"
+            )
+
+        valid_meta = parse_and_validate_ai_metadata(data, None)
+
+        return FileKnowledgeSummarizeResponse(
+            summary=clean_summary,
+            year=valid_meta.get("year"),
+            element=valid_meta.get("element", "不明"),
+            category=valid_meta.get("category", "その他"),
+            content_type=valid_meta.get("content_type", "その他"),
+            tags=valid_meta.get("tags", []),
+            status=valid_meta.get("status", "最新")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in summarize_file_knowledge: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post(
     "/api/admin/file-knowledge/register",
