@@ -862,7 +862,7 @@
         if (data.operation_calls) {
           const whitelist = isEmbedding ?
             ["rag_query", "official_news_register", "youtube_register"] :
-            ["chat", "official_news_summary", "youtube_summary", "youtube_summary_fallback"];
+            ["chat", "official_news_summary", "youtube_summary", "youtube_summary_fallback", "official_news_metadata"];
 
           const validOps = Object.entries(data.operation_calls).filter(([k, v]) => v > 0 && whitelist.includes(k));
           if (validOps.length > 0) {

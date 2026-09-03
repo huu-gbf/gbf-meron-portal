@@ -6,7 +6,7 @@ import hashlib
 import uuid
 import unicodedata
 from datetime import datetime, timezone, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -268,7 +268,7 @@ def record_generation_usage_event(usage_event):
         date_str = now.strftime("%Y-%m-%d")
         doc_date = now.strftime("%Y%m%d")
 
-        valid_ops = {"chat", "official_news_summary", "youtube_summary", "youtube_summary_fallback"}
+        valid_ops = {"chat", "official_news_summary", "official_news_metadata", "youtube_summary", "youtube_summary_fallback"}
         op_val = usage_event.get("operation")
         if isinstance(op_val, str) and op_val in valid_ops:
             safe_operation = op_val
@@ -588,6 +588,14 @@ class OfficialNewsSummarizeResponse(
 
     summary: str
 
+    metadata: Optional[dict] = None
+
+
+KnowledgeElement = Literal["火", "水", "土", "風", "光", "闇", "全属性", "不明"]
+KnowledgeCategory = Literal["古戦場", "高難度", "周回", "キャラ情報", "武器情報", "召喚石情報", "アップデート情報", "初心者向け", "その他"]
+KnowledgeContentType = Literal["編成", "攻略", "解説", "検証", "比較", "評価", "ニュース", "その他"]
+KnowledgeStatus = Literal["最新", "参考", "古い可能性あり", "無効"]
+
 
 class OfficialNewsRegisterRequest(
     BaseModel
@@ -597,13 +605,30 @@ class OfficialNewsRegisterRequest(
 
     url: str
 
-    summary: str
+    summary: Optional[str] = None
+
+    article_text: Optional[str] = None
+
+    registration_mode: Literal["summary", "original"] = "summary"
 
     published_date: str | None = None
 
     site_update_id: str | None = None
 
     allow_duplicate: StrictBool = False
+
+    year: int | None = Field(default=None)
+
+    element: KnowledgeElement | None = Field(default=None)
+
+    category: KnowledgeCategory | None = Field(default=None)
+
+    content_type: KnowledgeContentType | None = Field(default=None)
+
+    tags: list[str] | None = Field(default=None)
+
+    status: KnowledgeStatus | None = Field(default=None)
+
 
 
 class OfficialNewsRegisterResponse(
@@ -615,6 +640,26 @@ class OfficialNewsRegisterResponse(
     message: str
 
     document_count: int = 0
+
+
+class OfficialNewsMetadataRequest(
+    BaseModel
+):
+
+    title: str
+
+    url: str
+
+    article_text: str
+
+    published_date: Optional[str] = None
+
+
+class OfficialNewsMetadataResponse(
+    BaseModel
+):
+
+    metadata: dict
 
 
 from urllib.parse import urlparse, parse_qs
@@ -812,6 +857,67 @@ def parse_and_validate_metadata(raw_meta: Any, published_date_str: str) -> dict:
         "tags": tags,
         "status": status
     }
+
+
+def parse_and_validate_ai_metadata(raw_meta: Any, published_date_str: str | None) -> dict:
+    if not isinstance(raw_meta, dict):
+        raw_meta = {}
+
+    published_year = None
+    if published_date_str:
+        m = re.search(r"\b(20\d\d)\b", published_date_str)
+        if m:
+            published_year = int(m.group(1))
+
+    # 1. year
+    if published_year:
+        year = published_year
+    else:
+        year_val = raw_meta.get("year")
+        if isinstance(year_val, int) and 2000 <= year_val <= 2100:
+            year = year_val
+        elif isinstance(year_val, str) and year_val.isdigit() and len(year_val) == 4 and 2000 <= int(year_val) <= 2100:
+            year = int(year_val)
+        else:
+            year = None
+
+    # 2. element
+    valid_elements = {"火", "水", "土", "風", "光", "闇", "全属性", "不明"}
+    element = raw_meta.get("element")
+    if element not in valid_elements:
+        element = "不明"
+
+    # 3. category
+    valid_categories = {"古戦場", "高難度", "周回", "キャラ情報", "武器情報", "召喚石情報", "アップデート情報", "初心者向け", "その他"}
+    category = raw_meta.get("category")
+    if category not in valid_categories:
+        category = "その他"
+
+    # 4. content_type
+    valid_content_types = {"編成", "攻略", "解説", "検証", "比較", "評価", "ニュース", "その他"}
+    content_type = raw_meta.get("content_type")
+    if content_type not in valid_content_types:
+        content_type = "その他"
+
+    # 5. tags
+    tags = normalize_and_validate_tags(raw_meta.get("tags"))
+
+    # 6. status
+    valid_statuses = {"最新", "参考", "古い可能性あり"}
+    status = raw_meta.get("status")
+
+    result = {
+        "year": year,
+        "element": element,
+        "category": category,
+        "content_type": content_type,
+        "tags": tags
+    }
+
+    if status in valid_statuses:
+        result["status"] = status
+
+    return result
 
 
 class YouTubeRegisterRequest(BaseModel):
@@ -1609,6 +1715,48 @@ def get_existing_official_news_docs(
 # 公式ニュース要約ハッシュ
 # =========================================================
 
+def normalize_knowledge_content_for_hash(text: str | None) -> str:
+    if not text:
+        return ""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return text.strip()
+
+
+def extract_representative_text(
+    title: str,
+    published_date: str | None,
+    text: str,
+    max_chars: int = 4000
+) -> str:
+    if not text:
+        text = ""
+    header = f"Title: {title}\n"
+    if published_date:
+        header += f"Date: {published_date}\n"
+    header += "\n"
+
+    header_len = len(header)
+    remaining_chars = max_chars - header_len
+
+    if remaining_chars <= 0:
+        return header[:max_chars]
+
+    if len(text) <= remaining_chars:
+        return header + text
+
+    part_len = remaining_chars // 3
+
+    start_text = text[:part_len]
+
+    mid_start = (len(text) - part_len) // 2
+    mid_text = text[mid_start:mid_start+part_len]
+
+    end_start = len(text) - part_len
+    end_text = text[end_start:]
+
+    return header + f"{start_text}\n...\n{mid_text}\n...\n{end_text}"
+
+
 def calculate_official_news_hash(
     title: str,
     url: str,
@@ -1728,12 +1876,21 @@ def save_official_news_summary(
     published_date: str,
     summary: str,
     site_update_id: str | None = None,
-    allow_duplicate: bool = False
+    allow_duplicate: bool = False,
+    registration_mode: str = "summary",
+    article_text: str | None = None,
+    year: int | None = None,
+    element: KnowledgeElement | None = None,
+    category: KnowledgeCategory | None = None,
+    content_type: KnowledgeContentType | None = None,
+    tags: list[str] | None = None,
+    status: KnowledgeStatus | None = None
 ) -> tuple[str, int]:
 
     summary = (
         summary.strip()
     )
+
 
 
     update_ref_to_batch = None
@@ -1803,6 +1960,15 @@ def save_official_news_summary(
             summary
         )
     )
+
+    normalized_knowledge = normalize_knowledge_content_for_hash(summary)
+    knowledge_content_hash = hashlib.sha256(normalized_knowledge.encode("utf-8")).hexdigest()
+
+    normalized_source = normalize_knowledge_content_for_hash(article_text)
+    if normalized_source:
+        source_content_hash = hashlib.sha256(normalized_source.encode("utf-8")).hexdigest()
+    else:
+        source_content_hash = None
 
 
     try:
@@ -1964,51 +2130,72 @@ def save_official_news_summary(
             f"chunk_{index}"
         )
 
+        doc_data = {
+            "content":
+                chunk,
+
+            "source":
+                f"公式ニュース: {title}",
+
+            "source_type":
+                "official_summary",
+
+            "source_id":
+                source_id,
+
+            "url":
+                url,
+
+            "title":
+                title,
+
+            "published_date":
+                published_date,
+
+            "content_hash":
+                content_hash,
+
+            "duplicate_hash_v1":
+                duplicate_hash_v1,
+
+            "ingest_version":
+                OFFICIAL_NEWS_INGEST_VERSION,
+
+            "active":
+                True,
+
+            "updated_at":
+                firestore.SERVER_TIMESTAMP,
+
+            "embedding_field":
+                Vector(
+                    vector
+                ),
+            "registration_mode":
+                registration_mode,
+            "knowledge_content_hash":
+                knowledge_content_hash,
+        }
+
+        if source_content_hash:
+            doc_data["source_content_hash"] = source_content_hash
+
+        if year is not None:
+            doc_data["year"] = year
+        if element is not None:
+            doc_data["element"] = element
+        if category is not None:
+            doc_data["category"] = category
+        if content_type is not None:
+            doc_data["content_type"] = content_type
+        if tags is not None:
+            doc_data["tags"] = normalize_and_validate_tags(tags)
+        if status is not None:
+            doc_data["status"] = status
 
         prepared.append((
             doc_id,
-            {
-                "content":
-                    chunk,
-
-                "source":
-                    f"公式ニュース: {title}",
-
-                "source_type":
-                    "official_summary",
-
-                "source_id":
-                    source_id,
-
-                "url":
-                    url,
-
-                "title":
-                    title,
-
-                "published_date":
-                    published_date,
-
-                "content_hash":
-                    content_hash,
-
-                "duplicate_hash_v1":
-                    duplicate_hash_v1,
-
-                "ingest_version":
-                    OFFICIAL_NEWS_INGEST_VERSION,
-
-                "active":
-                    True,
-
-                "updated_at":
-                    firestore.SERVER_TIMESTAMP,
-
-                "embedding_field":
-                    Vector(
-                        vector
-                    ),
-            }
+            doc_data
         ))
 
 
@@ -2719,17 +2906,24 @@ async def summarize_official_news(
 - 公式URL自体は本文へ再掲しなくて構いません。
   URLは別フィールドとして保存されます。
 
-基本形式:
-## 概要
-- ...
+メタデータ要件:
+- 同時に記事から適切なメタデータ（year, element, category, content_type, tags, status）も推測してください。
+- element, category, content_type, status は定められた列挙値から選択してください。不明な場合は「その他」や「不明」を使用。
+- status は「最新」「参考」「古い可能性あり」から選択。無効と判断される情報は最初から登録しないため、ここでは選ばないでください。
 
-## 重要な日程・数値
-- ...
-
-## 団員向けポイント
-- ...
-
-該当情報がない見出しは省略して構いません。
+出力要件:
+- 必ず以下のJSON形式で出力してください。JSON以外のテキストは含めないでください。
+{
+  "summary": "要約文(Markdown形式)...",
+  "metadata": {
+    "year": 2024,
+    "element": "火",
+    "category": "アップデート情報",
+    "content_type": "ニュース",
+    "tags": ["タグ1", "タグ2"],
+    "status": "最新"
+  }
+}
 """
 
 
@@ -2776,17 +2970,34 @@ async def summarize_official_news(
                             0.1,
 
                         max_output_tokens=
-                            1800
+                            1800,
+
+                        response_mime_type=
+                            "application/json"
                     )
             )
         )
 
 
-        summary = (
-            response.text
-            or ""
-        ).strip()
+        raw_text = (response.text or "").strip()
+        raw_text = re.sub(r"^```json\s*", "", raw_text)
+        raw_text = re.sub(r"\s*```$", "", raw_text)
+        data = json.loads(raw_text)
 
+        summary = data.get("summary", "").strip()
+        metadata_dict = data.get("metadata", {})
+
+        valid_metadata = parse_and_validate_ai_metadata(metadata_dict, published_date)
+
+
+    except json.JSONDecodeError as e:
+
+        print(f"Official news summary JSON decode failed: {e}")
+
+        raise HTTPException(
+            status_code=500,
+            detail="AIの応答形式が不正でした。"
+        )
 
     except Exception as e:
 
@@ -2833,9 +3044,94 @@ async def summarize_official_news(
 
     return (
         OfficialNewsSummarizeResponse(
-            summary=summary
+            summary=summary,
+            metadata=valid_metadata
         )
     )
+
+
+# =========================================================
+# 管理API
+# 公式記事本文 → AIメタデータ推測
+# =========================================================
+
+@app.post(
+    "/api/admin/official-news/metadata",
+    response_model=OfficialNewsMetadataResponse
+)
+async def generate_official_news_metadata(
+    request: OfficialNewsMetadataRequest,
+    http_request: Request
+):
+    require_admin(http_request)
+
+    title, url, published_date = normalize_official_news_metadata(
+        request.title,
+        request.url,
+        request.published_date
+    )
+
+    article_text = request.article_text.strip()
+    if not article_text:
+        raise HTTPException(
+            status_code=400,
+            detail="記事本文を貼り付けてください。"
+        )
+
+    representative_text = extract_representative_text(title, published_date, article_text)
+
+    system_instruction = """
+あなたはグランブルーファンタジー騎空団の管理者向け情報整理アシスタントです。
+提供された公式ニュースの代表テキストから、適切なメタデータを推測してください。
+
+重要ルール:
+- 要約文(summary)は生成しないでください。メタデータのみを出力します。
+- 本文にない情報を推測・補完しないでください。
+- yearは可能な限り提供された日付や本文から特定してください。
+- element, category, content_type, status は定められた列挙値から選択してください。不明な場合は「その他」や「不明」を使用。
+- status は「最新」「参考」「古い可能性あり」から選択。無効と判断される情報は最初から登録しないため、ここでは選ばないでください。
+- 必ず以下のJSON形式で出力してください。JSON以外のテキストは含めないでください。
+
+出力要件:
+{
+  "year": 2024,
+  "element": "火",
+  "category": "アップデート情報",
+  "content_type": "ニュース",
+  "tags": ["タグ1", "タグ2"],
+  "status": "最新"
+}
+"""
+
+    try:
+        response = generate_content_with_metrics(
+            client_instance=client,
+            operation="official_news_metadata",
+            model=GENERATION_MODEL,
+            contents=representative_text,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.1,
+                max_output_tokens=800,
+                response_mime_type="application/json"
+            )
+        )
+
+        raw_text = (response.text or "").strip()
+        raw_text = re.sub(r"^```json\s*", "", raw_text)
+        raw_text = re.sub(r"\s*```$", "", raw_text)
+        metadata_dict = json.loads(raw_text)
+
+        valid_metadata = parse_and_validate_ai_metadata(metadata_dict, published_date)
+
+    except json.JSONDecodeError as e:
+        print(f"Official news metadata JSON decode failed: {e}")
+        raise HTTPException(status_code=500, detail="AIの応答形式が不正でした。")
+    except Exception as e:
+        print(f"Official news metadata failed: {e}")
+        raise HTTPException(status_code=500, detail="公式記事のAIメタデータ生成中にエラーが発生しました。")
+
+    return OfficialNewsMetadataResponse(metadata=valid_metadata)
 
 
 # =========================================================
@@ -2874,10 +3170,20 @@ async def register_official_news(
     )
 
 
-    summary = (
-        request.summary.strip()
-    )
+    summary_text = request.summary.strip() if request.summary else ""
+    article_text = request.article_text.strip() if request.article_text else ""
+    registration_mode = request.registration_mode if request.registration_mode else "summary"
 
+    if registration_mode == "original":
+        final_text = article_text
+    else:
+        final_text = summary_text
+
+    if not final_text:
+        raise HTTPException(
+            status_code=400,
+            detail="保存できるテキストがありません。"
+        )
 
     status, document_count = (
         save_official_news_summary(
@@ -2888,11 +3194,27 @@ async def register_official_news(
 
             published_date,
 
-            summary,
+            final_text,
             
             request.site_update_id,
 
-            request.allow_duplicate
+            request.allow_duplicate,
+
+            registration_mode=registration_mode,
+
+            article_text=request.article_text,
+
+            year=request.year,
+
+            element=request.element,
+
+            category=request.category,
+
+            content_type=request.content_type,
+
+            tags=request.tags,
+
+            status=request.status
         )
     )
 
