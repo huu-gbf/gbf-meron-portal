@@ -451,6 +451,23 @@ def process_site(
     print(f"[SITE] {source_id} known={len(known_ids)} initialized={initialized}")
 
     # --------------------------------------------------
+    # article_id 正規化と異常データスキップ
+    # --------------------------------------------------
+    valid_articles = []
+    for a in articles:
+        aid = a.get("article_id")
+        if not aid:
+            url = a.get("url")
+            if not url:
+                print(f"[SITE] {source_id} 警告: article_id も url も存在しない異常データをスキップしました")
+                continue
+            aid = make_article_id_from_url(url)
+            a["article_id"] = aid
+        valid_articles.append(a)
+
+    articles = valid_articles
+
+    # --------------------------------------------------
     # 新着判定
     # --------------------------------------------------
     new_articles = [
