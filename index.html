@@ -894,7 +894,7 @@
       messagingSenderId: "1074585998388",
       appId: "1:1074585998388:web:5236158360dab1bd0e6661"
     };
-    const FIREBASE_VAPID_KEY = "YOUR_VAPID_PUBLIC_KEY";
+    const FIREBASE_VAPID_KEY = "BEVMN9HhBl6aQkt-Xy-pnd549MOYLkKQf-sgW4Ktuvmu4vQ8ael1POpBThe7LkTq5VjhZnEVVmOj0Q-JeVGAyug";
 
     // パスワードのSHA-256ハッシュ値
     // 平文パスワードはコード内に持たせません
@@ -1353,7 +1353,7 @@
           });
 
           const vapidKey = FIREBASE_VAPID_KEY;
-          if (messaging && vapidKey && vapidKey !== 'YOUR_VAPID_PUBLIC_KEY') {
+          if (messaging && vapidKey) {
             try {
               const currentToken = await messaging.getToken({ vapidKey });
               if (currentToken && db) {

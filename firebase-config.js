@@ -12,39 +12,15 @@ const defaultFirebaseConfig = {
 };
 
 // Web Push 証明書（VAPID公開鍵）
-const defaultVapidKey = "YOUR_VAPID_PUBLIC_KEY";
-
-// ローカルストレージに保存された設定があれば優先
-function getActiveFirebaseConfig() {
-  try {
-    const saved = localStorage.getItem('gbf_custom_firebase_config');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.apiKey && parsed.apiKey !== "YOUR_API_KEY" && parsed.projectId && parsed.projectId !== "YOUR_PROJECT_ID") {
-        return parsed;
-      }
-    }
-  } catch (e) {}
-  return defaultFirebaseConfig;
-}
-
-function getActiveVapidKey() {
-  try {
-    const saved = localStorage.getItem('gbf_custom_vapid_key');
-    if (saved && saved !== "YOUR_VAPID_PUBLIC_KEY") {
-      return saved;
-    }
-  } catch (e) {}
-  return defaultVapidKey;
-}
+const defaultVapidKey = "BEVMN9HhBl6aQkt-Xy-pnd549MOYLkKQf-sgW4Ktuvmu4vQ8ael1POpBThe7LkTq5VjhZnEVVmOj0Q-JeVGAyug";
 
 // グローバル展開
-window.firebaseConfig = getActiveFirebaseConfig();
-window.FIREBASE_VAPID_KEY = getActiveVapidKey();
+window.firebaseConfig = defaultFirebaseConfig;
+window.FIREBASE_VAPID_KEY = defaultVapidKey;
 
 // Firebaseが有効に設定されているか判定
 window.isFirebaseConfigured = function() {
-  const cfg = window.firebaseConfig || getActiveFirebaseConfig();
+  const cfg = window.firebaseConfig;
   return Boolean(
     cfg &&
     cfg.apiKey &&
