@@ -128,6 +128,26 @@
       </p>
     </div>
 
+    <!-- 鮮度確認候補 -->
+    <div id="freshnessContainer" class="hidden glass-panel rounded-2xl p-5 sm:p-7 mb-5">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-bold text-white flex items-center gap-2">
+          <span>⚠️</span> 要確認 Knowledge
+        </h2>
+        <button
+          onclick="fetchFreshnessCandidates()"
+          class="text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 transition"
+        >
+          更新
+        </button>
+      </div>
+      <div id="freshnessSummary" class="text-sm text-slate-300 mb-3 flex gap-4">
+        <!-- JSで動的生成 -->
+      </div>
+      <div id="freshnessList" class="hidden flex flex-col gap-2 max-h-64 overflow-y-auto pr-2">
+        <!-- JSで動的生成 -->
+      </div>
+    </div>
     <!-- 情報ソース管理 -->
     <div id="sourceSettingsContainer" class="hidden glass-panel rounded-2xl p-5 sm:p-7 mb-5">
       <h2 class="font-bold text-white mb-4 flex items-center gap-2">
@@ -431,6 +451,106 @@
       });
     }
 
+    async function fetchFreshnessCandidates(key = null) {
+      const adminKey = key || document.getElementById('adminKeyInput').value.trim();
+      if (!adminKey) {
+        showStatus('error', '管理キーが必要です', '鮮度確認候補を取得するには管理キーを入力してください。');
+        return;
+      }
+
+      const container = document.getElementById('freshnessContainer');
+      const summaryDiv = document.getElementById('freshnessSummary');
+      const listDiv = document.getElementById('freshnessList');
+      
+      container.classList.remove('hidden');
+      summaryDiv.textContent = '取得中...';
+      listDiv.classList.add('hidden');
+      listDiv.innerHTML = '';
+
+      try {
+        const response = await fetch(`${API_URL}/api/admin/knowledge/freshness-candidates`, {
+          headers: { 'X-Admin-Key': adminKey }
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          summaryDiv.textContent = `取得失敗 (HTTP ${response.status})`;
+          return;
+        }
+
+        const data = await response.json();
+        
+        if (data.total_candidates === 0) {
+          summaryDiv.textContent = '現在、確認が必要なKnowledgeはありません。';
+          listDiv.classList.add('hidden');
+          return;
+        }
+
+        summaryDiv.textContent = `要確認: ${data.total_candidates}件 (期限切れ: ${data.expired_count}件, 古い可能性あり: ${data.flagged_old_count}件)`;
+        
+        data.candidates.forEach(c => {
+          const itemDiv = document.createElement('div');
+          itemDiv.className = 'bg-slate-900/60 border border-slate-700/60 rounded p-3 text-xs';
+          
+          const header = document.createElement('div');
+          header.className = 'flex items-center justify-between mb-1 gap-2';
+          
+          const title = document.createElement('div');
+          title.className = 'font-bold text-slate-200 truncate';
+          title.textContent = c.title || '(タイトルなし)';
+          
+          const reasonTags = document.createElement('div');
+          reasonTags.className = 'flex gap-1 shrink-0';
+          
+          c.reasons.forEach(r => {
+            const span = document.createElement('span');
+            if (r === 'expired') {
+              span.className = 'bg-red-900/50 text-red-300 border border-red-800/50 px-1.5 py-0.5 rounded text-[10px]';
+              span.textContent = '期限切れ';
+            } else if (r === 'flagged_old') {
+              span.className = 'bg-amber-900/50 text-amber-300 border border-amber-800/50 px-1.5 py-0.5 rounded text-[10px]';
+              span.textContent = '古い可能性あり';
+            } else {
+              span.className = 'bg-slate-800 text-slate-300 border border-slate-700 px-1.5 py-0.5 rounded text-[10px]';
+              span.textContent = r;
+            }
+            reasonTags.appendChild(span);
+          });
+          
+          header.appendChild(title);
+          header.appendChild(reasonTags);
+          
+          const meta = document.createElement('div');
+          meta.className = 'text-slate-500 text-[10px] flex gap-3 flex-wrap';
+          
+          const sourceSpan = document.createElement('span');
+          sourceSpan.textContent = `ソース: ${c.source_type || '不明'}`;
+          meta.appendChild(sourceSpan);
+          
+          if (c.valid_until) {
+            const dateSpan = document.createElement('span');
+            const d = new Date(c.valid_until);
+            if (Number.isNaN(d.getTime())) {
+              dateSpan.textContent = `期限: ${c.valid_until}`;
+            } else {
+              dateSpan.textContent = `期限: ${d.toLocaleString('ja-JP')}`;
+            }
+            meta.appendChild(dateSpan);
+          }
+          
+          itemDiv.appendChild(header);
+          itemDiv.appendChild(meta);
+          listDiv.appendChild(itemDiv);
+        });
+        
+        listDiv.classList.remove('hidden');
+
+      } catch (err) {
+        summaryDiv.textContent = '鮮度情報を取得できませんでした。';
+        console.error('Freshness candidates fetch error:', err);
+      }
+    }
+
     async function fetchKnowledge() {
       const adminKey = document.getElementById('adminKeyInput').value.trim();
       if (!adminKey) {
@@ -485,6 +605,9 @@
         
         updateSourceTypeFilter();
         renderTable();
+        
+        // 鮮度候補も合わせて取得する（失敗しても一覧表示を妨げない）
+        await fetchFreshnessCandidates(adminKey);
 
         showStatus('success', '取得成功', `${loadedKnowledge.length}件のデータを読み込みました。`);
 
