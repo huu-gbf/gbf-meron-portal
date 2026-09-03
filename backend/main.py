@@ -15,6 +15,8 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Request,
+    UploadFile,
+    File,
 )
 
 from fastapi.middleware.cors import (
@@ -95,6 +97,8 @@ MAX_ADMIN_SOURCE_LENGTH = int(
         "50000"
     )
 )
+
+MAX_TXT_UPLOAD_BYTES = 1 * 1024 * 1024  # 1 MiB
 
 
 MAX_ADMIN_SUMMARY_LENGTH = int(
@@ -660,6 +664,18 @@ class OfficialNewsMetadataResponse(
 ):
 
     metadata: dict
+
+
+class FileKnowledgeExtractResponse(BaseModel):
+    filename: str
+    file_type: str
+    encoding: str
+    text: str
+    char_count: int
+    byte_count: int
+    default_source_key: str
+    source_id: str
+    source_content_hash: str
 
 
 from urllib.parse import urlparse, parse_qs
@@ -1747,8 +1763,18 @@ def get_existing_official_news_docs(
 
 
 # =========================================================
-# 公式ニュース要約ハッシュ
+# 公式ニュース要約ハッシュ / ファイルKnowledgeヘルパー
 # =========================================================
+
+def build_file_source_id(source_key: str) -> str:
+    if not source_key or not isinstance(source_key, str):
+        raise ValueError("source_key が空または不正です。")
+    normalized_key = source_key.strip()
+    if not normalized_key:
+        raise ValueError("source_key が空です。")
+    raw = f"file:{normalized_key}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
 
 def normalize_knowledge_content_for_hash(text: str | None) -> str:
     if not text:
@@ -3278,6 +3304,118 @@ async def register_official_news(
                 document_count
         )
     )
+
+
+# =========================================================
+# 管理API
+# ファイルKnowledge 本文抽出
+# =========================================================
+
+@app.post(
+    "/api/admin/file-knowledge/extract",
+    response_model=FileKnowledgeExtractResponse
+)
+async def extract_file_knowledge(
+    http_request: Request,
+    file: UploadFile = File(...)
+):
+    require_admin(http_request)
+
+    # 1. filename 安全性検証
+    raw_filename = file.filename
+    if not raw_filename or not isinstance(raw_filename, str):
+        raise HTTPException(status_code=400, detail="ファイル名が不正です。")
+
+    if "\x00" in raw_filename:
+        raise HTTPException(status_code=400, detail="ファイル名に不正な文字が含まれています。")
+
+    # パスを含むfilenameは救済せずHTTP 400として拒否 (Windows/Linux両パスセパレータ検証)
+    if "/" in raw_filename or "\\" in raw_filename:
+        raise HTTPException(
+            status_code=400,
+            detail="パスを含むファイル名は指定できません。純粋なファイル名のみ指定してください。"
+        )
+
+    clean_name = raw_filename.strip()
+    if not clean_name or clean_name in (".", ".."):
+        raise HTTPException(status_code=400, detail="ファイル名が不正です。")
+
+    # 2. 拡張子検証 (case-insensitive で .txt のみ許可)
+    if not clean_name.lower().endswith(".txt"):
+        raise HTTPException(
+            status_code=400,
+            detail="未対応のファイル形式です。現在は .txt ファイルのみ対応しています。"
+        )
+
+    # 3. 最大byte数検証 (MAX_TXT_UPLOAD_BYTES + 1 まで読み込む)
+    content_bytes = await file.read(MAX_TXT_UPLOAD_BYTES + 1)
+    if len(content_bytes) > MAX_TXT_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ファイルサイズが大きすぎます。上限は {MAX_TXT_UPLOAD_BYTES // (1024 * 1024)} MiB です。"
+        )
+
+    if len(content_bytes) == 0:
+        raise HTTPException(status_code=400, detail="ファイルが空です。")
+
+    # 4. binary誤投入防御 (\x00 の検出)
+    if b"\x00" in content_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="バイナリファイルは指定できません。テキストファイルを指定してください。"
+        )
+
+    # 5. TXT decode (utf-8-sig strict -> cp932 strict)
+    decoded_text = ""
+    encoding_used = ""
+    try:
+        decoded_text = content_bytes.decode("utf-8-sig")
+        encoding_used = "utf-8"
+    except UnicodeDecodeError:
+        try:
+            decoded_text = content_bytes.decode("cp932")
+            encoding_used = "cp932"
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail="テキストファイルの文字コードを判定できませんでした。UTF-8またはShift_JISで保存してください。"
+            )
+
+    # 6. 改行最小正規化 (CRLF/CR -> LF, 前後strip)
+    normalized_text = normalize_knowledge_content_for_hash(decoded_text)
+    if not normalized_text:
+        raise HTTPException(status_code=400, detail="ファイル本文が空、または空白のみです。")
+
+    # 7. 最大文字数判定 (MAX_ADMIN_SOURCE_LENGTH)
+    char_count = len(normalized_text)
+    if char_count > MAX_ADMIN_SOURCE_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"抽出された本文が長すぎます。{MAX_ADMIN_SOURCE_LENGTH}文字以内にしてください。"
+        )
+
+    # 8. source_content_hash (正規化後テキストのSHA-256)
+    source_content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+
+    # 9. default_source_key & source_id
+    default_source_key = clean_name
+    try:
+        source_id = build_file_source_id(default_source_key)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return FileKnowledgeExtractResponse(
+        filename=clean_name,
+        file_type=".txt",
+        encoding=encoding_used,
+        text=normalized_text,
+        char_count=char_count,
+        byte_count=len(content_bytes),
+        default_source_key=default_source_key,
+        source_id=source_id,
+        source_content_hash=source_content_hash
+    )
+
 
 
 # =========================================================
