@@ -4381,6 +4381,24 @@ async def admin_daily_summary_endpoint(http_request: Request):
     try:
         summary_data = get_daily_site_updates()
         summary_data["status"] = "ok"
+
+        # Knowledge鮮度確認情報の追加
+        try:
+            freshness_data = collect_knowledge_freshness_candidates()
+            # FreshnessCandidateItem の dict 変換
+            freshness_data["candidates"] = [c.model_dump() for c in freshness_data["candidates"]]
+            summary_data["knowledge_freshness"] = freshness_data
+        except Exception as e:
+            print(f"Error fetching knowledge freshness for daily summary: {e}")
+            # 鮮度取得に失敗しても、既存のDaily Summary自体はそのまま返す（fail-safe）
+            summary_data["knowledge_freshness"] = {
+                "error": "Failed to fetch knowledge freshness",
+                "total_candidates": 0,
+                "expired_count": 0,
+                "flagged_old_count": 0,
+                "candidates": []
+            }
+
         return summary_data
     except Exception as e:
         print(f"Error fetching daily summary: {e}")
@@ -6539,6 +6557,83 @@ def get_admin_knowledge(http_request: Request, limit: int = 50, source_type: str
         print(f"Error fetching knowledge: {e}")
         raise HTTPException(status_code=500, detail="データ取得に失敗しました。")
 
+def collect_knowledge_freshness_candidates() -> dict:
+    collection_ref = db.collection("knowledge")
+    docs = collection_ref.stream()
+
+    now_utc = datetime.now(timezone.utc)
+    candidates = []
+    expired_count = 0
+    flagged_old_count = 0
+
+    for doc in docs:
+        data = doc.to_dict() or {}
+
+        active = data.get("active", True)
+        if not active:
+            continue
+
+        reasons = []
+
+        status = data.get("status")
+        if status == "古い可能性あり":
+            reasons.append("flagged_old")
+
+        valid_until_val = data.get("valid_until")
+        is_expired = False
+        if valid_until_val is not None:
+            valid_until_dt = None
+            if isinstance(valid_until_val, datetime):
+                if valid_until_val.tzinfo is not None:
+                    valid_until_dt = valid_until_val.astimezone(timezone.utc)
+            elif isinstance(valid_until_val, str):
+                if valid_until_val.strip():
+                    try:
+                        dt = datetime.fromisoformat(valid_until_val)
+                        if dt.tzinfo is not None:
+                            valid_until_dt = dt.astimezone(timezone.utc)
+                    except Exception:
+                        pass
+
+            if valid_until_dt is not None and now_utc > valid_until_dt:
+                is_expired = True
+                reasons.append("expired")
+
+        if reasons:
+            if "expired" in reasons:
+                expired_count += 1
+            if "flagged_old" in reasons:
+                flagged_old_count += 1
+
+            valid_until_str = None
+            if isinstance(valid_until_val, datetime):
+                valid_until_str = valid_until_val.isoformat()
+            elif isinstance(valid_until_val, str):
+                valid_until_str = valid_until_val
+
+            candidates.append(
+                FreshnessCandidateItem(
+                    doc_id=doc.id,
+                    title=data.get("title"),
+                    source_type=data.get("source_type"),
+                    status=status,
+                    active=active,
+                    valid_until=valid_until_str,
+                    year=data.get("year"),
+                    element=data.get("element"),
+                    category=data.get("category"),
+                    content_type=data.get("content_type"),
+                    reasons=reasons
+                )
+            )
+
+    return {
+        "total_candidates": len(candidates),
+        "expired_count": expired_count,
+        "flagged_old_count": flagged_old_count,
+        "candidates": candidates
+    }
+
 @app.get(
     "/api/admin/knowledge/freshness-candidates",
     response_model=FreshnessCandidatesResponse
@@ -6546,81 +6641,8 @@ def get_admin_knowledge(http_request: Request, limit: int = 50, source_type: str
 def get_admin_knowledge_freshness_candidates(http_request: Request):
     require_admin(http_request)
     try:
-        collection_ref = db.collection("knowledge")
-        docs = collection_ref.stream()
-        
-        now_utc = datetime.now(timezone.utc)
-        candidates = []
-        expired_count = 0
-        flagged_old_count = 0
-        
-        for doc in docs:
-            data = doc.to_dict() or {}
-            
-            active = data.get("active", True)
-            if not active:
-                continue
-                
-            reasons = []
-            
-            status = data.get("status")
-            if status == "古い可能性あり":
-                reasons.append("flagged_old")
-                
-            valid_until_val = data.get("valid_until")
-            is_expired = False
-            if valid_until_val is not None:
-                valid_until_dt = None
-                if isinstance(valid_until_val, datetime):
-                    if valid_until_val.tzinfo is not None:
-                        valid_until_dt = valid_until_val.astimezone(timezone.utc)
-                elif isinstance(valid_until_val, str):
-                    if valid_until_val.strip():
-                        try:
-                            dt = datetime.fromisoformat(valid_until_val)
-                            if dt.tzinfo is not None:
-                                valid_until_dt = dt.astimezone(timezone.utc)
-                        except Exception:
-                            pass
-                            
-                if valid_until_dt is not None and now_utc > valid_until_dt:
-                    is_expired = True
-                    reasons.append("expired")
-                    
-            if reasons:
-                if "expired" in reasons:
-                    expired_count += 1
-                if "flagged_old" in reasons:
-                    flagged_old_count += 1
-                    
-                valid_until_str = None
-                if isinstance(valid_until_val, datetime):
-                    valid_until_str = valid_until_val.isoformat()
-                elif isinstance(valid_until_val, str):
-                    valid_until_str = valid_until_val
-                    
-                candidates.append(
-                    FreshnessCandidateItem(
-                        doc_id=doc.id,
-                        title=data.get("title"),
-                        source_type=data.get("source_type"),
-                        status=status,
-                        active=active,
-                        valid_until=valid_until_str,
-                        year=data.get("year"),
-                        element=data.get("element"),
-                        category=data.get("category"),
-                        content_type=data.get("content_type"),
-                        reasons=reasons
-                    )
-                )
-                
-        return FreshnessCandidatesResponse(
-            total_candidates=len(candidates),
-            expired_count=expired_count,
-            flagged_old_count=flagged_old_count,
-            candidates=candidates
-        )
+        result = collect_knowledge_freshness_candidates()
+        return FreshnessCandidatesResponse(**result)
     except Exception as e:
         print(f"Error fetching freshness candidates: {e}")
         raise HTTPException(status_code=500, detail="候補取得に失敗しました。")

@@ -692,6 +692,11 @@
               </div>
             </div>
 
+            <div id="updatesKnowledgeFreshness" style="margin-bottom: 16px; display: none;">
+              <!-- Knowledge鮮度通知用コンテナ -->
+            </div>
+
+
             <div class="metric-label" style="margin-bottom: 6px; border-bottom: 1px solid var(--card-border-subtle); padding-bottom: 6px;">今日の検出一覧 (最新10件)</div>
             <div id="updatesListContainer" style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
               <!-- 検出一覧が入る -->
@@ -1150,6 +1155,11 @@
       if (listContainer) {
         listContainer.innerHTML = "";
       }
+      const kfContainer = document.getElementById("updatesKnowledgeFreshness");
+      if (kfContainer) {
+        kfContainer.innerHTML = "";
+        kfContainer.style.display = "none";
+      }
     }
 
     // AI利用状況 & Feedback レンダリング
@@ -1290,6 +1300,107 @@
           setElementText("updCountOfficial", formatCount(summaryData.counts.official));
           setElementText("updCountYoutube", formatCount(summaryData.counts.youtube));
         }
+
+        const kfContainer = document.getElementById("updatesKnowledgeFreshness");
+        if (kfContainer) {
+          kfContainer.innerHTML = ""; // safe clear (fixed HTML)
+          kfContainer.style.display = "block";
+
+          if (summaryData.knowledge_freshness && !summaryData.knowledge_freshness.error) {
+            const kf = summaryData.knowledge_freshness;
+            if (kf.total_candidates > 0) {
+              const kfTitle = document.createElement("div");
+              kfTitle.style.fontWeight = "bold";
+              kfTitle.style.color = "var(--accent-amber)";
+              kfTitle.style.marginBottom = "8px";
+              kfTitle.style.fontSize = "0.9rem";
+              kfTitle.textContent = `⚠️ Knowledge要確認: ${kf.total_candidates}件 (期限切れ: ${kf.expired_count}件, 古い可能性あり: ${kf.flagged_old_count}件)`;
+              kfContainer.appendChild(kfTitle);
+
+              const kfList = document.createElement("div");
+              kfList.style.display = "flex";
+              kfList.style.flexDirection = "column";
+              kfList.style.gap = "4px";
+
+              const limit = 10;
+              const displayCandidates = kf.candidates.slice(0, limit);
+
+              displayCandidates.forEach(c => {
+                const itemDiv = document.createElement("div");
+                itemDiv.style.display = "flex";
+                itemDiv.style.alignItems = "center";
+                itemDiv.style.gap = "6px";
+                itemDiv.style.fontSize = "0.8rem";
+                itemDiv.style.padding = "6px";
+                itemDiv.style.background = "var(--card-bg-elevated)";
+                itemDiv.style.borderRadius = "4px";
+                itemDiv.style.border = "1px solid var(--card-border-subtle)";
+
+                const titleSpan = document.createElement("span");
+                titleSpan.style.color = "var(--text-main)";
+                titleSpan.style.fontWeight = "600";
+                titleSpan.style.whiteSpace = "nowrap";
+                titleSpan.style.overflow = "hidden";
+                titleSpan.style.textOverflow = "ellipsis";
+                titleSpan.style.maxWidth = "200px";
+                titleSpan.textContent = c.title || "(タイトルなし)";
+                itemDiv.appendChild(titleSpan);
+
+                c.reasons.forEach(r => {
+                  const rSpan = document.createElement("span");
+                  rSpan.style.padding = "2px 4px";
+                  rSpan.style.borderRadius = "3px";
+                  rSpan.style.fontSize = "0.7rem";
+                  if (r === "expired") {
+                    rSpan.style.background = "rgba(239, 68, 68, 0.15)";
+                    rSpan.style.color = "rgb(252, 165, 165)";
+                    rSpan.style.border = "1px solid rgba(239, 68, 68, 0.3)";
+                    rSpan.textContent = "期限切れ";
+                  } else if (r === "flagged_old") {
+                    rSpan.style.background = "rgba(245, 158, 11, 0.15)";
+                    rSpan.style.color = "rgb(252, 211, 77)";
+                    rSpan.style.border = "1px solid rgba(245, 158, 11, 0.3)";
+                    rSpan.textContent = "古い可能性あり";
+                  } else {
+                    rSpan.style.background = "rgba(100, 116, 139, 0.2)";
+                    rSpan.style.color = "rgb(203, 213, 225)";
+                    rSpan.style.border = "1px solid rgba(100, 116, 139, 0.3)";
+                    rSpan.textContent = r;
+                  }
+                  itemDiv.appendChild(rSpan);
+                });
+
+                kfList.appendChild(itemDiv);
+              });
+
+              if (kf.candidates.length > limit) {
+                const moreDiv = document.createElement("div");
+                moreDiv.style.fontSize = "0.75rem";
+                moreDiv.style.color = "var(--text-subtle)";
+                moreDiv.style.marginTop = "4px";
+                moreDiv.textContent = `ほか ${kf.candidates.length - limit} 件`;
+                kfList.appendChild(moreDiv);
+              }
+
+              kfContainer.appendChild(kfList);
+            } else {
+              const emptyMsg = document.createElement("div");
+              emptyMsg.style.fontSize = "0.85rem";
+              emptyMsg.style.color = "var(--text-subtle)";
+              emptyMsg.textContent = "Knowledge: 確認が必要な項目はありません。";
+              kfContainer.appendChild(emptyMsg);
+            }
+          } else if (summaryData.knowledge_freshness && summaryData.knowledge_freshness.error) {
+            const errMsg = document.createElement("div");
+            errMsg.style.fontSize = "0.85rem";
+            errMsg.style.color = "var(--accent-red)";
+            errMsg.textContent = "Knowledge鮮度情報を取得できませんでした。";
+            kfContainer.appendChild(errMsg);
+          } else {
+            kfContainer.style.display = "none";
+          }
+        }
+
 
         const listContainer = document.getElementById("updatesListContainer");
         if (listContainer) {
