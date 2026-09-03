@@ -3599,7 +3599,8 @@ def get_existing_file_knowledge_docs(source_id: str):
     "/api/admin/file-knowledge/summarize",
     response_model=FileKnowledgeSummarizeResponse
 )
-async def summarize_file_knowledge(req: FileKnowledgeSummarizeRequest):
+async def summarize_file_knowledge(req: FileKnowledgeSummarizeRequest, http_request: Request):
+    require_admin(http_request)
     try:
         # 1. filename validation
         clean_filename = validate_and_clean_file_knowledge_filename(req.filename)
