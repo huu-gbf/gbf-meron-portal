@@ -470,6 +470,7 @@ app.add_middleware(
         "Content-Type",
         "X-Client-Id",
         "X-Admin-Key",
+        "Authorization",
     ],
 )
 
