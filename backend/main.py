@@ -2496,7 +2496,8 @@ def extract_metadata_hints_from_query(query: str) -> dict:
     hints = {
         "year": None,
         "element": None,
-        "category": None
+        "category": None,
+        "content_type": None
     }
     
     if not isinstance(query, str):
@@ -2532,6 +2533,22 @@ def extract_metadata_hints_from_query(query: str) -> dict:
         hints["category"] = "アップデート情報"
     elif "初心者" in query:
         hints["category"] = "初心者向け"
+
+    # 4. content_type
+    if "編成" in query or "パーティ" in query:
+        hints["content_type"] = "編成"
+    elif "攻略" in query or "倒し方" in query or "行動表" in query or "立ち回り" in query:
+        hints["content_type"] = "攻略"
+    elif "解説" in query or "仕組み" in query:
+        hints["content_type"] = "解説"
+    elif "検証" in query:
+        hints["content_type"] = "検証"
+    elif "比較" in query:
+        hints["content_type"] = "比較"
+    elif "評価" in query:
+        hints["content_type"] = "評価"
+    elif "ニュース" in query or "告知" in query:
+        hints["content_type"] = "ニュース"
         
     return hints
 
@@ -2638,6 +2655,10 @@ def search_knowledge_base(
 
             if doc_data.get("active", True) is False:
                 print(f"[RAG除外] {doc.id} (inactive)")
+                continue
+
+            if doc_data.get("status") == "無効":
+                print(f"[RAG除外] {doc.id} (status: 無効)")
                 continue
                 
             stype = doc_data.get("source_type")
@@ -2804,6 +2825,8 @@ def search_knowledge_base(
         ]
 
 
+        MAX_METADATA_BONUS = 0.080
+
         for item in selected:
             doc_data = item["data"]
             bonus = 0.0
@@ -2816,6 +2839,35 @@ def search_knowledge_base(
                 
             if metadata_hints["category"] is not None and doc_data.get("category") == metadata_hints["category"]:
                 bonus += 0.020
+
+            if metadata_hints.get("content_type") is not None and doc_data.get("content_type") == metadata_hints["content_type"]:
+                bonus += 0.020
+
+            # status 補正
+            doc_status = doc_data.get("status")
+            if doc_status == "最新":
+                bonus += 0.010
+            elif doc_status == "古い可能性あり":
+                bonus -= 0.015
+
+            # tags 補正
+            doc_tags = doc_data.get("tags")
+            if isinstance(doc_tags, list) and doc_tags:
+                tag_matches = 0
+                query_lower = query_text.lower()
+                for t in doc_tags:
+                    if isinstance(t, str):
+                        cleaned_t = t.strip()
+                        if len(cleaned_t) >= 2:
+                            if cleaned_t.lower() in query_lower:
+                                tag_matches += 1
+                            elif cleaned_t in ("フルオート", "FA") and ("フルオート" in query_text or "fa" in query_lower or "フルオ" in query_text):
+                                tag_matches += 1
+                if tag_matches > 0:
+                    bonus += min(tag_matches * 0.010, 0.020)
+
+            if bonus > MAX_METADATA_BONUS:
+                bonus = MAX_METADATA_BONUS
                 
             item["rerank_score"] = item["distance"] - bonus
 
