@@ -495,7 +495,10 @@ class ChatRequest(
     BaseModel
 ):
 
-    message: str
+    message: str = Field(
+        ...,
+        max_length=MAX_MESSAGE_LENGTH
+    )
 
 
 class SourceInfo(
