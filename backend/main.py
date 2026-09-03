@@ -5963,32 +5963,39 @@ async def visit_endpoint(
         )
 
         # --------------------------------------------------
-        # 5. [修正] Firestore Transaction で競合安全な初回判定
+        # 5. [修正] Firestore Transaction で競合安全な初回判定と上限判定
         #
-        #    daily_YYYYMMDD/visitors/{hash} と
-        #    visit_all_visitors/{hash} の両方を1トランザクションで
-        #    原子的にチェック・作成する。
+        #    Transaction内ですべてのreadを先行し、
+        #    PV上限(2000)に達している場合はWriteを一切行わず終了する。
+        #    未達の場合は、必要なユニーク記録とPV加算をアトミックに行う。
         #
-        #    「同一visitor_idのほぼ同時2リクエスト」が来ても、
-        #    Firestore が楽観的ロックで競合を検出し、
-        #    一方のみが「新規」として処理される（他方はリトライ）。
-        #
-        #    result タプル: (is_new_today, is_brand_new_ever)
+        #    result タプル: (is_new_today, is_brand_new_ever, is_capped)
         # --------------------------------------------------
         @firestore.transactional
         def _check_and_register(
             txn,
+            d_ref,      # visit_stats/daily_YYYYMMDD
             v_ref,      # daily visitors/{hash}
             a_ref,      # visit_all_visitors/{hash}
             t_ref,      # visit_stats/totals_global
             d_key,      # day_key string
         ):
+            # 1. 全Readを先に実行 (Firestore Transactionのルール)
+            d_snap = d_ref.get(transaction=txn)
             v_snap = v_ref.get(transaction=txn)
             a_snap = a_ref.get(transaction=txn)
 
+            # 2. PV上限チェック
+            daily_data = d_snap.to_dict() or {} if d_snap.exists else {}
+            current_pv = int(daily_data.get("page_views", 0))
+            if current_pv >= VISIT_DAILY_PV_CAP:
+                return False, False, True
+
+            # 3. 新規判定
             new_today = not v_snap.exists
             new_ever = not a_snap.exists
 
+            # 4. 必要なWrite
             if new_today:
                 # 今日初回: 日次訪問を記録
                 txn.set(v_ref, {"first_seen": firestore.SERVER_TIMESTAMP})
@@ -6005,78 +6012,48 @@ async def visit_endpoint(
                     merge=True,
                 )
 
-            return new_today, new_ever
+            # 常時(未到達): 日次PV加算
+            txn.set(
+                d_ref,
+                {
+                    "date": d_key,
+                    "page_views": firestore.Increment(1),
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+
+            # 常時(未到達): 累計PV加算
+            txn.set(
+                t_ref,
+                {
+                    "total_page_views": firestore.Increment(1),
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+
+            return new_today, new_ever, False
 
         txn = db.transaction()
-        is_new_today, is_brand_new = _check_and_register(
+        is_new_today, is_brand_new, is_capped = _check_and_register(
             txn,
+            daily_ref,
             visitor_ref,
             all_visitor_ref,
             totals_ref,
             day_key,
         )
 
-        # --------------------------------------------------
-        # 6. 荒らし防御: 1日のPV上限チェック
-        #    新規ユニーク訪問者は上限を超えても記録する
-        #    2回目以降のPVのみ上限でカット
-        # --------------------------------------------------
-        if not is_new_today:
-            daily_snap = daily_ref.get()
-            daily_data = (
-                daily_snap.to_dict() or {}
-                if daily_snap.exists
-                else {}
+        if is_capped:
+            print(f"[VISIT] Daily PV cap reached: day={day_key}")
+        else:
+            print(
+                f"[VISIT] recorded "
+                f"day={day_key} "
+                f"new_today={is_new_today} "
+                f"brand_new={is_brand_new}"
             )
-            current_pv = int(daily_data.get("page_views", 0))
-            if current_pv >= VISIT_DAILY_PV_CAP:
-                print(
-                    f"[VISIT] Daily PV cap reached: "
-                    f"day={day_key} pv={current_pv}"
-                )
-                return {"status": "ok"}
-
-        # --------------------------------------------------
-        # 7. Firestoreバッチ書き込み（PVカウント）
-        #
-        #    daily page_views と total_page_views のインクリメントは
-        #    競合安全なアトミック加算のため Transaction 不要。
-        #    Batch でまとめて書く。
-        #
-        #    新規ユニーク（初来訪）: Transaction + 2writes (PV)
-        #    同日2回目以降        : 1read (cap) + 2writes (PV)
-        # --------------------------------------------------
-        batch = db.batch()
-
-        # 常時: 日次PV加算（ドキュメントなければ自動作成）
-        batch.set(
-            daily_ref,
-            {
-                "date": day_key,
-                "page_views": firestore.Increment(1),
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            },
-            merge=True,
-        )
-
-        # 常時: 累計PV加算
-        batch.set(
-            totals_ref,
-            {
-                "total_page_views": firestore.Increment(1),
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            },
-            merge=True,
-        )
-
-        batch.commit()
-
-        print(
-            f"[VISIT] recorded "
-            f"day={day_key} "
-            f"new_today={is_new_today} "
-            f"brand_new={is_brand_new}"
-        )
 
     except Exception as e:
         # エラーはログに出すがフロントには影響させない
