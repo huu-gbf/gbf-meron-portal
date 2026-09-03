@@ -683,7 +683,8 @@ class FileKnowledgeRegisterRequest(BaseModel):
     title: str
     source_key: str
     text: str
-    registration_mode: Literal["original"] = "original"
+    summary: str | None = None
+    registration_mode: Literal["original", "summary"] = "original"
     allow_duplicate: StrictBool = False
     year: int | None = Field(default=None)
     element: KnowledgeElement | None = Field(default=None)
@@ -3675,21 +3676,34 @@ def register_file_knowledge(
     if len(normalized_text) > MAX_ADMIN_SOURCE_LENGTH:
         raise HTTPException(status_code=400, detail=f"本文が長すぎます。{MAX_ADMIN_SOURCE_LENGTH}文字以内にしてください。")
 
-    source_content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
-    knowledge_content_hash = source_content_hash
+    if request.registration_mode == "summary":
+        if not isinstance(request.summary, str):
+            raise HTTPException(status_code=400, detail="AI要約が不正です。")
+        normalized_summary = normalize_knowledge_content_for_hash(request.summary)
+        if not normalized_summary:
+            raise HTTPException(status_code=400, detail="AI要約が空、または空白のみです。")
+        if len(normalized_summary) > MAX_ADMIN_SOURCE_LENGTH:
+            raise HTTPException(status_code=400, detail=f"AI要約が長すぎます。{MAX_ADMIN_SOURCE_LENGTH}文字以内にしてください。")
+        final_knowledge_text = normalized_summary
+    else:
+        final_knowledge_text = normalized_text
 
-    duplicate_hash_v1 = calculate_duplicate_hash_v1(normalized_text)
+    source_content_hash = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+    knowledge_content_hash = hashlib.sha256(final_knowledge_text.encode("utf-8")).hexdigest()
+
+    duplicate_hash_v1 = calculate_duplicate_hash_v1(final_knowledge_text)
 
     existing_docs = get_existing_file_knowledge_docs(source_id)
 
-    # 1. unchanged判定 (同一source_idに同一knowledge_content_hashがあれば即unchanged)
+    # 1. unchanged判定
     for doc in existing_docs:
         data = doc.to_dict() or {}
-        if data.get("knowledge_content_hash") == knowledge_content_hash:
+        doc_mode = data.get("registration_mode")
+        if doc_mode == request.registration_mode and data.get("knowledge_content_hash") == knowledge_content_hash:
             return FileKnowledgeRegisterResponse(
                 status="unchanged",
                 source_type="file",
-                registration_mode="original",
+                registration_mode=request.registration_mode,
                 filename=clean_name,
                 title=title,
                 source_key=source_key,
@@ -3714,7 +3728,7 @@ def register_file_knowledge(
             )
 
     # 3. chunk & embedding & Firestore保存
-    chunks = split_knowledge_text(normalized_text)
+    chunks = split_knowledge_text(final_knowledge_text)
     if not chunks:
         raise HTTPException(status_code=400, detail="保存できる本文がありません。")
 
@@ -3782,7 +3796,7 @@ def register_file_knowledge(
     return FileKnowledgeRegisterResponse(
         status=status,
         source_type="file",
-        registration_mode="original",
+        registration_mode=request.registration_mode,
         filename=clean_name,
         title=title,
         source_key=source_key,
