@@ -41,6 +41,8 @@ from google import genai
 from google.genai import types
 
 from google.cloud import firestore
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport.requests import Request as GoogleAuthRequest
 
 from google.cloud.firestore_v1.vector import (
     Vector,
@@ -7358,11 +7360,16 @@ def disable_token_if_unchanged(
     installation_hash: str,
     snapshot_revision: int,
     snapshot_token: str,
+    *,
+    reason: str = "unregistered",
 ) -> bool:
     """
     FCM送信エラー (UnregisteredError) 発生時に、
     送信時点のトークンとrevisionがFirestore上で変化していない場合のみ
     安全に enabled=False に倒す (無効化・墓標化)。
+
+    reasonは固定の墓標理由。既存B1呼び出しは既定のunregistered、
+    B2の30日超購読だけstaleを指定する。
 
     もし端末側で既に新しいトークンにローテーションされていたり、
     revisionが進んでいる場合は競合防止のため何も変更しない (no-op)。
@@ -7410,7 +7417,7 @@ def disable_token_if_unchanged(
                 "enabled": False,
                 "revision": next_rev,
                 "updated_at": firestore.SERVER_TIMESTAMP,
-                "disabled_reason": "unregistered",
+                "disabled_reason": reason,
             }
             if "token" in data:
                 update_data["token"] = firestore.DELETE_FIELD
@@ -7429,6 +7436,304 @@ def disable_token_if_unchanged(
     except Exception:
         print("disable_token_if_unchanged error")
         return False
+
+
+PUSH_OUTBOX_COLLECTION = "formation_push_outbox"
+PUSH_LEASE_SECONDS = 120
+PUSH_PAGE_SIZE = 100
+PUSH_RETRY_SECONDS = (60, 300, 900)
+PUSH_FORMATIONS = {"gw": "formations_gw", "multi": "formations_multi", "high": "formations_high"}
+
+
+def require_dispatch_identity(request: Request):
+    audience = os.getenv("PUSH_DISPATCH_AUDIENCE", "")
+    account = os.getenv("PUSH_DISPATCH_SERVICE_ACCOUNT", "")
+    if not audience or not account:
+        raise PortalAPIError(503, "DISPATCH_NOT_CONFIGURED", "配送認証が設定されていません。")
+    authorization = request.headers.get("authorization", "")
+    match = re.fullmatch(r"Bearer ([^\s]+)", authorization)
+    if not match:
+        raise PortalAPIError(401, "INVALID_IDENTITY", "配送認証を確認してください。")
+    try:
+        claims = google_id_token.verify_oauth2_token(
+            match.group(1), GoogleAuthRequest(), audience=audience,
+        )
+        if (claims.get("iss") not in ("accounts.google.com", "https://accounts.google.com")
+                or claims.get("aud") != audience
+                or not isinstance(claims.get("exp"), (int, float))
+                or isinstance(claims.get("exp"), bool)
+                or claims["exp"] <= time.time()):
+            raise ValueError("invalid claims")
+    except Exception:
+        raise PortalAPIError(401, "INVALID_IDENTITY", "配送認証を確認してください。") from None
+    if claims.get("email_verified") is not True or claims.get("email") != account:
+        raise PortalAPIError(403, "IDENTITY_NOT_ALLOWED", "この配送実行者は許可されていません。")
+
+
+def _push_timestamp(value):
+    return isinstance(value, datetime) and value.tzinfo is not None
+
+
+def _push_owned(data, lease_id, now):
+    return (data.get("status") == "processing" and data.get("lease_id") == lease_id
+            and _push_timestamp(data.get("lease_until")) and data["lease_until"] > now)
+
+
+def _push_terminal(status, code):
+    changes = {
+        "status": status,
+        "next_attempt_at": firestore.DELETE_FIELD,
+        "lease_id": firestore.DELETE_FIELD, "lease_until": firestore.DELETE_FIELD,
+        "retry_after": firestore.DELETE_FIELD,
+    }
+    changes["last_error_code"] = code if code else firestore.DELETE_FIELD
+    return changes
+
+
+def _push_event_error(event_id, data, now):
+    category, post_id = data.get("category"), data.get("post_id")
+    if (data.get("schema_version") != 1 or category not in PUSH_FORMATIONS
+            or not isinstance(post_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", post_id)
+            or event_id != f"{category}_{post_id}"
+            or not _push_timestamp(data.get("created_at"))):
+        return "CONFIG_ERROR"
+    if now > data["created_at"] + timedelta(hours=24):
+        return "DELIVERY_EXPIRED"
+    return None
+
+
+def claim_push_event(now):
+    portal = get_portal_db()
+    candidates = (portal.collection(PUSH_OUTBOX_COLLECTION)
+                  .where(filter=FieldFilter("next_attempt_at", "<=", now))
+                  .order_by("next_attempt_at").limit(10).stream())
+    for candidate in candidates:
+        reference = candidate.reference
+        lease_id = str(uuid.uuid4())
+
+        @firestore.transactional
+        def claim(txn):
+            snapshot = reference.get(transaction=txn)
+            data = _snapshot_data(snapshot)
+            due = data.get("next_attempt_at")
+            if (data.get("status") not in ("pending", "retry", "processing")
+                    or not _push_timestamp(due) or due > now):
+                return None
+            if data.get("status") == "processing":
+                lease_until = data.get("lease_until")
+                if _push_timestamp(lease_until) and lease_until > now:
+                    return None
+            lease_until = now + timedelta(seconds=PUSH_LEASE_SECONDS)
+            changes = {"status": "processing", "lease_id": lease_id,
+                       "lease_until": lease_until, "next_attempt_at": lease_until}
+            txn.set(reference, changes, merge=True)
+            return reference, lease_id
+
+        claimed = claim(portal.transaction())
+        if claimed:
+            return claimed
+    return None
+
+
+def _active_push_query(portal):
+    return (portal.collection("notification_tokens")
+            .where(filter=FieldFilter("schema_version", "==", 2))
+            .where(filter=FieldFilter("enabled", "==", True)))
+
+
+def _usable_push_subscription(data, now):
+    return (data.get("schema_version") == 2 and data.get("enabled") is True
+            and isinstance(data.get("token"), str) and bool(data["token"])
+            and type(data.get("revision")) is int and data["revision"] >= 0
+            and _push_timestamp(data.get("updated_at"))
+            and data["updated_at"] >= now - timedelta(days=30))
+
+
+def cleanup_stale_subscriptions(now):
+    count = 0
+    for snapshot in _active_push_query(get_portal_db()).limit(501).stream():
+        data = snapshot.to_dict()
+        if (_push_timestamp(data.get("updated_at"))
+                and data["updated_at"] < now - timedelta(days=30)):
+            disable_token_if_unchanged(
+                snapshot.id,
+                _non_negative_int(data.get("revision")),
+                data.get("token"),
+                reason="stale",
+            )
+            count += 1
+            if count >= PUSH_PAGE_SIZE:
+                break
+
+
+def initialize_push_recipients(reference, lease_id, now):
+    portal = get_portal_db()
+
+    @firestore.transactional
+    def initialize(txn):
+        data = _snapshot_data(reference.get(transaction=txn))
+        if not _push_owned(data, lease_id, now):
+            return None
+        error = _push_event_error(reference.id, data, now)
+        if error:
+            txn.set(reference, _push_terminal("failed", error), merge=True)
+            return None
+        post = portal.collection(PUSH_FORMATIONS[data["category"]]).document(data["post_id"]).get(transaction=txn)
+        if not post.exists or _snapshot_data(post).get("schema_version") != 2:
+            txn.set(reference, _push_terminal("canceled", "POST_NOT_FOUND"), merge=True)
+            return None
+        if "recipients" not in data:
+            recipients = []
+            # Read the query in the transaction so the first snapshot is committed atomically.
+            query = (_active_push_query(portal)
+                     .where(filter=FieldFilter("updated_at", ">=", now - timedelta(days=30)))
+                     .limit(501))
+            candidates = list(query.stream(transaction=txn))
+            # Fail closed if the bounded scan is full, including malformed active rows.
+            # Never silently truncate a possibly larger active population to 500.
+            if len(candidates) > PORTAL_NOTIFICATION_CAPACITY:
+                txn.set(reference, _push_terminal("failed", "CAPACITY_INCONSISTENT"), merge=True)
+                return None
+            for snapshot in candidates:
+                if _usable_push_subscription(snapshot.to_dict(), now):
+                    recipients.append(snapshot.id)
+            changes = {"recipients": recipients, "delivered": [], "permanent_failed": [],
+                       "round_attempted": [], "attempts": 0,
+                       "expires_at": data["created_at"] + timedelta(days=7)}
+            txn.set(reference, changes, merge=True)
+            data.update(changes)
+        if (not isinstance(data["recipients"], list) or len(data["recipients"]) > 500
+                or any(not isinstance(item, str) or not re.fullmatch(r"[0-9a-f]{64}", item)
+                       for item in data["recipients"])):
+            txn.set(reference, _push_terminal("failed", "CAPACITY_INCONSISTENT"), merge=True)
+            return None
+        return data
+
+    return initialize(portal.transaction())
+
+
+def load_delivery_targets(recipient_ids, now):
+    portal = get_portal_db()
+    installations, permanent = [], []
+    for installation_hash in recipient_ids:
+        data = _snapshot_data(portal.collection("notification_tokens").document(installation_hash).get())
+        if not _usable_push_subscription(data, now):
+            permanent.append(installation_hash)
+            if (data.get("schema_version") == 2 and data.get("enabled") is True
+                    and _push_timestamp(data.get("updated_at"))
+                    and data["updated_at"] < now - timedelta(days=30)):
+                disable_token_if_unchanged(
+                    installation_hash,
+                    _non_negative_int(data.get("revision")),
+                    data.get("token"),
+                    reason="stale",
+                )
+            continue
+        installations.append({"installation_hash": installation_hash, "token": data["token"],
+                              "revision": data["revision"]})
+    return installations, permanent
+
+
+def _push_result_hashes(result, installations):
+    targets = {item["installation_hash"] for item in installations}
+    permanent = {item["installation_hash"] for item in result.get("permanent_installations", [])}
+    permanent |= {item["installation_hash"] for item in result.get("unregistered_installations", [])}
+    retryable = {item["installation_hash"] for item in result.get("retryable_installations", [])}
+    failures = permanent | retryable
+    details = result.get("details", [])
+    failures |= {item["installation_hash"] for item in details if "installation_hash" in item}
+    # A top-level SDK failure has no per-recipient success evidence.
+    top_level_failure = any("installation_hash" not in item for item in details)
+    success = targets - failures if not top_level_failure else set()
+    if len(success) != result.get("success_count", 0):
+        success = set()
+    if not result.get("config_error"):
+        retryable |= targets - success - permanent
+    return success, retryable & targets, permanent & targets
+
+
+def save_delivery_results(reference, lease_id, page, success, permanent, config_error, now):
+    portal = get_portal_db()
+
+    @firestore.transactional
+    def save(txn):
+        data = _snapshot_data(reference.get(transaction=txn))
+        if not _push_owned(data, lease_id, now):
+            return False
+        delivered = set(data.get("delivered", [])) | set(success)
+        failed = set(data.get("permanent_failed", [])) | set(permanent)
+        attempted = set(data.get("round_attempted", [])) | set(page)
+        remaining = set(data["recipients"]) - delivered - failed
+        changes = {"delivered": sorted(delivered), "permanent_failed": sorted(failed),
+                   "round_attempted": sorted(attempted),
+                   "lease_id": firestore.DELETE_FIELD, "lease_until": firestore.DELETE_FIELD,
+                   "retry_after": firestore.DELETE_FIELD}
+        if config_error:
+            changes.update(_push_terminal("failed", "CONFIG_ERROR"))
+        elif now > data["created_at"] + timedelta(hours=24):
+            changes.update(_push_terminal("failed", "DELIVERY_EXPIRED"))
+        elif not remaining:
+            changes.update(_push_terminal("sent", ""))
+        elif remaining - attempted:
+            changes.update(status="retry", next_attempt_at=now)
+        else:
+            attempts = _non_negative_int(data.get("attempts"))
+            if attempts >= len(PUSH_RETRY_SECONDS):
+                changes.update(_push_terminal("failed", "RETRY_EXHAUSTED"))
+            else:
+                retry_at = now + timedelta(seconds=PUSH_RETRY_SECONDS[attempts])
+                changes.update(status="retry", attempts=attempts + 1, round_attempted=[],
+                               next_attempt_at=retry_at, retry_after=retry_at)
+        txn.set(reference, changes, merge=True)
+        return True
+
+    return save(portal.transaction())
+
+
+@app.post("/api/internal/notifications/dispatch")
+def dispatch_pending_push(request: Request):
+    require_dispatch_identity(request)
+    counts = {"claimed": 0, "sent": 0, "retryable": 0, "permanent": 0}
+    if os.getenv("PORTAL_PUSH_ENABLED", "false").lower() != "true":
+        return JSONResponse(counts, headers={"Cache-Control": "no-store"})
+    try:
+        now = datetime.now(timezone.utc)
+        cleanup_stale_subscriptions(now)
+        claimed = claim_push_event(now)
+        if not claimed:
+            return JSONResponse(counts, headers={"Cache-Control": "no-store"})
+        counts["claimed"] = 1
+        reference, lease_id = claimed
+        event = initialize_push_recipients(reference, lease_id, datetime.now(timezone.utc))
+        if event is None:
+            return JSONResponse(counts, headers={"Cache-Control": "no-store"})
+        excluded = set(event.get("delivered", [])) | set(event.get("permanent_failed", [])) | set(event.get("round_attempted", []))
+        page = list(dict.fromkeys(item for item in event["recipients"] if item not in excluded))[:PUSH_PAGE_SIZE]
+        installations, permanent = load_delivery_targets(page, datetime.now(timezone.utc))
+        # Recheck ownership, expiry and the post immediately before the external send.
+        if initialize_push_recipients(reference, lease_id, datetime.now(timezone.utc)) is None:
+            return JSONResponse(counts, headers={"Cache-Control": "no-store"})
+        if installations:
+            result = send_formation_push(
+                {"category": event["category"], "post_id": event["post_id"]},
+                installations,
+            )
+            success, retryable, sender_permanent = _push_result_hashes(result, installations)
+            config_error = result.get("config_error", False)
+        else:
+            success, retryable, sender_permanent = set(), set(), set()
+            config_error = False
+        permanent = set(permanent) | sender_permanent
+        # Delivery is at-least-once: a crash after FCM accepts but before this write can resend.
+        save_delivery_results(
+            reference, lease_id, page, success, permanent,
+            config_error, datetime.now(timezone.utc),
+        )
+        counts.update(sent=len(success), retryable=len(retryable), permanent=len(permanent))
+        return JSONResponse(counts, headers={"Cache-Control": "no-store"})
+    except Exception:
+        # Leave any acquired lease intact; its deadline makes recovery possible.
+        raise PortalAPIError(503, "STORE_ERROR", "配送処理を再試行してください。") from None
 
 
 def send_formation_push(event: dict, installations: list) -> dict:
