@@ -1,6 +1,8 @@
 import os
 import re
 import json
+import base64
+import binascii
 import hmac
 import hashlib
 import time
@@ -33,6 +35,7 @@ from pydantic import (
     ConfigDict,
     StrictBool,
     StrictInt,
+    StrictStr,
     UUID4,
     field_validator,
 )
@@ -6868,6 +6871,9 @@ def get_fcm_app():
 
 PORTAL_PROJECT_ID = "gbf-meron-portal"
 PORTAL_NOTIFICATION_BODY_LIMIT = 8192
+PORTAL_FORMATION_BODY_LIMIT = 850000
+PORTAL_FORMATION_IMAGE_LIMIT = 200000
+PORTAL_FORMATION_IMAGES_LIMIT = 800000
 PORTAL_NOTIFICATION_CAPACITY = 500
 PORTAL_NOTIFICATION_RATE_LIMIT = 10
 PORTAL_NOTIFICATION_GLOBAL_LIMIT = 100
@@ -6942,7 +6948,10 @@ async def portal_validation_error_handler(
     http_request: Request,
     exc: RequestValidationError,
 ):
-    if not http_request.url.path.startswith("/api/notifications/"):
+    if not (
+        http_request.url.path.startswith("/api/notifications/")
+        or http_request.url.path.startswith("/api/formations/")
+    ):
         return await request_validation_exception_handler(http_request, exc)
 
     error_code = "INVALID_INPUT"
@@ -6962,7 +6971,12 @@ async def guard_notification_requests(
     http_request: Request,
     call_next,
 ):
-    if not http_request.url.path.startswith("/api/notifications/"):
+    is_notification = http_request.url.path.startswith("/api/notifications/")
+    is_formation_create = (
+        http_request.method == "POST"
+        and http_request.url.path.startswith("/api/formations/")
+    )
+    if not is_notification and not is_formation_create:
         return await call_next(http_request)
 
     # CORS middlewareにpreflight応答を任せる。OPTIONSにはJSON本文を要求しない。
@@ -6999,10 +7013,15 @@ async def guard_notification_requests(
             "Content-Typeはapplication/jsonを指定してください。",
         )
 
+    body_limit = (
+        PORTAL_FORMATION_BODY_LIMIT
+        if is_formation_create
+        else PORTAL_NOTIFICATION_BODY_LIMIT
+    )
     content_length = http_request.headers.get("content-length")
     if content_length:
         try:
-            if int(content_length) > PORTAL_NOTIFICATION_BODY_LIMIT:
+            if int(content_length) > body_limit:
                 return guard_error_response(
                     413,
                     "BODY_TOO_LARGE",
@@ -7016,11 +7035,18 @@ async def guard_notification_requests(
             )
 
     body = await http_request.body()
-    if len(body) > PORTAL_NOTIFICATION_BODY_LIMIT:
+    if len(body) > body_limit:
         return guard_error_response(
             413,
             "BODY_TOO_LARGE",
             "リクエスト本文が大きすぎます。",
+        )
+
+    if is_formation_create and not portal_writes_enabled():
+        return guard_error_response(
+            503,
+            "PORTAL_NOT_READY",
+            "投稿機能は現在準備中です。",
         )
 
     response = await call_next(http_request)
@@ -7354,6 +7380,214 @@ def unsubscribe_notification(
         "notification_off",
     )
     return disable_subscription_transaction(installation_hash)
+
+
+class FormationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID4
+    delete_secret: StrictStr
+    name: StrictStr
+    comment: StrictStr
+    images: list[StrictStr] = Field(..., min_length=0, max_length=4)
+
+    @field_validator("request_id", mode="before")
+    @classmethod
+    def validate_request_id_format(cls, value):
+        if not isinstance(value, str) or not re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}",
+            value,
+        ):
+            raise ValueError("request_id must be a canonical UUIDv4")
+        return value
+
+
+def hash_delete_secret(delete_secret: str) -> str:
+    if len(delete_secret) != 43 or not re.fullmatch(r"[A-Za-z0-9_-]{43}", delete_secret):
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+    try:
+        raw = base64.b64decode(delete_secret + "=", altchars=b"-_", validate=True)
+    except (ValueError, binascii.Error):
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。") from None
+    canonical = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+    if len(raw) != 32 or not hmac.compare_digest(canonical, delete_secret):
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _has_disallowed_control(value: str, allowed: set[str] | None = None) -> bool:
+    allowed = allowed or set()
+    return any(character not in allowed and unicodedata.category(character) == "Cc" for character in value)
+
+
+def validate_formation_payload(request: FormationCreateRequest) -> tuple[str, str, list[str]]:
+    if _has_disallowed_control(request.name):
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+    name = request.name.strip()
+    if not 1 <= len(name) <= 30:
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+
+    if _has_disallowed_control(request.comment, {"\n", "\t"}):
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+    comment = request.comment.strip()
+    if len(comment) > 3000:
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+
+    total_size = 0
+    images = []
+    prefix = "data:image/jpeg;base64,"
+    for image in request.images:
+        try:
+            image_size = len(image.encode("ascii"))
+        except UnicodeEncodeError:
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。") from None
+        if image_size > PORTAL_FORMATION_IMAGE_LIMIT:
+            raise PortalAPIError(413, "BODY_TOO_LARGE", "リクエスト本文が大きすぎます。")
+        total_size += image_size
+        if total_size > PORTAL_FORMATION_IMAGES_LIMIT:
+            raise PortalAPIError(413, "BODY_TOO_LARGE", "リクエスト本文が大きすぎます。")
+        if not image.startswith(prefix):
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+        encoded = image[len(prefix):]
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。") from None
+        if len(decoded) < 5 or decoded[:3] != b"\xff\xd8\xff" or decoded[-2:] != b"\xff\xd9":
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+        images.append(image)
+    return name, comment, images
+
+
+def build_formation_payload_hash(category: str, name: str, comment: str, images: list[str]) -> str:
+    canonical = json.dumps(
+        {"category": category, "name": name, "comment": comment, "images": images},
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _formation_store_inconsistent():
+    raise PortalAPIError(503, "STORE_INCONSISTENT", "投稿データを確認できません。")
+
+
+def create_formation_transaction(
+    category: str,
+    post_id: str,
+    delete_secret_hash: str,
+    payload_hash: str,
+    name: str,
+    comment: str,
+    images: list[str],
+    now: datetime,
+) -> dict:
+    portal = get_portal_db()
+    event_id = f"{category}_{post_id}"
+    public_ref = portal.collection(PUSH_FORMATIONS[category]).document(post_id)
+    private_ref = portal.collection("formation_private").document(event_id)
+    outbox_ref = portal.collection(PUSH_OUTBOX_COLLECTION).document(event_id)
+    timestamp = now.isoformat().replace("+00:00", "Z")
+
+    @firestore.transactional
+    def create(txn):
+        public_snapshot = public_ref.get(transaction=txn)
+        private_snapshot = private_ref.get(transaction=txn)
+        outbox_snapshot = outbox_ref.get(transaction=txn)
+        exists = (public_snapshot.exists, private_snapshot.exists, outbox_snapshot.exists)
+
+        if not any(exists):
+            txn.create(public_ref, {
+                "schema_version": 2,
+                "id": post_id,
+                "name": name,
+                "comment": comment,
+                "images": images,
+                "timestamp": timestamp,
+            })
+            txn.create(private_ref, {
+                "schema_version": 1,
+                "delete_secret_hash": delete_secret_hash,
+                "payload_hash": payload_hash,
+                "created_at": now,
+                "timestamp": timestamp,
+                "deleted_at": None,
+            })
+            txn.create(outbox_ref, {
+                "schema_version": 1,
+                "category": category,
+                "post_id": post_id,
+                "created_at": now,
+                "status": "pending",
+                "next_attempt_at": now,
+                "attempts": 0,
+                "expires_at": now + timedelta(days=7),
+            })
+            return {"timestamp": timestamp, "replayed": False}
+
+        private_data = _snapshot_data(private_snapshot)
+        if private_snapshot.exists and private_data.get("deleted_at") is not None:
+            raise PortalAPIError(410, "POST_DELETED", "削除済みの投稿です。")
+        if not all(exists):
+            _formation_store_inconsistent()
+
+        public_data = _snapshot_data(public_snapshot)
+        outbox_data = _snapshot_data(outbox_snapshot)
+        if (
+            private_data.get("schema_version") != 1
+            or not isinstance(private_data.get("delete_secret_hash"), str)
+            or not isinstance(private_data.get("payload_hash"), str)
+        ):
+            _formation_store_inconsistent()
+        if not (
+            hmac.compare_digest(private_data["delete_secret_hash"], delete_secret_hash)
+            and hmac.compare_digest(private_data["payload_hash"], payload_hash)
+        ):
+            raise PortalAPIError(409, "REQUEST_ID_CONFLICT", "同じrequest_idが別の投稿に使用されています。")
+        original_timestamp = private_data.get("timestamp")
+        if (
+            public_data.get("schema_version") != 2
+            or public_data.get("id") != post_id
+            or public_data.get("name") != name
+            or public_data.get("comment") != comment
+            or public_data.get("images") != images
+            or public_data.get("timestamp") != original_timestamp
+            or outbox_data.get("schema_version") != 1
+            or outbox_data.get("category") != category
+            or outbox_data.get("post_id") != post_id
+            or not isinstance(original_timestamp, str)
+        ):
+            _formation_store_inconsistent()
+        return {"timestamp": original_timestamp, "replayed": True}
+
+    try:
+        return create(portal.transaction())
+    except PortalAPIError:
+        raise
+    except Exception:
+        print("Portal formation create store error")
+        raise PortalAPIError(503, "STORE_UNAVAILABLE", "投稿を保存できません。しばらく待って再試行してください。") from None
+
+
+@app.post("/api/formations/{category}")
+def create_formation(category: str, request: FormationCreateRequest, http_request: Request):
+    if category not in PUSH_FORMATIONS:
+        raise PortalAPIError(404, "CATEGORY_NOT_FOUND", "指定された投稿カテゴリはありません。")
+    require_portal_writes_enabled()
+    post_id = str(request.request_id).lower()
+    secret_hash = hash_delete_secret(request.delete_secret)
+    name, comment, images = validate_formation_payload(request)
+    payload_hash = build_formation_payload_hash(category, name, comment, images)
+    consume_portal_quota("formation_create", secret_hash, per_limit=3, global_limit=30)
+    now = datetime.now(timezone.utc)
+    result = create_formation_transaction(
+        category, post_id, secret_hash, payload_hash, name, comment, images, now,
+    )
+    return JSONResponse(
+        status_code=200 if result["replayed"] else 201,
+        content={"id": post_id, "category": category, **result},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def disable_token_if_unchanged(
