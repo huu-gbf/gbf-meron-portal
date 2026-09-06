@@ -902,7 +902,6 @@
                   id="playerNameInput"
                   class="form-input"
                   placeholder="例: ゆかり愛"
-                  maxlength="30"
                   autocomplete="off"
                 />
                 <button
@@ -911,7 +910,7 @@
                   class="name-submit-btn"
                 >登録して固定</button>
               </div>
-              <p style="font-size:11px; color:#64748b; margin-top:6px;">ℹ️ 名前を登録するとこの端末で固定され、自分の投稿を正確に識別できます。</p>
+              <p style="font-size:11px; color:#64748b; margin-top:6px;">ℹ️ 名前を登録すると、この端末で入力名を固定できます。</p>
             </div>
             <!-- 登録後: 固定表示 -->
             <div id="nameLockedArea" style="display:none;">
@@ -1153,7 +1152,6 @@ Qバブ召喚
               class="form-textarea"
               placeholder="例: 光古戦場250HELL用の編成です。&#10;・レスラー軸で時速○万くらい出ます。&#10;・フレ石はゼウスを選択してください。&#10;&#10;💡 上のテンプレートをコピーして貼り付けると、ムーブ手順を共有できます。"
               rows="5"
-              maxlength="3000"
             ></textarea>
             <div class="char-count"><span id="charCount">0</span> / 3000</div>
           </div>
@@ -1167,7 +1165,8 @@ Qバブ召喚
       </div>
 
       <!-- 成功メッセージ -->
-      <div class="success-msg" id="successMsg">✅ 編成を投稿しました！</div>
+      <div class="success-msg" id="successMsg" role="status" aria-live="polite"></div>
+      <p class="text-xs text-slate-400">旧投稿の削除は管理人へご連絡ください。削除用情報を保存した端末でのみ削除できます。</p>
     </div>
 
     <!-- ========== 一覧セクション ========== -->
@@ -1238,14 +1237,13 @@ Qバブ召喚
     </div>
   </div>
 
-
-
   <script>
     // ==========================================================
     //  定数・状態・カテゴリ管理
     // ==========================================================
     const urlParams = new URLSearchParams(window.location.search);
-    const category = urlParams.get('category') || 'gw'; // default is gw
+    const requestedCategory = urlParams.get('category');
+    const category = ['gw', 'multi', 'high'].includes(requestedCategory) ? requestedCategory : 'gw';
 
     let categoryName = '古戦場用';
     let firestoreCollection = 'formations_gw';
@@ -1279,6 +1277,18 @@ Qバブ召喚
     let messaging = null;
     let isInitialLoadDone = false;
     let unsubscribeFirestore = null;
+    let memoryPosts = null;
+    let snapshotIds = new Set();
+    const awaitingSnapshotIds = new Set();
+    let pendingSubmission = null;
+    let submissionInFlight = false;
+    const deletingPostIds = new Set();
+
+    window.addEventListener('beforeunload', (event) => {
+      if (!pendingSubmission) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
 
     // Firebase 初期化
     function initFirebaseService() {
@@ -1322,9 +1332,9 @@ Qバブ召喚
           statusBadge.style.background = 'rgba(245, 158, 11, 0.15)';
           statusBadge.style.borderColor = 'rgba(245, 158, 11, 0.35)';
           statusBadge.style.color = 'var(--amber-400)';
-          statusText.textContent = '🟡 未接続 (ローカル保存)';
+          statusText.textContent = '🟡 未接続 (閲覧キャッシュ)';
         }
-        console.log('Firebase設定が未入力のため、localStorageモードで動作します。');
+        console.log('Firestore未接続のため、閲覧キャッシュを表示します。');
       }
     }
 
@@ -1372,7 +1382,8 @@ Qバブ召喚
       initNotificationControls();
 
       // 登録済み名前を復元・固定表示
-      const savedName = localStorage.getItem(LAST_NAME_KEY);
+      let savedName = '';
+      try { savedName = localStorage.getItem(LAST_NAME_KEY) || ''; } catch {}
       if (savedName) {
         applyLockedName(savedName);
       }
@@ -1390,24 +1401,24 @@ Qバブ召喚
       document.getElementById('nameLockedArea').style.display = 'block';
       document.getElementById('playerNameLocked').textContent = name;
       document.getElementById('playerName').value = name;
-      recordMyName(name);
     }
 
     function saveAndLockName() {
       const inputEl = document.getElementById('playerNameInput');
       const name = inputEl ? inputEl.value.trim() : '';
-      if (!name) {
-        alert('名前を入力してください。');
+      if (!name || Array.from(name).length > 30 || /[\u0000-\u001f\u007f-\u009f]/.test(name)) {
+        alert('名前は制御文字を含まない1～30文字で入力してください。');
         return;
       }
-      localStorage.setItem(LAST_NAME_KEY, name);
-      recordMyName(name);
+      try { localStorage.setItem(LAST_NAME_KEY, name); }
+      catch { alert('名前を保存できません。ブラウザのサイトデータ設定を確認してください。'); return; }
       applyLockedName(name);
     }
 
     function resetLockedName() {
-      if (!confirm('登録した名前を変更しますか？\n変更後も過去の投稿は削除できます。')) return;
-      localStorage.removeItem(LAST_NAME_KEY);
+      if (!confirm('名前を変更しますか？\n削除用情報を保存している新しい投稿の削除権限は、名前を変更しても変わりません。')) return;
+      try { localStorage.removeItem(LAST_NAME_KEY); }
+      catch { alert('名前の保存設定を変更できません。'); return; }
       document.getElementById('nameLockedArea').style.display = 'none';
       document.getElementById('nameInputArea').style.display = 'block';
       const inputEl = document.getElementById('playerNameInput');
@@ -1449,7 +1460,7 @@ Qバブ召喚
     function setupCharCounter() {
       const el = document.getElementById('comment');
       el.addEventListener('input', () => {
-        document.getElementById('charCount').textContent = el.value.length;
+        document.getElementById('charCount').textContent = Array.from(el.value).length;
       });
     }
 
@@ -1555,13 +1566,26 @@ Qバブ召喚
           addBtn.style.display = '';
         }
 
-        grid.innerHTML = selectedImages.map((src, idx) => `
-          <div class="preview-item">
-            <img src="${src}" alt="プレビュー #${idx+1}" />
-            <span class="preview-item-badge">#${idx+1}</span>
-            <button type="button" class="preview-item-del" onclick="removeImageAt(${idx}, event)" title="削除">✕</button>
-          </div>
-        `).join('');
+        grid.replaceChildren();
+        selectedImages.forEach((src, idx) => {
+          const item = document.createElement('div');
+          item.className = 'preview-item';
+          const img = document.createElement('img');
+          img.alt = `プレビュー #${idx + 1}`;
+          const valid = validateImageDataUrl(src);
+          if (valid) img.src = valid;
+          const label = document.createElement('span');
+          label.className = 'preview-item-badge';
+          label.textContent = `#${idx + 1}`;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'preview-item-del';
+          button.title = '削除';
+          button.textContent = '✕';
+          button.addEventListener('click', event => removeImageAt(idx, event));
+          item.append(img, label, button);
+          grid.appendChild(item);
+        });
       }
     }
 
@@ -1582,18 +1606,21 @@ Qバブ召喚
     //  データ操作 (localStorage)
     // ==========================================================
     function getPosts() {
+      if (memoryPosts !== null) return memoryPosts;
       try {
-        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        const cached = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return Array.isArray(cached) ? cached.map(normalizeCachedFormation).filter(Boolean) : [];
       } catch {
         return [];
       }
     }
 
     function savePosts(posts) {
+      memoryPosts = posts;
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
       } catch (e) {
-        console.warn('localStorage保存上限エラー:', e);
+        console.warn('閲覧キャッシュを保存できません。');
       }
     }
 
@@ -1781,11 +1808,21 @@ Qバブ召喚
         .onSnapshot((snapshot) => {
           const remoteFormations = [];
           snapshot.forEach((doc) => {
-            remoteFormations.push({ id: doc.id, ...doc.data() });
+            const post = normalizeRemoteFormation(doc);
+            if (post) remoteFormations.push(post);
           });
 
           // クライアント側で確実に日付降順にソート
-          remoteFormations.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          remoteFormations.sort((a, b) => (Date.parse(b.timestamp) || 0) - (Date.parse(a.timestamp) || 0));
+          snapshotIds = new Set(remoteFormations.map(post => post.id));
+          let confirmed = false;
+          for (const id of awaitingSnapshotIds) {
+            if (snapshotIds.has(id)) { awaitingSnapshotIds.delete(id); confirmed = true; }
+          }
+          if (confirmed && awaitingSnapshotIds.size === 0 && !pendingSubmission
+              && document.getElementById('successMsg').textContent === '投稿済み・一覧更新待ち') {
+            showSubmissionStatus('投稿済み・一覧に反映されました。');
+          }
 
           isInitialLoadDone = true;
           savePosts(remoteFormations);
@@ -1804,18 +1841,16 @@ Qバブ召喚
     }
 
     // ==========================================================
-    //  端末識別＆本人投稿管理（過去データ救済マイグレーション対応）
+    //  お気に入り（削除権限とは独立）
     // ==========================================================
-    const DEVICE_ID_KEY = 'gbf_my_device_id';
-    const MY_POSTS_KEY = 'gbf_my_post_ids';
-    const MY_NAMES_KEY = 'gbf_my_player_names';
     const FAVORITES_KEY = 'gbf_my_favorites';
 
     let currentFormationFilter = 'all'; // 'all' | 'favorites'
 
     function getMyFavorites() {
       try {
-        return JSON.parse(localStorage.getItem(FAVORITES_KEY)) || [];
+        const favorites = JSON.parse(localStorage.getItem(FAVORITES_KEY));
+        return Array.isArray(favorites) ? favorites.filter(isSafePostId) : [];
       } catch {
         return [];
       }
@@ -1827,7 +1862,7 @@ Qバブ召喚
     }
 
     function toggleFavorite(postId, btnEl) {
-      if (!postId) return;
+      if (!isSafePostId(postId)) return;
       let favs = getMyFavorites();
       const isFavNow = favs.includes(postId);
 
@@ -1854,7 +1889,7 @@ Qバブ召喚
           btnEl.innerHTML = `<span>☆</span><span class="text-[11px] hidden xs:inline">お気に入り</span>`;
 
           if (currentFormationFilter === 'favorites') {
-            const card = btnEl.closest('.glass-panel');
+            const card = btnEl.closest('.post-card');
             if (card) card.style.display = 'none';
           }
         }
@@ -1868,186 +1903,299 @@ Qバブ召喚
       renderPosts();
     }
 
-    function getMyDeviceId() {
-      let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-      if (!deviceId) {
-        deviceId = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 9);
-        localStorage.setItem(DEVICE_ID_KEY, deviceId);
-      }
-      return deviceId;
+    function isSafePostId(id) {
+      return typeof id === 'string' && id.length >= 1 && id.length <= 64 && !/[^A-Za-z0-9_-]/.test(id);
     }
 
-    function getMyPostIds() {
+    function isValidDeleteSecret(secret) {
+      if (typeof secret !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(secret)) return false;
       try {
-        return JSON.parse(localStorage.getItem(MY_POSTS_KEY)) || [];
-      } catch {
-        return [];
-      }
+        const raw = atob(secret.replace(/-/g, '+').replace(/_/g, '/') + '=');
+        return raw.length === 32 && encodeBase64url(raw) === secret;
+      } catch { return false; }
     }
 
-    function recordMyPostId(postId) {
-      if (!postId) return;
-      const ids = getMyPostIds();
-      if (!ids.includes(postId)) {
-        ids.push(postId);
-        try {
-          localStorage.setItem(MY_POSTS_KEY, JSON.stringify(ids));
-        } catch(e) {}
-      }
+    function encodeBase64url(raw) {
+      return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
-    function getMyNames() {
+    function secretKey(cat, id) {
+      if (!['gw', 'multi', 'high'].includes(cat) || !isSafePostId(id)) throw new Error('invalid key');
+      return `gbf_portal_post_secret_v1:${cat}:${id}`;
+    }
+
+    function readDeleteSecret(cat, id) {
       try {
-        const names = JSON.parse(localStorage.getItem(MY_NAMES_KEY)) || [];
-        const lastName = localStorage.getItem(LAST_NAME_KEY);
-        if (lastName && !names.includes(lastName)) names.push(lastName);
-        const inputName = document.getElementById('playerName')?.value?.trim();
-        if (inputName && !names.includes(inputName)) names.push(inputName);
-        return names;
-      } catch {
-        return [];
-      }
+        const secret = localStorage.getItem(secretKey(cat, id));
+        return isValidDeleteSecret(secret) ? secret : null;
+      } catch { return null; }
     }
 
-    function recordMyName(name) {
-      if (!name) return;
+    function rememberDeleteSecret(cat, id, secret) {
       try {
-        const names = getMyNames();
-        if (!names.includes(name)) {
-          names.push(name);
-          localStorage.setItem(MY_NAMES_KEY, JSON.stringify(names));
-        }
-      } catch(e) {}
+        if (!isValidDeleteSecret(secret)) return false;
+        localStorage.setItem(secretKey(cat, id), secret);
+        return readDeleteSecret(cat, id) === secret;
+      } catch { return false; }
     }
 
     function isMyPost(post) {
-      if (!post) return false;
-      const myDeviceId = getMyDeviceId();
-      const myIds = getMyPostIds();
-      const myNames = getMyNames();
+      return Boolean(post && readDeleteSecret(category, post.id));
+    }
 
-      // 1. 新規方式: 端末ID（authorId）が一致
-      if (post.authorId && post.authorId === myDeviceId) return true;
+    function createRequestId() {
+      if (globalThis.crypto?.randomUUID) return crypto.randomUUID().toLowerCase();
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6] & 15) | 64;
+      bytes[8] = (bytes[8] & 63) | 128;
+      const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+    }
 
-      // 2. 自分が投稿したID履歴に存在
-      if (post.id && myIds.includes(post.id)) return true;
+    function getOrCreatePendingSubmission(content) {
+      if (pendingSubmission) return pendingSubmission;
+      const request_id = createRequestId();
+      const delete_secret = encodeBase64url(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+      pendingSubmission = { category, request_id, delete_secret, ...content, images: [...content.images] };
+      return pendingSubmission;
+    }
 
-      // 3. 改修前の過去データ（authorId がないもの）のマイグレーション:
-      //    投稿者名が自分が使った名前と一致していれば本人と判定してIDを自動記憶
-      if (!post.authorId && post.name && myNames.includes(post.name)) {
-        recordMyPostId(post.id);
-        return true;
+    function readFormContent() {
+      return {
+        name: document.getElementById('playerName').value.trim(),
+        comment: document.getElementById('comment').value.trim(),
+        images: [...selectedImages]
+      };
+    }
+
+    function sameContent(a, b) {
+      return a.name === b.name && a.comment === b.comment && JSON.stringify(a.images) === JSON.stringify(b.images);
+    }
+
+    function validateSubmission(content) {
+      const rawName = document.getElementById('playerName').value;
+      const rawComment = document.getElementById('comment').value;
+      if (Array.from(content.name).length < 1 || Array.from(content.name).length > 30 || /[\u0000-\u001f\u007f-\u009f]/.test(rawName)) {
+        throw new Error('名前は制御文字を含まない1～30文字で入力してください。');
       }
+      if (Array.from(content.comment).length > 3000 || /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(rawComment)) {
+        throw new Error('コメントは3000文字以内で、改行とタブ以外の制御文字を含めないでください。');
+      }
+      let total = 0;
+      if (content.images.length > MAX_IMAGES) throw new Error('画像を4枚以内に減らしてください。');
+      for (const src of content.images) {
+        if (typeof src !== 'string' || /[^\x00-\x7f]/.test(src) || src.length > 200000) throw new Error('画像が大きすぎます。画像を減らしてください。');
+        if (!src.startsWith('data:image/jpeg;base64,') || !validateImageDataUrl(src)) throw new Error('JPEG画像を選び直してください。');
+        total += src.length;
+      }
+      if (total > 800000) throw new Error('画像が大きすぎます。画像を減らしてください。');
+    }
 
-      return false;
+    function formationApiUrl(id) {
+      const base = typeof globalThis.API_BASE_URL === 'string' ? globalThis.API_BASE_URL.replace(/\/+$/, '') : '';
+      if (!base) throw new Error('投稿サービスの接続先が設定されていません。');
+      return `${base}/api/formations/${category}${id === undefined ? '' : '/' + encodeURIComponent(id)}`;
+    }
+
+    function showSubmissionStatus(text) {
+      const msg = document.getElementById('successMsg');
+      msg.textContent = text;
+      msg.classList.add('visible');
+    }
+
+    function requestErrorMessage(status) {
+      return ({
+        413: '画像を減らして、もう一度投稿してください。',
+        422: '投稿内容を修正して、もう一度投稿してください。',
+        429: '短時間に投稿が集中しています。少し待って再試行してください。',
+        409: '投稿情報が競合しました。内容を確認して、もう一度投稿してください。',
+        410: '以前の投稿は削除済みです。新しく投稿する場合は、もう一度投稿してください。',
+        503: '投稿サービスを利用できないか、保存結果を確認できません。内容を変更せず再試行してください。'
+      })[status] || '投稿結果を確認できません。内容を変更せず再試行してください。';
     }
 
     // ==========================================================
-    //  投稿処理（Firestoreへ確実に保存）
+    //  投稿処理（APIと同一request_idでの再送）
     // ==========================================================
     async function handleSubmit(e) {
       e.preventDefault();
 
-      const name = document.getElementById('playerName').value.trim();
-      const comment = document.getElementById('comment').value.trim();
+      if (submissionInFlight) return;
       const submitBtn = document.getElementById('submitBtn');
-
-      if (!name) {
-        alert('ゲーム内の名前を入力してください。');
-        return;
-      }
-
-      // 名前をローカルに記憶
-      recordMyName(name);
-      localStorage.setItem(LAST_NAME_KEY, name);
-
-      const post = {
-        id: Date.now().toString(36) + Math.random().toString(36).substring(2, 7),
-        name,
-        comment,
-        images: [...selectedImages],
-        authorId: getMyDeviceId(),
-        timestamp: new Date().toISOString()
-      };
-
-      recordMyPostId(post.id);
-
-      if (db) {
-        const originalText = submitBtn.innerHTML;
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span>⏳</span><span>クラウドへ同期送信中...</span>';
-
-        try {
-          await db.collection(firestoreCollection).doc(post.id).set(post);
-          console.log('Firestoreへ投稿保存完了:', post.id);
-        } catch (err) {
-          console.error('Firestore保存失敗:', err);
-          alert('Firebase Firestoreへの保存に失敗しました:\n' + err.message + '\n\n【解決策】\n1. Firestore Databaseが作成されているか確認してください\n2. Firestoreのルールが「テストモード (allow read, write: if true;)」になっているか確認してください。');
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = originalText;
+      const originalText = submitBtn.innerHTML;
+      submissionInFlight = true;
+      submitBtn.disabled = true;
+      try {
+        let url;
+        try { url = formationApiUrl(); }
+        catch { showSubmissionStatus('投稿サービスの接続先が設定されていないため投稿できません。'); return; }
+        const current = readFormContent();
+        if (!pendingSubmission) {
+          try { validateSubmission(current); }
+          catch (error) { showSubmissionStatus(error.message); return; }
+        }
+        const hadPending = pendingSubmission !== null;
+        const pending = getOrCreatePendingSubmission(current);
+        if (!rememberDeleteSecret(pending.category, pending.request_id, pending.delete_secret)) {
+          if (!hadPending) pendingSubmission = null; // 未送信の準備失敗は再入力可能
+          showSubmissionStatus('削除用情報をこの端末に保存できないため投稿できません。ブラウザのサイトデータ設定を確認してください。');
           return;
         }
-
+        const { category: ignoredCategory, ...payload } = pending;
+        const body = JSON.stringify(payload);
+        if (new TextEncoder().encode(body).length > 850000) {
+          showSubmissionStatus('画像が大きすぎます。画像を減らしてください。');
+          pendingSubmission = null; // fetch前なので、このpayloadは未送信
+          return;
+        }
+        showSubmissionStatus(sameContent(current, pending) ? '投稿結果を確認中…' : '前の投稿結果が未確認です。前の内容を先に確認しています。');
+        submitBtn.textContent = '送信中…';
+        let response;
+        let result;
+        try {
+          response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'omit' });
+          if (response.status !== 200 && response.status !== 201) {
+            showSubmissionStatus(requestErrorMessage(response.status));
+            if ([413, 422, 409, 410].includes(response.status)) {
+              pendingSubmission = null;
+            }
+            return;
+          }
+          result = await response.json();
+        } catch {
+          showSubmissionStatus('通信結果を確認できませんでした。内容を変更せずもう一度投稿すると、同じ投稿として確認できます。');
+          return;
+        }
+        if (!result || result.id !== pending.request_id || result.category !== category || typeof result.timestamp !== 'string' || typeof result.replayed !== 'boolean') {
+          showSubmissionStatus('投稿結果を確認できませんでした。内容を変更せずもう一度投稿してください。');
+          return;
+        }
+        pendingSubmission = null;
+        if (!snapshotIds.has(result.id)) awaitingSnapshotIds.add(result.id);
+        const changed = !sameContent(readFormContent(), pending);
+        if (!changed) {
+          document.getElementById('comment').value = '';
+          clearAllImages();
+          document.getElementById('charCount').textContent = '0';
+        }
+        showSubmissionStatus(changed
+          ? '前の投稿は確認できました。現在入力中の内容はまだ投稿していません。投稿する場合はもう一度投稿してください。'
+          : awaitingSnapshotIds.size ? '投稿済み・一覧更新待ち' : '投稿済み・一覧に反映されました。');
+      } catch {
+        showSubmissionStatus('投稿の準備ができません。名前・コメント・画像の制限とブラウザのサイトデータ設定を確認してください。');
+      } finally {
+        submissionInFlight = false;
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
-      } else {
-        const posts = getPosts();
-        posts.unshift(post);
-        savePosts(posts);
       }
-
-      // フォームリセット（名前は保持）
-      document.getElementById('comment').value = '';
-      clearAllImages(new Event('click'));
-      document.getElementById('charCount').textContent = '0';
-      // 名前固定を再適用
-      const currentLockedName = localStorage.getItem(LAST_NAME_KEY);
-      if (currentLockedName) {
-        applyLockedName(currentLockedName);
-      }
-
-      // 成功メッセージ
-      const msg = document.getElementById('successMsg');
-      msg.classList.add('visible');
-      setTimeout(() => msg.classList.remove('visible'), 3000);
-
-      renderPosts();
-
-      // 一覧へスクロール
-      document.querySelector('.list-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     // ==========================================================
     //  削除
     // ==========================================================
-    async function deletePost(id) {
-      const posts = getPosts();
-      const target = posts.find(p => p.id === id);
-
-      if (target && !isMyPost(target)) {
-        alert('自分が投稿した編成のみ削除できます。');
+    async function deletePost(id, button) {
+      if (!isSafePostId(id) || deletingPostIds.has(id)) return;
+      const secret = readDeleteSecret(category, id);
+      if (!secret) {
+        alert('この端末には削除用情報がありません。旧投稿の削除は管理人へご連絡ください。');
         return;
       }
-
       if (!confirm('この投稿を削除しますか？')) return;
-
-      if (db) {
-        try {
-          await db.collection(firestoreCollection).doc(id).delete();
-          console.log('Firestoreから削除完了:', id);
-        } catch (err) {
-          console.error('Firestore削除失敗:', err);
-          alert('削除に失敗しました: ' + err.message);
+      deletingPostIds.add(id);
+      if (button) button.disabled = true;
+      try {
+        const response = await fetch(formationApiUrl(id), {
+          method: 'DELETE', headers: { 'X-Delete-Secret': secret }, credentials: 'omit'
+        });
+        if (response.status !== 204) {
+          alert(response.status === 403 || response.status === 401
+            ? 'この端末では削除権限を確認できません。'
+            : response.status === 429 ? '少し待ってから削除を再試行してください。' : '削除結果を確認できません。再試行してください。');
+          return;
         }
+        savePosts(getPosts().filter(post => post.id !== id));
+        renderPosts();
+      } catch {
+        alert('削除結果を確認できません。再試行してください。');
+      } finally {
+        deletingPostIds.delete(id);
+        if (button) button.disabled = false;
       }
-
-      savePosts(posts.filter(p => p.id !== id));
-      renderPosts();
     }
 
     // ==========================================================
     //  一覧描画
     // ==========================================================
+    function validateImageDataUrl(src) {
+      if (typeof src !== 'string' || src.length > 1500000 || /\s/.test(src)) return null;
+      const match = /^data:image\/(jpeg|png|webp|gif);base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/.exec(src);
+      if (!match || !match[2]) return null;
+      try {
+        const bytes = atob(match[2]);
+        if (btoa(bytes) !== match[2]) return null;
+        const valid = {
+          jpeg: bytes.startsWith('\xff\xd8\xff') && bytes.endsWith('\xff\xd9'),
+          png: bytes.startsWith('\x89PNG\r\n\x1a\n'),
+          gif: bytes.startsWith('GIF87a') || bytes.startsWith('GIF89a'),
+          webp: bytes.startsWith('RIFF') && bytes.slice(8, 12) === 'WEBP'
+        };
+        return valid[match[1]] ? src : null;
+      } catch { return null; }
+    }
+
+    function normalizeFormation(id, data) {
+      if (!isSafePostId(id) || !data || typeof data !== 'object' || Array.isArray(data)) return null;
+      const images = Array.isArray(data.images) ? data.images : typeof data.image === 'string' ? [data.image] : [];
+      return {
+        id,
+        name: typeof data.name === 'string' && data.name ? data.name : '名前不明',
+        comment: typeof data.comment === 'string' ? data.comment : '',
+        timestamp: typeof data.timestamp === 'string' && Number.isFinite(Date.parse(data.timestamp)) ? data.timestamp : '',
+        images: images.slice(0, MAX_IMAGES).map(validateImageDataUrl)
+      };
+    }
+
+    function normalizeRemoteFormation(doc) {
+      try { return normalizeFormation(doc.id, doc.data()); } catch { return null; }
+    }
+
+    function normalizeCachedFormation(data) {
+      return normalizeFormation(data?.id, data);
+    }
+
+    function bindPostActions() {
+      const list = document.getElementById('postList');
+      list.querySelectorAll('[data-action]').forEach(button => {
+        const id = button.dataset.postId;
+        if (!isSafePostId(id)) return;
+        if (button.dataset.action === 'favorite') button.addEventListener('click', () => toggleFavorite(id, button));
+        if (button.dataset.action === 'delete') {
+          button.disabled = deletingPostIds.has(id);
+          button.addEventListener('click', () => deletePost(id, button));
+        }
+      });
+      list.querySelectorAll('[data-image-slot]').forEach(slot => {
+        const post = getPosts().find(item => item.id === slot.dataset.postId);
+        const src = validateImageDataUrl(post?.images[Number(slot.dataset.imageSlot)]);
+        if (!src) {
+          slot.textContent = '画像を表示できません';
+          slot.setAttribute('role', 'img');
+          slot.setAttribute('aria-label', '破損した画像');
+          return;
+        }
+        const img = document.createElement('img');
+        img.alt = `${post.name}の編成`;
+        img.src = src;
+        img.tabIndex = 0;
+        img.addEventListener('click', () => openModal(src));
+        img.addEventListener('keydown', event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModal(src); }
+        });
+        img.addEventListener('error', () => { slot.textContent = '画像を表示できません'; }, { once: true });
+        slot.prepend(img);
+      });
+    }
+
     function renderPosts() {
       const allPosts = getPosts();
       const listEl = document.getElementById('postList');
@@ -2105,7 +2253,7 @@ Qバブ召喚
           `;
         } else {
           listEl.innerHTML = `
-            <div class="glass-panel empty-state" id="emptyState">
+            <div class="glass-panel empty-state">
               <div class="empty-state-icon">📭</div>
               <p>まだ編成が投稿されていません</p>
               <p class="sub">上のフォームから最初の編成を共有しましょう！</p>
@@ -2117,7 +2265,7 @@ Qバブ召喚
 
       listEl.innerHTML = posts.map(p => {
         const d = new Date(p.timestamp);
-        const dateStr = `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        const dateStr = p.timestamp ? `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '日時不明';
 
         // 過去データ互換
         const images = (p.images && Array.isArray(p.images)) ? p.images : (p.image ? [p.image] : []);
@@ -2129,8 +2277,7 @@ Qバブ召喚
         if (hasImages) {
           if (images.length === 1) {
             imagesHtml = `
-              <div class="post-card-images img-grid-1">
-                <img src="${images[0]}" alt="${esc(p.name)}の編成" onclick="openModal(this.src)" />
+              <div class="post-card-images img-grid-1" data-image-slot="0" data-post-id="${p.id}">
               </div>
             `;
           } else {
@@ -2138,8 +2285,7 @@ Qバブ召喚
             imagesHtml = `
               <div class="post-card-images ${gridClass}">
                 ${images.map((src, i) => `
-                  <div class="grid-img-item">
-                    <img src="${src}" alt="${esc(p.name)}の編成 #${i+1}" onclick="openModal(this.src)" />
+                  <div class="grid-img-item" data-image-slot="${i}" data-post-id="${p.id}">
                     <span class="grid-img-counter">${i+1}/${images.length}</span>
                   </div>
                 `).join('')}
@@ -2182,7 +2328,7 @@ Qバブ召喚
                 <!-- お気に入りボタン -->
                 <button
                   type="button"
-                  onclick="toggleFavorite('${p.id}', this)"
+                  data-action="favorite" data-post-id="${p.id}"
                   style="font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 3px; border: 1px solid ${isFav ? 'rgba(245, 158, 11, 0.4)' : 'rgba(51, 65, 85, 0.8)'}; background: ${isFav ? 'rgba(245, 158, 11, 0.15)' : 'rgba(30, 41, 59, 0.8)'}; color: ${isFav ? '#fbbf24' : '#94a3b8'};"
                   title="${isFav ? 'お気に入りを解除' : 'お気に入りに追加'}"
                 >
@@ -2191,7 +2337,7 @@ Qバブ召喚
                 </button>
 
                 ${isMine ? `
-                  <button class="post-delete-btn" onclick="deletePost('${p.id}')" title="自分の投稿を削除" style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: var(--rose-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                  <button type="button" class="post-delete-btn" data-action="delete" data-post-id="${p.id}" title="自分の投稿を削除" style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: var(--rose-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px; cursor: pointer;">
                     <span>🗑️</span>
                     <span>削除</span>
                   </button>
@@ -2203,12 +2349,15 @@ Qバブ召喚
           </div>
         `;
       }).join('');
+      bindPostActions();
     }
 
     // ==========================================================
     //  モーダル
     // ==========================================================
     function openModal(src) {
+      src = validateImageDataUrl(src);
+      if (!src) return;
       document.getElementById('modalImg').src = src;
       document.getElementById('imageModal').classList.add('visible');
       document.body.style.overflow = 'hidden';
