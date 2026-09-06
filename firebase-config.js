@@ -15,12 +15,13 @@ const defaultFirebaseConfig = {
 const defaultVapidKey = "BEVMN9HhBl6aQkt-Xy-pnd549MOYLkKQf-sgW4Ktuvmu4vQ8ael1POpBThe7LkTq5VjhZnEVVmOj0Q-JeVGAyug";
 
 // グローバル展開
-window.firebaseConfig = defaultFirebaseConfig;
-window.FIREBASE_VAPID_KEY = defaultVapidKey;
+globalThis.firebaseConfig = defaultFirebaseConfig;
+globalThis.FIREBASE_VAPID_KEY = defaultVapidKey;
+globalThis.API_BASE_URL = "https://meron-ai-api-281908486591.asia-northeast1.run.app";
 
 // Firebaseが有効に設定されているか判定
-window.isFirebaseConfigured = function() {
-  const cfg = window.firebaseConfig;
+globalThis.isFirebaseConfigured = function() {
+  const cfg = globalThis.firebaseConfig;
   return Boolean(
     cfg &&
     cfg.apiKey &&

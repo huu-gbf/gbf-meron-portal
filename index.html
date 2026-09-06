@@ -24,7 +24,7 @@
     .stars-bg {
       position: fixed;
       inset: 0;
-      background-image: 
+      background-image:
         radial-gradient(1.5px 1.5px at 20px 30px, #ffffff, rgba(0,0,0,0)),
         radial-gradient(1px 1px at 40px 70px, #fde047, rgba(0,0,0,0)),
         radial-gradient(2px 2px at 90px 40px, #38bdf8, rgba(0,0,0,0)),
@@ -79,10 +79,10 @@
         <div class="text-left">
           <label for="crewPassword" class="block text-xs font-semibold text-slate-300 mb-1">合言葉 / 団員（または管理人）パスワード</label>
           <div class="relative">
-            <input 
-              type="password" 
-              id="crewPassword" 
-              placeholder="合言葉 または 管理人パスワード..." 
+            <input
+              type="password"
+              id="crewPassword"
+              placeholder="合言葉 または 管理人パスワード..."
               required
               class="w-full bg-slate-900/90 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition"
             />
@@ -94,8 +94,8 @@
           パスワードが正しくありません。団長にお問い合わせください。
         </div>
 
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           class="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold py-3 px-4 rounded-xl shadow-lg shadow-amber-500/25 transition transform active:scale-95 flex items-center justify-center gap-2"
         >
           <span>団員認証して入室</span>
@@ -121,8 +121,8 @@
 
         <!-- Right: Status and Logout -->
         <div class="flex items-center gap-3">
-          <button 
-            onclick="handleLogout()" 
+          <button
+            onclick="handleLogout()"
             class="min-h-[44px] px-4 text-sm sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
           >
             ログアウト
@@ -188,7 +188,7 @@
 
     <!-- Main Container -->
     <main class="max-w-6xl mx-auto px-4 pt-8">
-      
+
       <!-- Top Info Banner -->
       <div class="glass-panel rounded-2xl p-6 mb-8 relative overflow-hidden glow-effect">
         <div>
@@ -227,7 +227,7 @@
 
           <!-- Timeline list -->
           <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800 max-h-96 overflow-y-auto pr-2">
-            
+
             <!-- Log Item 12 -->
             <div class="relative">
               <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
@@ -487,13 +487,13 @@
                 <span>↻</span><span>最新状態を確認</span>
               </button>
             </div>
-            
+
             <details name="portal-sections-registered" class="bg-slate-900/50 rounded-xl group/reg overflow-hidden border border-slate-800">
               <summary class="flex items-center gap-2 cursor-pointer p-4 text-sm font-bold text-white hover:bg-slate-800/50 transition select-none list-none [&::-webkit-details-marker]:hidden">
                 <span class="text-sm transition-transform duration-200 group-open/reg:rotate-90 text-purple-400">▶</span>
                 <span id="registered-summary-text" class="flex items-center">登録済み情報を表示 <span class="ml-4 text-xs font-normal text-slate-400">⏳ 取得中...</span></span>
               </summary>
-              
+
               <div class="px-4 pb-4 border-t border-slate-800 pt-3" id="registered-content-area">
                 <div class="text-center text-slate-400 py-4 text-sm">
                   <span class="animate-pulse">取得中...</span>
@@ -654,8 +654,8 @@
               </div>
               <h3 class="text-xl font-bold text-white">めろ～ん王国 団員募集要項</h3>
             </div>
-            <button 
-              onclick="copyRecruitText()" 
+            <button
+              onclick="copyRecruitText()"
               id="copyRecruitBtn"
               class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 text-sm sm:min-h-0 sm:px-4 sm:py-2 sm:text-xs bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 whitespace-nowrap"
             >
@@ -841,7 +841,7 @@
           <h2 class="text-xl font-bold text-white">編成共有掲示板</h2>
           <div class="flex-1 h-px bg-gradient-to-r from-violet-500/30 to-transparent"></div>
         </div>
-        
+
         <p class="text-sm text-slate-300 mb-6 px-1">用途に合わせて以下の掲示板をご利用ください。（すべてリアルタイム同期対応）</p>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1086,8 +1086,6 @@
     const MAX_IMAGES = 4;
     let selectedImages = []; // Array of base64 strings
     let db = null;
-    let messaging = null;
-    let fcmToken = null;
     let isInitialLoadDone = false;
     let unsubscribeFirestore = null;
 
@@ -1105,10 +1103,6 @@
             firebase.initializeApp(firebaseConfig);
           }
           db = firebase.firestore();
-          
-          if ('Notification' in window && firebase.messaging.isSupported()) {
-            messaging = firebase.messaging();
-          }
 
           if (statusBadge && statusText) {
             statusBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1';
@@ -1132,10 +1126,9 @@
       }
     }
 
-    // コメント文字数カウンター & D&D & 通知UI初期化
+    // コメント文字数カウンター & D&D 初期化
     document.addEventListener('DOMContentLoaded', () => {
       initFirebaseService();
-      updateNotificationButtonUI();
 
       const commentEl = document.getElementById('formationComment');
       if (commentEl) {
@@ -1260,9 +1253,9 @@
           <div class="relative group/item rounded-xl overflow-hidden border border-slate-700 bg-slate-950 aspect-[4/3]">
             <img src="${imgSrc}" class="w-full h-full object-cover" />
             <span class="absolute bottom-1 left-1 bg-black/70 text-[10px] text-white font-mono px-1.5 py-0.5 rounded">#${idx + 1}</span>
-            <button 
-              type="button" 
-              onclick="removeImageAt(${idx}, event)" 
+            <button
+              type="button"
+              onclick="removeImageAt(${idx}, event)"
               class="absolute top-1 right-1 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow transition transform hover:scale-110"
               title="削除"
             >
@@ -1302,100 +1295,6 @@
       }
     }
 
-    // ==========================================================
-    //  通知許可 & トークン管理
-    // ==========================================================
-    function updateNotificationButtonUI() {
-      const btn = document.getElementById('notifyToggleBtn');
-      const icon = document.getElementById('notifyIcon');
-      const label = document.getElementById('notifyLabel');
-      if (!btn || !icon || !label) return;
-
-      if (!('Notification' in window)) {
-        btn.classList.add('opacity-50', 'cursor-not-allowed');
-        label.textContent = '通知非対応ブラウザ';
-        return;
-      }
-
-      if (Notification.permission === 'granted') {
-        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-emerald-500/10 text-emerald-300 border-emerald-500/30';
-        icon.textContent = '🔔';
-        label.textContent = '新着通知: 受信中';
-      } else if (Notification.permission === 'denied') {
-        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-rose-500/10 text-rose-300 border-rose-500/30';
-        icon.textContent = '🔕';
-        label.textContent = '通知がブロックされています';
-      } else {
-        btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition border bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border-violet-500/40';
-        icon.textContent = '🔔';
-        label.textContent = '新着プッシュ通知をONにする';
-      }
-    }
-
-    async function toggleNotificationPermission() {
-      if (!('Notification' in window)) {
-        alert('お使いのブラウザはプッシュ通知に対応していません。');
-        return;
-      }
-
-      if (Notification.permission === 'denied') {
-        alert('ブラウザの設定で通知がブロックされています。ブラウザのアドレスバーの鍵アイコンから通知を許可してください。');
-        return;
-      }
-
-      try {
-        const permission = await Notification.requestPermission();
-        updateNotificationButtonUI();
-
-        if (permission === 'granted') {
-          showLocalNotification('めろ～ん王国 騎空団ポータル', {
-            body: '新着編成のプッシュ通知がONになりました！団員の投稿をリアルタイムでお知らせします。'
-          });
-
-          const vapidKey = FIREBASE_VAPID_KEY;
-          if (messaging && vapidKey) {
-            try {
-              const currentToken = await messaging.getToken({ vapidKey });
-              if (currentToken && db) {
-                await db.collection('notification_tokens').doc(currentToken).set({
-                  token: currentToken,
-                  updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-              }
-            } catch (err) {
-              console.warn('FCM Token 取得エラー:', err);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('通知許可リクエストエラー:', err);
-      }
-    }
-
-    function showLocalNotification(title, options) {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.ready.then(reg => {
-            reg.showNotification(title, {
-              icon: './favicon.ico',
-              badge: './favicon.ico',
-              vibrate: [200, 100, 200],
-              ...options
-            });
-          });
-        } else {
-          new Notification(title, {
-            icon: './favicon.ico',
-            ...options
-          });
-        }
-      }
-    }
-
-
-  
-    
-  
     // =========================================================
     // AI登録済み情報の取得とUI構築
     // =========================================================
@@ -1415,22 +1314,22 @@
       const btn = document.getElementById("btn-refresh-registered");
       const summary = document.getElementById("registered-summary-text");
       const area = document.getElementById("registered-content-area");
-      
+
       if(btn) btn.disabled = true;
       if(area) area.innerHTML = '<div class="text-center text-slate-400 py-8"><span class="animate-pulse">取得中...</span></div>';
-      
+
       try {
         const response = await fetch("https://meron-ai-api-281908486591.asia-northeast1.run.app/api/registered-updates");
         if (!response.ok) throw new Error("Network response was not ok");
-        
+
         const updates = await response.json();
-        
+
         if (updates.length > 0) {
           if(summary) summary.innerHTML = `登録済み情報を表示 <span class="ml-4 text-sm font-bold text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">🆕 ${updates.length}件</span>`;
         } else {
           if(summary) summary.innerHTML = `登録済み情報を表示 <span class="ml-4 text-sm font-normal text-slate-400">新着なし</span>`;
         }
-        
+
         if (updates.length > 0) {
           let html = '<div class="space-y-3">';
           updates.forEach(upd => {
@@ -1441,12 +1340,12 @@
                 const dt = new Date(upd.detected_at);
                 dateStr = `${dt.getFullYear()}/${(dt.getMonth()+1).toString().padStart(2, '0')}/${dt.getDate().toString().padStart(2, '0')}`;
             }
-            
+
             const isYouTube = upd.url.includes("youtube.com") || upd.url.includes("youtu.be") || upd.source_type === "youtube_creator";
             const openLabel = isYouTube ? "動画を開く →" : "元記事を開く →";
             const badgeColor = isYouTube ? "bg-red-500/20 text-red-300" : "bg-blue-500/20 text-blue-300";
             const prefix = isYouTube ? "[YouTube] " : "";
-            
+
             html += `
               <div class="flex items-start gap-3 p-4 rounded-lg bg-slate-900/50 border border-slate-800/80 hover:bg-slate-800/50 transition">
                 <div class="flex-1 min-w-0">
@@ -1468,7 +1367,7 @@
         } else {
           if(area) area.innerHTML = '<div class="text-center text-slate-400 py-8">現在、新しいAI登録済み情報はありません</div>';
         }
-        
+
       } catch (e) {
         console.error(e);
         if(summary) summary.innerHTML = `登録済み情報を表示 <span class="ml-4 text-sm font-normal text-rose-400">❌ 取得エラー</span>`;
@@ -1477,7 +1376,7 @@
         if(btn) btn.disabled = false;
       }
     }
-    
+
     // 認証成功後、1回だけregistered情報を取得する
     let registeredUpdatesLoaded = false;
     async function loadRegisteredUpdatesOnce() {

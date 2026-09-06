@@ -3,6 +3,7 @@ import re
 import json
 import hmac
 import hashlib
+import time
 import uuid
 import unicodedata
 from datetime import datetime, timezone, timedelta
@@ -22,12 +23,18 @@ from fastapi import (
 from fastapi.middleware.cors import (
     CORSMiddleware,
 )
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from pydantic import (
     BaseModel,
     Field,
     ConfigDict,
     StrictBool,
+    StrictInt,
+    UUID4,
+    field_validator,
 )
 
 from google import genai
@@ -472,6 +479,10 @@ app.add_middleware(
         "X-Admin-Key",
         "Authorization",
     ],
+
+    expose_headers=[
+        "Retry-After",
+    ],
 )
 
 
@@ -778,7 +789,7 @@ def extract_youtube_video_id(url: str) -> str:
     value = url.strip()
     parsed = urlparse(value)
     hostname = (parsed.hostname or "").lower()
-    
+
     video_id = ""
     if hostname in ("www.youtube.com", "youtube.com", "m.youtube.com"):
         if parsed.path == "/watch":
@@ -794,7 +805,7 @@ def extract_youtube_video_id(url: str) -> str:
         path_parts = [p for p in parsed.path.split("/") if p]
         if path_parts:
             video_id = path_parts[0].strip()
-            
+
     if re.fullmatch(r"[A-Za-z0-9_-]{6,15}", video_id):
         return video_id
     return ""
@@ -806,11 +817,11 @@ def validate_youtube_url(url: str) -> str:
         raise HTTPException(status_code=400, detail="YouTube URLが必要です。")
     if not value.startswith("https://"):
         raise HTTPException(status_code=400, detail="https:// で始まる正規のYouTube動画URLを入力してください。")
-    
+
     video_id = extract_youtube_video_id(value)
     if not video_id:
         raise HTTPException(status_code=400, detail="有効な動画IDを含む正規のYouTube動画URLを入力してください。")
-        
+
     return value
 
 
@@ -826,14 +837,14 @@ def fetch_youtube_data_api_snippet(video_id: str, api_key: str, timeout: float =
     import urllib.request
     import urllib.error
     import urllib.parse
-    
+
     url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={urllib.parse.quote(video_id)}"
     headers = {
         "X-Goog-Api-Key": api_key,
         "User-Agent": "GBF-Portal-Backend/1.0",
         "Accept": "application/json",
     }
-    
+
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -850,7 +861,7 @@ def fetch_youtube_data_api_snippet(video_id: str, api_key: str, timeout: float =
         print(f"[YouTube Data API] HTTP error: {e.code}")
     except Exception as e:
         print(f"[YouTube Data API] Request error: {type(e).__name__}")
-        
+
     return None, 0
 
 
@@ -919,7 +930,7 @@ def parse_and_validate_metadata(raw_meta: Any, published_date_str: str) -> dict:
             "tags": [],
             "status": "最新"
         }
-    
+
     # 1. year
     year_val = raw_meta.get("year")
     if isinstance(year_val, int) and 2000 <= year_val <= 2100:
@@ -2054,7 +2065,7 @@ def find_duplicate_knowledge(
             .stream()
         )
         norm_exclude_url = normalize_duplicate_source_url(exclude_url) if exclude_url else None
-        
+
         for doc in query:
             if exclude_doc_ids and doc.id in exclude_doc_ids:
                 continue
@@ -2132,14 +2143,14 @@ def save_official_news_summary(
             raise HTTPException(status_code=404, detail="指定された未確認情報が見つかりません。")
 
         update_data = doc_snap.to_dict() or {}
-        
+
         if update_data.get("status") != "pending":
             raise HTTPException(status_code=409, detail="この情報はすでに確認済み、またはAI登録済みです。")
-            
+
         doc_url = update_data.get("url", "")
         if normalize_url_for_comparison(doc_url) != normalize_url_for_comparison(url):
             raise HTTPException(status_code=409, detail="登録しようとしている公式ニュースのURLと一致しません。")
-            
+
         # source_id が granblue_official であることの検証
         source_id = update_data.get("source_id", "")
         if source_id != "granblue_official":
@@ -2522,7 +2533,7 @@ def extract_metadata_hints_from_query(query: str) -> dict:
         "category": None,
         "content_type": None
     }
-    
+
     if not isinstance(query, str):
         return hints
 
@@ -2530,7 +2541,7 @@ def extract_metadata_hints_from_query(query: str) -> dict:
     year_match = re.search(r"(?<!\d)(20\d{2}|2100)(?:年)?(?!\d)", query)
     if year_match:
         hints["year"] = int(year_match.group(1))
-        
+
     # 2. element
     if "全属性" in query:
         hints["element"] = "全属性"
@@ -2572,7 +2583,7 @@ def extract_metadata_hints_from_query(query: str) -> dict:
         hints["content_type"] = "評価"
     elif "ニュース" in query or "告知" in query:
         hints["content_type"] = "ニュース"
-        
+
     return hints
 
 
@@ -2581,7 +2592,7 @@ def search_knowledge_base(
 ) -> tuple[str, list[dict]]:
 
     try:
-        
+
         metadata_hints = extract_metadata_hints_from_query(query_text)
 
         query_vector = (
@@ -2627,16 +2638,16 @@ def search_knowledge_base(
         candidates = []
 
         now_utc = datetime.now(timezone.utc)
-        
+
         candidate_docs = list(results.get())
-        
+
         unique_source_types = set()
         for doc in candidate_docs:
             stype = (doc.to_dict() or {}).get("source_type")
             if stype is not None:
                 if is_valid_source_type(stype):
                     unique_source_types.add(stype)
-                
+
         source_settings = {}
         fetch_failed = False
         if unique_source_types:
@@ -2683,17 +2694,17 @@ def search_knowledge_base(
             if doc_data.get("status") == "無効":
                 print(f"[RAG除外] {doc.id} (status: 無効)")
                 continue
-                
+
             stype = doc_data.get("source_type")
             if stype is not None:
                 if not is_valid_source_type(stype):
                     print(f"[RAG除外] {doc.id} (invalid source_type: {stype})")
                     continue
-                
+
                 if fetch_failed:
                     print(f"[RAG除外] {doc.id} (source settings fetch failed)")
                     continue
-                
+
                 is_source_enabled = source_settings.get(stype, True) # 設定未登録ならデフォルトON
                 if not is_source_enabled:
                     print(f"[RAG除外] {doc.id} (source disabled: {stype})")
@@ -2853,13 +2864,13 @@ def search_knowledge_base(
         for item in selected:
             doc_data = item["data"]
             bonus = 0.0
-            
+
             if metadata_hints["year"] is not None and doc_data.get("year") == metadata_hints["year"]:
                 bonus += 0.015
-                
+
             if metadata_hints["element"] is not None and doc_data.get("element") == metadata_hints["element"]:
                 bonus += 0.020
-                
+
             if metadata_hints["category"] is not None and doc_data.get("category") == metadata_hints["category"]:
                 bonus += 0.020
 
@@ -2891,7 +2902,7 @@ def search_knowledge_base(
 
             if bonus > MAX_METADATA_BONUS:
                 bonus = MAX_METADATA_BONUS
-                
+
             item["rerank_score"] = item["distance"] - bonus
 
         selected.sort(key=lambda item: item["rerank_score"])
@@ -3463,7 +3474,7 @@ async def register_official_news(
             published_date,
 
             final_text,
-            
+
             request.site_update_id,
 
             request.allow_duplicate,
@@ -4250,7 +4261,7 @@ def classify_site_update_source(data: dict) -> str:
     """
     source_id = data.get("source_id", "")
     source_type = data.get("source_type", "")
-    
+
     if source_id == "granblue_official" or source_type == "official_news":
         return "official"
     if source_type == "youtube_creator" or (isinstance(source_id, str) and source_id.startswith("youtube_")):
@@ -4271,7 +4282,7 @@ def get_daily_site_updates(now: datetime | None = None) -> dict:
     """
     今日(JST)の site_updates を取得して整理する
     将来のAIチャット再利用を想定して分離
-    
+
     ページング方式:
       seeded や未知ステータスが多数存在しても最新の有効ステータス(pending, registered, ignored)を
       取りこぼさないよう、MAX_DAILY_SUMMARY_ITEMS + 1 (201件) 集まるまで、
@@ -4281,18 +4292,18 @@ def get_daily_site_updates(now: datetime | None = None) -> dict:
     if now is None:
         now = datetime.now(JST)
     now_jst = now.astimezone(JST) if now.tzinfo else now.replace(tzinfo=JST)
-    
+
     # 当日 00:00:00 JST
     start_of_day = datetime.combine(now_jst.date(), datetime.min.time(), tzinfo=JST)
     # 翌日 00:00:00 JST
     end_of_day = start_of_day + timedelta(days=1)
 
     ALLOWED_STATUSES = {"pending", "registered", "ignored"}
-    
+
     collected_valid_items = []
     last_doc_snapshot = None
     scan_complete = True
-    
+
     for _ in range(MAX_DAILY_SUMMARY_PAGES):
         query = (
             db.collection("site_updates")
@@ -4302,29 +4313,29 @@ def get_daily_site_updates(now: datetime | None = None) -> dict:
         )
         if last_doc_snapshot is not None:
             query = query.start_after(last_doc_snapshot)
-            
+
         page_docs = list(query.limit(DAILY_SUMMARY_PAGE_SIZE).stream())
         if not page_docs:
             break
-            
+
         last_doc_snapshot = page_docs[-1]
-        
+
         for doc in page_docs:
             data = doc.to_dict() or {}
             status = data.get("status")
-            
+
             # 未知のstatusやseededは除外
             if status not in ALLOWED_STATUSES:
                 continue
-                
+
             collected_valid_items.append((doc, data, status))
             if len(collected_valid_items) > MAX_DAILY_SUMMARY_ITEMS:
                 break
-                
+
         if len(collected_valid_items) > MAX_DAILY_SUMMARY_ITEMS:
             # 201件以上集まったため最新200件取得という目的を達成 (scan_complete = True)
             break
-            
+
         if len(page_docs) < DAILY_SUMMARY_PAGE_SIZE:
             # 当日範囲の全データを読み切った (scan_complete = True)
             break
@@ -4334,7 +4345,7 @@ def get_daily_site_updates(now: datetime | None = None) -> dict:
 
     is_truncated = len(collected_valid_items) > MAX_DAILY_SUMMARY_ITEMS
     target_items = collected_valid_items[:MAX_DAILY_SUMMARY_ITEMS]
-    
+
     items = []
     counts = {
         "pending": 0,
@@ -4343,16 +4354,16 @@ def get_daily_site_updates(now: datetime | None = None) -> dict:
         "official": 0,
         "youtube": 0
     }
-    
+
     for doc, data, status in target_items:
         source_category = classify_site_update_source(data)
         if source_category == "official":
             counts["official"] += 1
         elif source_category == "youtube":
             counts["youtube"] += 1
-            
+
         counts[status] += 1
-        
+
         items.append({
             "site_update_id": doc.id,
             "title": data.get("title", ""),
@@ -4412,7 +4423,7 @@ async def admin_daily_summary_endpoint(http_request: Request):
 @app.get("/api/admin/site-updates")
 async def admin_site_updates_endpoint(http_request: Request):
     require_admin(http_request)
-    
+
     try:
         state_docs = db.collection("site_watch_state").stream()
         sources = []
@@ -4620,7 +4631,7 @@ async def registered_updates_endpoint():
                 "published_at": data.get("published_at", ""),
                 "detected_at": data.get("detected_at")
             })
-            
+
         def sort_key(x):
             return x.get("detected_at") or datetime.min.replace(tzinfo=timezone.utc)
         updates.sort(key=sort_key, reverse=True)
@@ -4642,12 +4653,12 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
     require_admin(http_request)
     url = validate_youtube_url(request.url)
     video_id = extract_youtube_video_id(url)
-    
+
     title = ""
     channel_name = ""
     channel_id = ""
     published_date = ""
-    
+
     description = ""
     transcript = ""
     transcript_status = "unavailable"
@@ -4680,7 +4691,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                     description_method = "youtube_data_api"
         except Exception as e:
             print(f"[YouTube Data API] Execution error: {type(e).__name__}")
-    
+
     page_loaded = False
     page_title = ""
     final_host = ""
@@ -4696,37 +4707,37 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
     transcript_segment_count = 0
     transcript_panel_text_chars = 0
     challenge_detected = False
-    
+
     transcript_renderer_found = False
     transcript_renderer_visible = False
     transcript_renderer_button_count = 0
     transcript_exact_aria_button_found = False
-    
+
     transcript_renderer_click_succeeded = False
     transcript_renderer_open_signal_found = False
     transcript_renderer_button_method = "none"
-    
+
     modern_panel_count = 0
     legacy_panel_count = 0
     transcript_target_panel_count = 0
     segments_container_count = 0
     ytd_transcript_segment_count = 0
     modern_transcript_segment_count = 0
-    
+
     panel_tag_name = ""
     panel_target_id = ""
     panel_data_target_id = ""
     panel_visibility = ""
-    
+
     renderer_button_aria_label = ""
     renderer_button_disabled = False
     renderer_button_aria_expanded = ""
     renderer_button_aria_pressed = ""
-    
+
     transcript_direct_segment_fallback_used = False
     modern_segment_text_success_count = 0
     modern_segment_text_chars = 0
-    
+
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -4804,14 +4815,14 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
                 )
                 page = await context.new_page()
-                
+
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 page_loaded = True
-                
+
                 page_title = await page.title()
                 final_url = page.url
                 final_host = urlparse(final_url).hostname or ""
-                
+
                 # 1. チャレンジ / 同意画面 / ログイン判定 (安全な判定のみ)
                 lower_title = page_title.lower()
                 if (
@@ -4823,7 +4834,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                     or "ログイン" in lower_title
                 ):
                     challenge_detected = True
-                    
+
                 # 2. 動画ページ本体の待機 (フォールバック)
                 for selector in ["ytd-watch-metadata", "ytd-watch-flexy", "#primary", "#description", "h1.ytd-watch-metadata"]:
                     try:
@@ -4832,7 +4843,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                         break
                     except Exception:
                         continue
-                        
+
                 # 描画安定のための短い待機
                 await page.wait_for_timeout(2000)
 
@@ -4976,7 +4987,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                     # 無効タイトル ("- YouTube", "YouTube" 等) は破棄
                     if t and t not in ["- YouTube", "YouTube", "-"]:
                         title = t
-                
+
                 # 3. 説明欄の展開 (文字起こしボタン探索の前提として常に試行)
                 expand_selectors = [
                     "#expand",
@@ -4996,7 +5007,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                             break
                     except Exception:
                         continue
-                        
+
                 # 3-2. 説明欄テキストの取得 (フォールバック: 未取得時のみ実行)
                 if not description:
                     desc_selectors = [
@@ -5019,7 +5030,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                                     break
                         except Exception:
                             continue
-                            
+
                     # meta tag からのフォールバック取得
                     if not description:
                         try:
@@ -5040,24 +5051,24 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                     await renderer_loc.wait_for(state="attached", timeout=10000)
                     transcript_renderer_found = True
                     await renderer_loc.scroll_into_view_if_needed()
-                    
+
                     try:
                         await renderer_loc.wait_for(state="visible", timeout=3000)
                         transcript_renderer_visible = True
                     except Exception:
                         if await renderer_loc.is_visible():
                             transcript_renderer_visible = True
-                    
+
                     # Renderer内部のbuttonの遅延描画も待機
                     try:
                         first_button = renderer_loc.locator("button").first
                         await first_button.wait_for(state="attached", timeout=5000)
                     except Exception:
                         pass
-                    
+
                     btn_count = await renderer_loc.locator("button").count()
                     transcript_renderer_button_count = btn_count
-                    
+
                     # 優先順位順の候補リスト:
                     # 1. 日本語aria完全一致
                     # 2. 英語aria完全一致
@@ -5071,11 +5082,11 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                         (renderer_loc.locator('button[aria-label*="transcript"]').first, "renderer_aria_en"),
                         (renderer_loc.locator('button').first, "renderer_any_button"),
                     ]
-                    
+
                     # 最初に利用可能な候補を1つだけ選択
                     selected_btn_loc = None
                     selected_method_name = ""
-                    
+
                     for btn_loc, method_name in ordered_renderer_candidates:
                         try:
                             if await btn_loc.count() > 0:
@@ -5084,15 +5095,15 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                                 break
                         except Exception:
                             continue
-                    
+
                     if selected_btn_loc is not None:
                         if "exact" in selected_method_name:
                             transcript_exact_aria_button_found = True
-                            
+
                         transcript_button_candidate_found = True
                         transcript_button_method = selected_method_name
                         transcript_renderer_button_method = selected_method_name
-                        
+
                         # 専用ariaボタンの安全な属性を確認
                         try:
                             renderer_button_aria_label = (await selected_btn_loc.get_attribute("aria-label")) or ""
@@ -5101,12 +5112,12 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                             renderer_button_aria_pressed = (await selected_btn_loc.get_attribute("aria-pressed")) or ""
                         except Exception:
                             pass
-                        
+
                         await selected_btn_loc.scroll_into_view_if_needed()
                         await selected_btn_loc.click(timeout=5000)
                         transcript_click_succeeded = True
                         transcript_renderer_click_succeeded = True
-                        
+
                         # 5-1. 最大10秒、文字起こしパネルまたはセグメントの展開を明示的に待機
                         try:
                             await page.wait_for_function("""() => {
@@ -5122,7 +5133,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                             transcript_button_found = True
                         except Exception:
                             pass # 開かなかった場合も後続でDOMカウントを診断する
-                        
+
                         # 専用ボタンクリック直後のDOM存在数を診断
                         try:
                             modern_panel_count = await page.locator('ytd-engagement-panel-section-list-renderer[data-target-id="PAmodern_transcript_view"]').count()
@@ -5133,7 +5144,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                             modern_transcript_segment_count = await page.locator('transcript-segment-view-model, [class*="transcript-segment"]').count()
                         except Exception:
                             pass
-                        
+
                         # transcript関連panelが存在する場合は安全な属性だけ取得
                         try:
                             for p_sel in [
@@ -5151,10 +5162,10 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                                     break
                         except Exception:
                             pass
-                            
+
                 except Exception:
                     pass
-                
+
                 # 4-2. 広いフォールバック (専用rendererでパネルが開かず、かつ完全一致専用ariaボタンが無かった場合のみ実行)
                 if not transcript_button_found and not transcript_exact_aria_button_found:
                     fallback_candidates = [
@@ -5163,7 +5174,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                         (page.locator('button:has-text("文字起こし")').first, "has_text_button"),
                         (page.locator('tp-yt-paper-button:has-text("文字起こし")').first, "has_text_paper"),
                     ]
-                    
+
                     for btn_loc, method_name in fallback_candidates:
                         try:
                             # まずカウントが0より大きいか、attachedかを確認
@@ -5173,7 +5184,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                                 await btn_loc.scroll_into_view_if_needed()
                                 await btn_loc.click(timeout=5000)
                                 transcript_click_succeeded = True
-                                
+
                                 try:
                                     await page.wait_for_function("""() => {
                                         const isVis = el => el && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getAttribute('visibility') === 'ENGAGEMENT_PANEL_VISIBILITY_EXPANDED');
@@ -5190,7 +5201,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                                     pass
                         except Exception:
                             continue
-                        
+
                 # 5. 文字起こしパネルとセグメントの取得 (Modern / Legacy フォールバック)
                 if transcript_button_found:
                     modern_sel = 'ytd-engagement-panel-section-list-renderer[data-target-id="PAmodern_transcript_view"]'
@@ -5233,7 +5244,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
 
                     # 5-3. セグメントの抽出 (Panel内限定探索)
                     text_lines = []
-                    
+
                     if panel_locator is not None:
                         target_scope = panel_locator
                         try:
@@ -5305,13 +5316,13 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
                                     clean_txt = " ".join((txt or "").split())
                                     if clean_txt:
                                         text_lines.append(clean_txt)
-                                
+
                                 if text_lines:
                                     transcript_direct_segment_fallback_used = True
                                     transcript_panel_mode = "modern_segment_direct"
                                     modern_segment_text_success_count = len(text_lines)
                                     modern_segment_text_chars = len(" ".join(text_lines))
-                            
+
                             # 万が一上記が0件の場合の限定フォールバック
                             if not text_lines:
                                 fb_segs = await page.locator("ytd-transcript-segment-renderer").all()
@@ -5463,7 +5474,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
     except Exception as e:
         print(f"Playwright error: {e}")
         transcript_status = "error"
-        
+
     diagnostics = {
         "youtube_data_api_used": youtube_data_api_used,
         "youtube_data_api_success": youtube_data_api_success,
@@ -5510,7 +5521,7 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
         "modern_segment_text_success_count": modern_segment_text_success_count,
         "modern_segment_text_chars": modern_segment_text_chars,
     }
-    
+
     return {
         "video_id": video_id,
         "title": title,
@@ -5529,18 +5540,18 @@ async def youtube_prepare_endpoint(request: YouTubePrepareRequest, http_request:
 async def youtube_summarize_endpoint(request: YouTubeSummarizeRequest, http_request: Request):
     require_admin(http_request)
     validate_youtube_url(request.url)
-    
+
     title = request.title.strip()[:300]
     channel_name = request.channel_name.strip()[:150]
     published_date = (request.published_date or "").strip()[:50]
-    
+
     # 1. 説明欄の文字数予算（最大8,000文字）
     raw_desc = request.description.strip()
     if len(raw_desc) > 8000:
         description = raw_desc[:8000] + "\n...[説明欄一部省略]..."
     else:
         description = raw_desc
-        
+
     raw_transcript = request.transcript.strip()
 
     # 情報不足チェック：Geminiを呼ぶ前に判定（呼び出し0回で422）
@@ -5715,13 +5726,13 @@ async def youtube_summarize_endpoint(request: YouTubeSummarizeRequest, http_requ
 async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_request: Request):
     require_admin(http_request)
     validate_youtube_url(request.url)
-    
+
     summary = request.summary.strip()
     if not summary:
         raise HTTPException(status_code=400, detail="要約内容が空です。")
     if len(summary) > MAX_ADMIN_SUMMARY_LENGTH:
         raise HTTPException(status_code=400, detail=f"要約が長すぎます（最大{MAX_ADMIN_SUMMARY_LENGTH}文字）。")
-        
+
     invalid_patterns = [
         "要約できる情報が不足しています",
         "生成に失敗しました",
@@ -5731,10 +5742,10 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
     for pattern in invalid_patterns:
         if pattern in summary:
             raise HTTPException(status_code=400, detail="無効な要約テキストまたはエラー文は知識登録できません。")
-            
+
     site_update_id = (request.site_update_id or "").strip()
     doc_ref = None
-        
+
     # Verify site_update_id safety if provided (監視経由の登録)
     if site_update_id:
         try:
@@ -5742,7 +5753,7 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
             doc = doc_ref.get()
             if not doc.exists:
                 raise HTTPException(status_code=400, detail="指定された更新情報が見つかりません。")
-                
+
             data = doc.to_dict()
             if data.get("status") != "pending":
                 raise HTTPException(status_code=400, detail="対象情報のステータスがpendingではありません。")
@@ -5750,13 +5761,13 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
                 raise HTTPException(status_code=400, detail="対象情報がYouTubeのものではありません。")
             if data.get("video_id") != request.video_id.strip() or data.get("channel_id") != request.channel_id.strip() or data.get("url") != request.url.strip():
                 raise HTTPException(status_code=400, detail="リクエストと対象情報の内容が一致しません。")
-                
+
         except HTTPException:
             raise
         except Exception as e:
             print(f"Validation error: {e}")
             raise HTTPException(status_code=500, detail="データ検証中にエラーが発生しました。")
-    
+
     target_doc_id = f"youtube_{request.video_id.strip()}"
     knowledge_ref = db.collection("knowledge").document(target_doc_id)
 
@@ -5821,19 +5832,19 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
 
     # 3. Create embedding
     content_hash = hashlib.sha256(summary.encode("utf-8")).hexdigest()
-    
+
     try:
         embedding = get_embedding(summary, operation="youtube_register")
     except Exception as e:
         print(f"Embedding error: {e}")
         raise HTTPException(status_code=500, detail="Embedding生成時にエラーが発生しました。")
-        
+
     # 2. Firestore Batch で knowledge 保存 (および監視経由なら site_updates 更新) をアトミックに commit
     try:
         published_date = (request.published_date or "").strip()[:50]
         title = request.title.strip()[:300]
         channel_name = request.channel_name.strip()[:150]
-        
+
         doc_id = target_doc_id
         doc_data = {
             "source_type": "youtube_summary",
@@ -5853,7 +5864,7 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
             "updated_at": firestore.SERVER_TIMESTAMP,
             "embedding_field": Vector(embedding)
         }
-        
+
         if request.year is not None:
             doc_data["year"] = request.year
         if request.element is not None:
@@ -5865,7 +5876,7 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
         doc_data["tags"] = request.tags
         if request.status is not None:
             doc_data["status"] = request.status
-        
+
         batch = db.batch()
         batch.set(knowledge_ref, doc_data)
         if doc_ref is not None:
@@ -5875,7 +5886,7 @@ async def youtube_register_endpoint(request: YouTubeRegisterRequest, http_reques
                 "knowledge_registered": True
             })
         batch.commit()
-            
+
         return {"status": "saved", "message": "YouTubeの要約をAI knowledgeへ登録しました。"}
     except Exception as e:
         print(f"Batch commit error: {e}")
@@ -6250,26 +6261,26 @@ def get_ai_usage_stats():
 async def admin_usage_dashboard_endpoint(http_request: Request):
     """Return usage dashboard data for administrators."""
     require_admin(http_request)
-    
+
     try:
         now = datetime.now(JST)
         today_key = now.strftime("%Y%m%d")
-        
+
         # 1. Today's AI usage limits
         global_day_ref = db.collection("ai_usage_limits").document(f"global_day_{today_key}")
         global_day_snap = global_day_ref.get()
         today_count = 0
-        
+
         if global_day_snap.exists:
             today_count = global_day_snap.to_dict().get("count", 0)
-            
+
         daily_limit = DAILY_GLOBAL_LIMIT
         remaining = max(daily_limit - today_count, 0)
         usage_percent = round((today_count / daily_limit) * 100, 1) if daily_limit > 0 else 0.0
-        
+
         # 2. Feedback stats
         feedback_col = db.collection("ai_feedback")
-        
+
         def get_count(query):
             res = query.count().get()
             return res[0][0].value if res else 0
@@ -6280,7 +6291,7 @@ async def admin_usage_dashboard_endpoint(http_request: Request):
         positive_count = get_count(feedback_col.where(filter=FieldFilter("rating", "==", "positive")))
         # Negative feedback count
         negative_count = get_count(feedback_col.where(filter=FieldFilter("rating", "==", "negative")))
-        
+
         # Reasons mapping
         reasons_to_count = ["incorrect", "outdated", "missing_information", "hard_to_understand", "irrelevant", "other"]
         reasons_counts = {}
@@ -6476,21 +6487,21 @@ async def visit_stats_endpoint(
 @app.get("/api/admin/knowledge")
 def get_admin_knowledge(http_request: Request, limit: int = 50, source_type: str = None):
     require_admin(http_request)
-    
+
     try:
         collection_ref = db.collection("knowledge")
         query = collection_ref
-        
+
         if source_type:
             query = query.where("source_type", "==", source_type)
-            
+
         # orderByを使わずに取得し、Python側でソートすることで複合インデックスを不要にする。
         # 管理画面用なので一度に多めに取得して絞る。
         query = query.limit(500)
-        
+
         docs = query.stream()
         results = []
-        
+
         # 許可するフィールドリスト (embeddingは絶対に含めない)
         allowed_fields = [
             "content", "source", "source_type", "url", "title",
@@ -6500,36 +6511,36 @@ def get_admin_knowledge(http_request: Request, limit: int = 50, source_type: str
             "formation_post_id", "formation_player_name", "formation_timestamp",
             "formation_image_count"
         ]
-        
+
         for doc in docs:
             data = doc.to_dict()
             safe_data = {"doc_id": doc.id}
-            
+
             for field in allowed_fields:
                 if field in data:
                     val = data[field]
                     if hasattr(val, "isoformat"):
                         val = val.isoformat()
                     safe_data[field] = val
-                    
+
             # 既存データでactiveが存在しない場合はデフォルトでTrue扱い
             if "active" not in safe_data:
                 safe_data["active"] = True
-                
+
             results.append(safe_data)
-            
+
         # updated_atで降順ソート。存在しない場合は古いものとして扱う
         def get_sort_key(item):
             updated = item.get("updated_at")
             if not updated:
                 return ""
             return str(updated)
-            
+
         results.sort(key=get_sort_key, reverse=True)
         results = results[:limit]
-            
+
         return {"status": "ok", "items": results}
-        
+
     except Exception as e:
         print(f"Error fetching knowledge: {e}")
         raise HTTPException(status_code=500, detail="データ取得に失敗しました。")
@@ -6632,24 +6643,24 @@ class KnowledgeActiveUpdate(BaseModel):
 @app.patch("/api/admin/knowledge/{doc_id}/active")
 def update_knowledge_active(doc_id: str, request: KnowledgeActiveUpdate, http_request: Request):
     require_admin(http_request)
-    
+
     if not doc_id or len(doc_id) > 200 or "/" in doc_id:
         raise HTTPException(status_code=400, detail="不正なドキュメントIDです。")
-        
+
     try:
         doc_ref = db.collection("knowledge").document(doc_id)
         doc = doc_ref.get()
         if not doc.exists:
             raise HTTPException(status_code=404, detail="指定されたデータが見つかりません。")
-            
+
         doc_ref.update({
             "active": request.active,
             "updated_at": firestore.SERVER_TIMESTAMP
         })
-        
+
         status_str = "有効" if request.active else "無効"
         return {"status": "ok", "message": f"状態を「{status_str}」に変更しました。"}
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -6689,31 +6700,31 @@ def _parse_and_validate_iso_datetime(value: str | None, field_name: str) -> date
 @app.patch("/api/admin/knowledge/{doc_id}/expiration")
 def update_knowledge_expiration(doc_id: str, request: KnowledgeExpirationUpdate, http_request: Request):
     require_admin(http_request)
-    
+
     if not doc_id or len(doc_id) > 200 or "/" in doc_id:
         raise HTTPException(status_code=400, detail="不正なドキュメントIDです。")
-        
+
     from_dt_utc = _parse_and_validate_iso_datetime(request.valid_from, "valid_from")
     until_dt_utc = _parse_and_validate_iso_datetime(request.valid_until, "valid_until")
-    
+
     if from_dt_utc and until_dt_utc and from_dt_utc > until_dt_utc:
         raise HTTPException(
             status_code=422,
             detail="valid_from は valid_until 以前の日時を指定してください。"
         )
-        
+
     try:
         doc_ref = db.collection("knowledge").document(doc_id)
         doc = doc_ref.get()
         if not doc.exists:
             raise HTTPException(status_code=404, detail="指定されたデータが見つかりません。")
-            
+
         doc_ref.update({
             "valid_from": from_dt_utc,
             "valid_until": until_dt_utc,
             "updated_at": firestore.SERVER_TIMESTAMP
         })
-        
+
         return {
             "status": "ok",
             "message": "有効期限を更新しました。",
@@ -6744,17 +6755,17 @@ SOURCE_DISPLAY_NAMES = {
 @app.get("/api/admin/knowledge/source-settings")
 def get_source_settings(http_request: Request):
     require_admin(http_request)
-    
+
     try:
         settings_ref = db.collection("knowledge_source_settings")
         settings_docs = settings_ref.stream()
-        
+
         settings_map = {}
         for doc in settings_docs:
             if not is_valid_source_type(doc.id):
                 print(f"[RAG source設定異常] Invalid source_type in doc id: {doc.id}")
                 continue
-                
+
             data = doc.to_dict() or {}
             enabled = data.get("enabled")
             if not isinstance(enabled, bool):
@@ -6763,9 +6774,9 @@ def get_source_settings(http_request: Request):
                 "enabled": enabled,
                 "configured": True,
             }
-            
+
         all_types = set(SOURCE_DISPLAY_NAMES.keys()).union(set(settings_map.keys()))
-        
+
         try:
             knowledge_docs = db.collection("knowledge").select(["source_type"]).limit(200).stream()
             for kdoc in knowledge_docs:
@@ -6775,7 +6786,7 @@ def get_source_settings(http_request: Request):
                     all_types.add(k_stype)
         except Exception as ke:
             print(f"Error fetching knowledge for source_types: {ke}")
-        
+
         results = []
         for stype in sorted(all_types):
             info = settings_map.get(stype, {"enabled": True, "configured": False})
@@ -6785,9 +6796,9 @@ def get_source_settings(http_request: Request):
                 enabled=info["enabled"],
                 configured=info["configured"],
             ))
-            
+
         return {"status": "ok", "items": [r.model_dump() for r in results]}
-        
+
     except Exception as e:
         print(f"Error fetching source settings: {e}")
         raise HTTPException(status_code=500, detail="情報ソース設定の取得に失敗しました。")
@@ -6796,24 +6807,887 @@ def get_source_settings(http_request: Request):
 @app.patch("/api/admin/knowledge/source-settings/{source_type}")
 def update_source_setting(source_type: str, request: SourceSettingUpdate, http_request: Request):
     require_admin(http_request)
-    
+
     if not source_type or len(source_type) > 64:
         raise HTTPException(status_code=400, detail="不正な source_type です。")
-        
+
     if not re.fullmatch(r"^[a-z0-9][a-z0-9_-]{0,63}$", source_type):
         raise HTTPException(status_code=400, detail="source_type の形式が不正です。")
-        
+
     try:
         doc_ref = db.collection("knowledge_source_settings").document(source_type)
-        
+
         doc_ref.set({
             "enabled": request.enabled,
             "updated_at": firestore.SERVER_TIMESTAMP
         }, merge=True)
-        
+
         return {"status": "ok", "message": f"「{source_type}」の設定を更新しました。"}
-        
+
     except Exception as e:
         print(f"Error updating source setting for {source_type}: {e}")
         raise HTTPException(status_code=500, detail="情報ソース設定の更新に失敗しました。")
+
+
+
+
+
+
+
+
+# =========================================================
+# プッシュ通知
+# =========================================================
+import threading
+import firebase_admin
+from firebase_admin import credentials, exceptions as firebase_exceptions, messaging as fcm_messaging
+
+_fcm_app = None
+_fcm_lock = threading.Lock()
+
+
+def get_fcm_app():
+    global _fcm_app
+    if _fcm_app is None:
+        with _fcm_lock:
+            if _fcm_app is None:
+                try:
+                    # 既に初期化されている場合は再利用
+                    _fcm_app = firebase_admin.get_app(name="gbf-meron-portal-fcm")
+                except ValueError:
+                    # GCPのADC(Application Default Credentials)を利用しつつ、
+                    # FCM送信プロジェクト「gbf-meron-portal」を明示的に指定
+                    _fcm_app = firebase_admin.initialize_app(
+                        options={"projectId": "gbf-meron-portal", "httpTimeout": 30},
+                        name="gbf-meron-portal-fcm",
+                    )
+    return _fcm_app
+
+
+PORTAL_PROJECT_ID = "gbf-meron-portal"
+PORTAL_NOTIFICATION_BODY_LIMIT = 8192
+PORTAL_NOTIFICATION_CAPACITY = 500
+PORTAL_NOTIFICATION_RATE_LIMIT = 10
+PORTAL_NOTIFICATION_GLOBAL_LIMIT = 100
+PORTAL_NOTIFICATION_RATE_WINDOW = 60
+PORTAL_PRODUCTION_ORIGIN = "https://huu-gbf.github.io"
+PORTAL_LOCAL_ORIGINS = {
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+}
+
+_portal_db = None
+
+
+class PortalAPIError(Exception):
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        retry_after: int | None = None,
+    ):
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        self.retry_after = retry_after
+
+
+def portal_error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    retry_after: int | None = None,
+):
+    headers = {"Cache-Control": "no-store"}
+    if retry_after is not None:
+        headers["Retry-After"] = str(retry_after)
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": code, "message": message}},
+        headers=headers,
+    )
+
+
+def check_portal_origin(http_request: Request):
+    origin = http_request.headers.get("origin", "")
+    allowed_origins = {PORTAL_PRODUCTION_ORIGIN}
+    if os.getenv("PORTAL_ALLOW_LOCAL_ORIGINS", "false").lower() == "true":
+        allowed_origins.update(PORTAL_LOCAL_ORIGINS)
+    if origin not in allowed_origins:
+        raise PortalAPIError(
+            403,
+            "ORIGIN_NOT_ALLOWED",
+            "この送信元からは利用できません。",
+        )
+
+
+@app.exception_handler(PortalAPIError)
+async def portal_api_error_handler(
+    http_request: Request,
+    exc: PortalAPIError,
+):
+    return portal_error_response(
+        exc.status_code,
+        exc.code,
+        exc.message,
+        exc.retry_after,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def portal_validation_error_handler(
+    http_request: Request,
+    exc: RequestValidationError,
+):
+    if not http_request.url.path.startswith("/api/notifications/"):
+        return await request_validation_exception_handler(http_request, exc)
+
+    error_code = "INVALID_INPUT"
+    status_code = 422
+    if any(error.get("type") == "json_invalid" for error in exc.errors()):
+        error_code = "INVALID_JSON"
+        status_code = 400
+    return portal_error_response(
+        status_code,
+        error_code,
+        "リクエストを確認してください。",
+    )
+
+
+@app.middleware("http")
+async def guard_notification_requests(
+    http_request: Request,
+    call_next,
+):
+    if not http_request.url.path.startswith("/api/notifications/"):
+        return await call_next(http_request)
+
+    # CORS middlewareにpreflight応答を任せる。OPTIONSにはJSON本文を要求しない。
+    if http_request.method == "OPTIONS":
+        return await call_next(http_request)
+
+    try:
+        check_portal_origin(http_request)
+    except PortalAPIError as exc:
+        return portal_error_response(
+            exc.status_code,
+            exc.code,
+            exc.message,
+            exc.retry_after,
+        )
+
+    def guard_error_response(
+        status_code: int,
+        code: str,
+        message: str,
+    ):
+        response = portal_error_response(status_code, code, message)
+        response.headers["Access-Control-Allow-Origin"] = (
+            http_request.headers["origin"]
+        )
+        response.headers["Vary"] = "Origin"
+        return response
+
+    content_type = http_request.headers.get("content-type", "")
+    if content_type.split(";", 1)[0].strip().lower() != "application/json":
+        return guard_error_response(
+            415,
+            "UNSUPPORTED_MEDIA_TYPE",
+            "Content-Typeはapplication/jsonを指定してください。",
+        )
+
+    content_length = http_request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > PORTAL_NOTIFICATION_BODY_LIMIT:
+                return guard_error_response(
+                    413,
+                    "BODY_TOO_LARGE",
+                    "リクエスト本文が大きすぎます。",
+                )
+        except ValueError:
+            return guard_error_response(
+                400,
+                "INVALID_INPUT",
+                "Content-Lengthを確認してください。",
+            )
+
+    body = await http_request.body()
+    if len(body) > PORTAL_NOTIFICATION_BODY_LIMIT:
+        return guard_error_response(
+            413,
+            "BODY_TOO_LARGE",
+            "リクエスト本文が大きすぎます。",
+        )
+
+    response = await call_next(http_request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+class NotificationStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    installation_id: UUID4
+
+
+class NotificationSubscribeRequest(NotificationStatusRequest):
+    token: str = Field(..., min_length=1, max_length=4096)
+    expected_revision: StrictInt = Field(..., ge=0)
+
+    @field_validator("token")
+    @classmethod
+    def validate_token(cls, value: str) -> str:
+        if not all(33 <= ord(character) <= 126 for character in value):
+            raise ValueError("invalid token")
+        return value
+
+
+class NotificationUnsubscribeRequest(NotificationStatusRequest):
+    pass
+
+
+def portal_writes_enabled() -> bool:
+    return os.getenv("PORTAL_WRITE_ENABLED", "false").lower() == "true"
+
+
+def require_portal_writes_enabled():
+    if not portal_writes_enabled():
+        raise PortalAPIError(
+            503,
+            "PORTAL_NOT_READY",
+            "通知機能は現在準備中です。",
+        )
+
+
+def get_portal_db():
+    global _portal_db
+    if _portal_db is None:
+        _portal_db = firestore.Client(project=PORTAL_PROJECT_ID)
+    return _portal_db
+
+
+def hash_installation_id(installation_id: UUID4) -> str:
+    canonical_uuid = str(installation_id).lower()
+    return hashlib.sha256(canonical_uuid.encode("utf-8")).hexdigest()
+
+
+def _snapshot_data(snapshot) -> dict:
+    if not snapshot.exists:
+        return {}
+    return snapshot.to_dict() or {}
+
+
+def _non_negative_int(value, default: int = 0) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return default
+
+
+def consume_portal_quota(
+    group: str,
+    subject_hash: str,
+    per_limit: int = PORTAL_NOTIFICATION_RATE_LIMIT,
+    global_limit: int = PORTAL_NOTIFICATION_GLOBAL_LIMIT,
+):
+    portal_db = get_portal_db()
+    now = time.time()
+    minute = int(now // PORTAL_NOTIFICATION_RATE_WINDOW)
+    window_end = (minute + 1) * PORTAL_NOTIFICATION_RATE_WINDOW
+    retry_after = max(1, int(window_end - now))
+    expires_at = datetime.fromtimestamp(window_end + 120, timezone.utc)
+    collection = portal_db.collection("portal_rate_limits")
+    subject_ref = collection.document(f"{group}_{subject_hash}_{minute}")
+    global_ref = collection.document(f"{group}_global_{minute}")
+    transaction = portal_db.transaction()
+
+    @firestore.transactional
+    def update_quota(txn):
+        subject_snapshot = subject_ref.get(transaction=txn)
+        global_snapshot = global_ref.get(transaction=txn)
+        subject_count = _non_negative_int(
+            _snapshot_data(subject_snapshot).get("count")
+        )
+        global_count = _non_negative_int(
+            _snapshot_data(global_snapshot).get("count")
+        )
+        if subject_count >= per_limit or global_count >= global_limit:
+            raise PortalAPIError(
+                429,
+                "RATE_LIMITED",
+                "リクエストが多すぎます。しばらく待って再試行してください。",
+                retry_after,
+            )
+        txn.set(
+            subject_ref,
+            {"count": subject_count + 1, "expires_at": expires_at},
+            merge=True,
+        )
+        txn.set(
+            global_ref,
+            {"count": global_count + 1, "expires_at": expires_at},
+            merge=True,
+        )
+
+    try:
+        update_quota(transaction)
+    except PortalAPIError:
+        raise
+    except Exception:
+        print("Portal notification quota store error")
+        raise PortalAPIError(
+            503,
+            "STORE_UNAVAILABLE",
+            "通知設定を保存できません。しばらく待って再試行してください。",
+        )
+
+
+def apply_subscription_transaction(
+    installation_hash: str,
+    token: str,
+    expected_revision: int,
+) -> dict:
+    portal_db = get_portal_db()
+    token_ref = portal_db.collection("notification_tokens").document(
+        installation_hash
+    )
+    capacity_ref = portal_db.collection("portal_meta").document(
+        "notification_capacity"
+    )
+    transaction = portal_db.transaction()
+
+    @firestore.transactional
+    def apply_subscription(txn):
+        token_snapshot = token_ref.get(transaction=txn)
+        capacity_snapshot = capacity_ref.get(transaction=txn)
+        token_data = _snapshot_data(token_snapshot)
+        capacity_data = _snapshot_data(capacity_snapshot)
+        current_revision = _non_negative_int(token_data.get("revision"))
+        if current_revision != expected_revision:
+            raise PortalAPIError(
+                409,
+                "REVISION_CONFLICT",
+                "通知設定が更新されています。状態を再取得してください。",
+            )
+
+        was_enabled = (
+            token_data.get("schema_version") == 2
+            and token_data.get("enabled") is True
+        )
+        active_count = _non_negative_int(capacity_data.get("active_count"))
+        if not was_enabled and active_count >= PORTAL_NOTIFICATION_CAPACITY:
+            raise PortalAPIError(
+                409,
+                "SUBSCRIPTION_CAPACITY",
+                "通知登録数が上限に達しています。",
+            )
+
+        next_revision = current_revision + 1
+        update_data = {
+            "schema_version": 2,
+            "enabled": True,
+            "token": token,
+            "revision": next_revision,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        if "updatedAt" in token_data:
+            update_data["updatedAt"] = firestore.DELETE_FIELD
+        if "created_at" not in token_data:
+            update_data["created_at"] = firestore.SERVER_TIMESTAMP
+        txn.set(token_ref, update_data, merge=True)
+        if not was_enabled:
+            txn.set(
+                capacity_ref,
+                {"active_count": active_count + 1},
+                merge=True,
+            )
+        return {"enabled": True, "revision": next_revision}
+
+    try:
+        return apply_subscription(transaction)
+    except PortalAPIError:
+        raise
+    except Exception:
+        print("Portal notification subscribe store error")
+        raise PortalAPIError(
+            503,
+            "STORE_UNAVAILABLE",
+            "通知設定を保存できません。しばらく待って再試行してください。",
+        )
+
+
+def disable_subscription_transaction(installation_hash: str) -> dict:
+    portal_db = get_portal_db()
+    token_ref = portal_db.collection("notification_tokens").document(
+        installation_hash
+    )
+    capacity_ref = portal_db.collection("portal_meta").document(
+        "notification_capacity"
+    )
+    transaction = portal_db.transaction()
+
+    @firestore.transactional
+    def disable_subscription(txn):
+        token_snapshot = token_ref.get(transaction=txn)
+        capacity_snapshot = capacity_ref.get(transaction=txn)
+        token_data = _snapshot_data(token_snapshot)
+        capacity_data = _snapshot_data(capacity_snapshot)
+        current_revision = _non_negative_int(token_data.get("revision"))
+        was_enabled = (
+            token_data.get("schema_version") == 2
+            and token_data.get("enabled") is True
+        )
+        if token_snapshot.exists and not was_enabled and current_revision >= 1:
+            if "token" in token_data or "updatedAt" in token_data:
+                cleanup_data = {}
+                if "token" in token_data:
+                    cleanup_data["token"] = firestore.DELETE_FIELD
+                if "updatedAt" in token_data:
+                    cleanup_data["updatedAt"] = firestore.DELETE_FIELD
+                txn.set(token_ref, cleanup_data, merge=True)
+            return {"enabled": False, "revision": current_revision}
+
+        next_revision = current_revision + 1
+        update_data = {
+            "schema_version": 2,
+            "enabled": False,
+            "revision": next_revision,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        if "token" in token_data:
+            update_data["token"] = firestore.DELETE_FIELD
+        if "updatedAt" in token_data:
+            update_data["updatedAt"] = firestore.DELETE_FIELD
+        if "created_at" not in token_data:
+            update_data["created_at"] = firestore.SERVER_TIMESTAMP
+        txn.set(token_ref, update_data, merge=True)
+        if was_enabled:
+            active_count = _non_negative_int(capacity_data.get("active_count"))
+            txn.set(
+                capacity_ref,
+                {"active_count": max(0, active_count - 1)},
+                merge=True,
+            )
+        return {"enabled": False, "revision": next_revision}
+
+    try:
+        return disable_subscription(transaction)
+    except PortalAPIError:
+        raise
+    except Exception:
+        print("Portal notification unsubscribe store error")
+        raise PortalAPIError(
+            503,
+            "STORE_UNAVAILABLE",
+            "通知設定を保存できません。しばらく待って再試行してください。",
+        )
+
+
+def _prepare_notification_request(
+    installation_id: UUID4,
+    quota_group: str,
+) -> str:
+    require_portal_writes_enabled()
+    installation_hash = hash_installation_id(installation_id)
+    consume_portal_quota(quota_group, installation_hash)
+    return installation_hash
+
+
+@app.post("/api/notifications/status")
+def get_notification_status(
+    request: NotificationStatusRequest,
+    http_request: Request,
+):
+    installation_hash = _prepare_notification_request(
+        request.installation_id,
+        "notification_on",
+    )
+    try:
+        snapshot = (
+            get_portal_db()
+            .collection("notification_tokens")
+            .document(installation_hash)
+            .get()
+        )
+        data = _snapshot_data(snapshot)
+        return {
+            "enabled": (
+                data.get("schema_version") == 2
+                and data.get("enabled") is True
+            ),
+            "revision": _non_negative_int(data.get("revision")),
+        }
+    except Exception:
+        print("Portal notification status store error")
+        raise PortalAPIError(
+            503,
+            "STORE_UNAVAILABLE",
+            "通知設定を取得できません。しばらく待って再試行してください。",
+        )
+
+
+@app.post("/api/notifications/subscribe")
+def subscribe_notification(
+    request: NotificationSubscribeRequest,
+    http_request: Request,
+):
+    installation_hash = _prepare_notification_request(
+        request.installation_id,
+        "notification_on",
+    )
+    return apply_subscription_transaction(
+        installation_hash,
+        request.token,
+        request.expected_revision,
+    )
+
+
+@app.post("/api/notifications/unsubscribe")
+def unsubscribe_notification(
+    request: NotificationUnsubscribeRequest,
+    http_request: Request,
+):
+    installation_hash = _prepare_notification_request(
+        request.installation_id,
+        "notification_off",
+    )
+    return disable_subscription_transaction(installation_hash)
+
+
+def disable_token_if_unchanged(
+    installation_hash: str,
+    snapshot_revision: int,
+    snapshot_token: str,
+) -> bool:
+    """
+    FCM送信エラー (UnregisteredError) 発生時に、
+    送信時点のトークンとrevisionがFirestore上で変化していない場合のみ
+    安全に enabled=False に倒す (無効化・墓標化)。
+
+    もし端末側で既に新しいトークンにローテーションされていたり、
+    revisionが進んでいる場合は競合防止のため何も変更しない (no-op)。
+    """
+    try:
+        portal_db = get_portal_db()
+        token_ref = portal_db.collection("notification_tokens").document(
+            installation_hash
+        )
+        capacity_ref = portal_db.collection("portal_meta").document(
+            "notification_capacity"
+        )
+        transaction = portal_db.transaction()
+
+        @firestore.transactional
+        def _txn(txn):
+            token_snap = token_ref.get(transaction=txn)
+            if not token_snap.exists:
+                return False
+            data = _snapshot_data(token_snap)
+            current_token = data.get("token")
+            current_rev = _non_negative_int(data.get("revision"))
+
+            # 送信時のトークンおよびrevisionと一致しているか検証
+            if current_token != snapshot_token or current_rev != snapshot_revision:
+                return False
+
+            was_enabled = (
+                data.get("schema_version") == 2
+                and data.get("enabled") is True
+            )
+            # すでに無効化されている場合は変更せず完全な no-op
+            if not was_enabled:
+                return False
+
+            # 【Firestoreトランザクション規則】すべてのReadをWriteより前に実行
+            cap_snap = capacity_ref.get(transaction=txn)
+            cap_data = _snapshot_data(cap_snap)
+            active_count = _non_negative_int(cap_data.get("active_count"))
+
+            # ここからWrite処理
+            next_rev = current_rev + 1
+            update_data = {
+                "schema_version": 2,
+                "enabled": False,
+                "revision": next_rev,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+                "disabled_reason": "unregistered",
+            }
+            if "token" in data:
+                update_data["token"] = firestore.DELETE_FIELD
+            if "updatedAt" in data:
+                update_data["updatedAt"] = firestore.DELETE_FIELD
+            txn.set(token_ref, update_data, merge=True)
+
+            txn.set(
+                capacity_ref,
+                {"active_count": max(0, active_count - 1)},
+                merge=True,
+            )
+            return True
+
+        return _txn(transaction)
+    except Exception:
+        print("disable_token_if_unchanged error")
+        return False
+
+
+def send_formation_push(event: dict, installations: list) -> dict:
+    """
+    新着編成イベントを指定された端末リスト(最大500件)にFCMマルチキャスト送信する。
+
+    引数:
+      event: {
+          "category": "gw" | "multi" | "high",
+          "post_id": str (^[A-Za-z0-9_-]{1,64}$)
+      }
+      installations: [
+          {
+              "installation_hash": str,
+              "token": str,
+              "revision": int,
+          },
+          ...
+      ]
+
+    戻り値 (SendResult):
+      {
+          "total_target": int,
+          "success_count": int,
+          "failure_count": int,
+          "retryable_installations": list[dict],
+          "permanent_installations": list[dict],
+          "unregistered_installations": list[dict],
+          "config_error": bool,
+          "details": list[dict],
+      }
+    """
+    if not installations:
+        return {
+            "total_target": 0,
+            "success_count": 0,
+            "failure_count": 0,
+            "retryable_installations": [],
+            "permanent_installations": [],
+            "unregistered_installations": [],
+            "config_error": False,
+            "details": [],
+        }
+
+    if len(installations) > 500:
+        raise ValueError(
+            f"Chunk size {len(installations)} exceeds FCM multicast limit of 500"
+        )
+
+    result = {
+        "total_target": len(installations),
+        "success_count": 0,
+        "failure_count": 0,
+        "retryable_installations": [],
+        "permanent_installations": [],
+        "unregistered_installations": [],
+        "config_error": False,
+        "details": [],
+    }
+
+    category = str(event.get("category", "") if isinstance(event, dict) else "")
+    post_id = str(event.get("post_id", "") if isinstance(event, dict) else "")
+
+    if category not in ["gw", "multi", "high"] or not re.match(r"^[A-Za-z0-9_-]{1,64}$", post_id):
+        result["config_error"] = True
+        result["failure_count"] = len(installations)
+        result["retryable_installations"] = []
+        result["permanent_installations"] = []
+        result["unregistered_installations"] = []
+        result["details"] = [{"error": "InvalidEventPayload", "type": "ConfigError"}]
+        return result
+
+    try:
+        app = get_fcm_app()
+    except Exception as e:
+        print("FCM app initialization failed")
+        result["config_error"] = True
+        result["failure_count"] = len(installations)
+        result["retryable_installations"] = []
+        result["permanent_installations"] = []
+        result["unregistered_installations"] = []
+        result["details"] = [{"error": "ConfigError", "type": type(e).__name__}]
+        return result
+
+    category_names = {
+        "gw": "古戦場用",
+        "multi": "マルチ用",
+        "high": "高難易度用",
+    }
+    cat_name = category_names[category]
+
+    data_payload = {
+        "type": "formation_created",
+        "event_id": f"{category}_{post_id}",
+        "category": category,
+        "post_id": post_id,
+        "title": f"【新着編成】{cat_name}",
+        "body": "新しい編成が投稿されました",
+        "url": f"https://huu-gbf.github.io/gbf-meron-portal/formations.html?category={category}&post={post_id}",
+    }
+
+    valid_installations = []
+    for inst in installations:
+        if inst.get("token"):
+            valid_installations.append(inst)
+        else:
+            result["failure_count"] += 1
+            result["permanent_installations"].append({
+                "installation_hash": inst.get("installation_hash"),
+                "revision": inst.get("revision"),
+            })
+            result["details"].append(
+                {
+                    "installation_hash": inst.get("installation_hash"),
+                    "error": "Missing token",
+                }
+            )
+
+    if not valid_installations:
+        return result
+
+    # 同一FCMトークンの重複排除
+    unique_tokens = []
+    token_to_idx = {}
+    for inst in valid_installations:
+        t = inst["token"]
+        if t not in token_to_idx:
+            token_to_idx[t] = len(unique_tokens)
+            unique_tokens.append(t)
+
+    webpush_config = fcm_messaging.WebpushConfig(
+        headers={"Urgency": "high", "TTL": "3600"},
+    )
+
+    message = fcm_messaging.MulticastMessage(
+        data=data_payload,
+        tokens=unique_tokens,
+        webpush=webpush_config,
+    )
+
+    try:
+        response = fcm_messaging.send_each_for_multicast(message, app=app)
+    except Exception as e:
+        print("FCM multicast network/request failure")
+        err_type = type(e).__name__
+        err_code = getattr(e, "code", "") or ""
+        err_str = f"{err_type} {err_code}".lower()
+
+        is_config = (
+            isinstance(
+                e,
+                (
+                    firebase_exceptions.InvalidArgumentError,
+                    firebase_exceptions.PermissionDeniedError,
+                    firebase_exceptions.UnauthenticatedError,
+                    getattr(fcm_messaging, "SenderIdMismatchError", type(None)),
+                ),
+            )
+            or any(
+                k in err_str
+                for k in [
+                    "invalidargument",
+                    "invalid_argument",
+                    "senderidmismatch",
+                    "sender_id_mismatch",
+                    "credential",
+                    "auth",
+                    "permission",
+                    "project",
+                    "mismatched-credential",
+                ]
+            )
+        )
+
+        result["config_error"] = is_config
+        result["failure_count"] += len(valid_installations)
+        if not is_config:
+            result["retryable_installations"].extend([
+                {
+                    "installation_hash": inst.get("installation_hash"),
+                    "revision": inst.get("revision"),
+                }
+                for inst in valid_installations
+            ])
+        result["details"].append({"error": "RequestError", "type": err_type})
+        return result
+
+    token_results = {
+        unique_tokens[idx]: resp for idx, resp in enumerate(response.responses)
+    }
+
+    for inst in valid_installations:
+        resp = token_results[inst["token"]]
+        safe_inst = {
+            "installation_hash": inst.get("installation_hash"),
+            "revision": inst.get("revision"),
+        }
+        if resp.success:
+            result["success_count"] += 1
+        else:
+            result["failure_count"] += 1
+            exc = resp.exception
+            code = getattr(exc, "code", None) or type(exc).__name__
+            exc_type = type(exc).__name__
+
+            is_unregistered = (
+                isinstance(exc, fcm_messaging.UnregisteredError)
+                or code in ["registration-token-not-registered", "Unregistered"]
+            )
+
+            is_config_error = (
+                isinstance(
+                    exc,
+                    (
+                        fcm_messaging.SenderIdMismatchError,
+                        firebase_exceptions.InvalidArgumentError,
+                        firebase_exceptions.PermissionDeniedError,
+                        firebase_exceptions.UnauthenticatedError,
+                    ),
+                )
+                or code in [
+                    "mismatched-credential",
+                    "SenderIdMismatch",
+                    "invalid-registration-token",
+                    "INVALID_ARGUMENT",
+                    "InvalidArgumentError",
+                    "PERMISSION_DENIED",
+                ]
+                or exc_type in [
+                    "SenderIdMismatchError",
+                    "InvalidArgumentError",
+                    "PermissionDeniedError",
+                    "UnauthenticatedError",
+                ]
+            )
+
+            detail = {
+                "installation_hash": inst.get("installation_hash"),
+                "error": "DeliveryFailed",
+                "type": exc_type,
+            }
+            result["details"].append(detail)
+
+            if is_unregistered:
+                result["unregistered_installations"].append(safe_inst)
+                result["permanent_installations"].append(safe_inst)
+                # 安全な無効化処理 (revision, token一致時のみ)
+                if inst.get("installation_hash"):
+                    disable_token_if_unchanged(
+                        installation_hash=inst["installation_hash"],
+                        snapshot_revision=_non_negative_int(inst.get("revision")),
+                        snapshot_token=inst["token"],
+                    )
+            elif is_config_error:
+                result["config_error"] = True
+                # config_error時はretryableにもpermanentにも入れない。token無効化もしない。
+            else:
+                # 既知一時障害および未知エラーはすべてretryableとする（未知エラーをpermanentに落とさない）
+                result["retryable_installations"].append(safe_inst)
+
+    return result
 
