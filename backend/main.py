@@ -18,6 +18,7 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Request,
+    Response,
     UploadFile,
     File,
 )
@@ -475,6 +476,7 @@ app.add_middleware(
         "GET",
         "POST",
         "PATCH",
+        "DELETE",
         "OPTIONS",
     ],
 
@@ -483,6 +485,7 @@ app.add_middleware(
         "X-Client-Id",
         "X-Admin-Key",
         "Authorization",
+        "X-Delete-Secret",
     ],
 
     expose_headers=[
@@ -6976,7 +6979,11 @@ async def guard_notification_requests(
         http_request.method == "POST"
         and http_request.url.path.startswith("/api/formations/")
     )
-    if not is_notification and not is_formation_create:
+    is_formation_delete = (
+        http_request.method == "DELETE"
+        and http_request.url.path.startswith("/api/formations/")
+    )
+    if not is_notification and not is_formation_create and not is_formation_delete:
         return await call_next(http_request)
 
     # CORS middlewareにpreflight応答を任せる。OPTIONSにはJSON本文を要求しない。
@@ -7003,6 +7010,17 @@ async def guard_notification_requests(
             http_request.headers["origin"]
         )
         response.headers["Vary"] = "Origin"
+        return response
+
+    if is_formation_delete:
+        if not portal_writes_enabled():
+            return guard_error_response(
+                503,
+                "PORTAL_NOT_READY",
+                "投稿機能は現在準備中です。",
+            )
+        response = await call_next(http_request)
+        response.headers["Cache-Control"] = "no-store"
         return response
 
     content_type = http_request.headers.get("content-type", "")
@@ -7114,7 +7132,7 @@ def _non_negative_int(value, default: int = 0) -> int:
 
 def consume_portal_quota(
     group: str,
-    subject_hash: str,
+    subject_hash: str | None,
     per_limit: int = PORTAL_NOTIFICATION_RATE_LIMIT,
     global_limit: int = PORTAL_NOTIFICATION_GLOBAL_LIMIT,
 ):
@@ -7125,32 +7143,40 @@ def consume_portal_quota(
     retry_after = max(1, int(window_end - now))
     expires_at = datetime.fromtimestamp(window_end + 120, timezone.utc)
     collection = portal_db.collection("portal_rate_limits")
-    subject_ref = collection.document(f"{group}_{subject_hash}_{minute}")
+    subject_ref = (
+        collection.document(f"{group}_{subject_hash}_{minute}")
+        if subject_hash is not None
+        else None
+    )
     global_ref = collection.document(f"{group}_global_{minute}")
     transaction = portal_db.transaction()
 
     @firestore.transactional
     def update_quota(txn):
-        subject_snapshot = subject_ref.get(transaction=txn)
         global_snapshot = global_ref.get(transaction=txn)
-        subject_count = _non_negative_int(
-            _snapshot_data(subject_snapshot).get("count")
-        )
+        subject_count = 0
+        if subject_ref is not None:
+            subject_snapshot = subject_ref.get(transaction=txn)
+            subject_count = _non_negative_int(
+                _snapshot_data(subject_snapshot).get("count")
+            )
         global_count = _non_negative_int(
             _snapshot_data(global_snapshot).get("count")
         )
-        if subject_count >= per_limit or global_count >= global_limit:
+        if ((subject_ref is not None and subject_count >= per_limit)
+                or global_count >= global_limit):
             raise PortalAPIError(
                 429,
                 "RATE_LIMITED",
                 "リクエストが多すぎます。しばらく待って再試行してください。",
                 retry_after,
             )
-        txn.set(
-            subject_ref,
-            {"count": subject_count + 1, "expires_at": expires_at},
-            merge=True,
-        )
+        if subject_ref is not None:
+            txn.set(
+                subject_ref,
+                {"count": subject_count + 1, "expires_at": expires_at},
+                merge=True,
+            )
         txn.set(
             global_ref,
             {"count": global_count + 1, "expires_at": expires_at},
@@ -7588,6 +7614,99 @@ def create_formation(category: str, request: FormationCreateRequest, http_reques
         content={"id": post_id, "category": category, **result},
         headers={"Cache-Control": "no-store"},
     )
+
+
+def validate_delete_post_id(post_id: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", post_id):
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿IDを確認してください。")
+    return post_id
+
+
+def get_delete_secret_hash(http_request: Request) -> str | None:
+    delete_secret = http_request.headers.get("x-delete-secret")
+    if not delete_secret:
+        consume_portal_quota("formation_delete", None, global_limit=100)
+        raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "削除権限を確認してください。")
+    try:
+        return hash_delete_secret(delete_secret)
+    except PortalAPIError:
+        consume_portal_quota("formation_delete", None, global_limit=100)
+        raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "削除権限を確認してください。") from None
+
+
+def delete_formation_transaction(
+    category: str,
+    post_id: str,
+    delete_secret_hash: str,
+    now: datetime,
+):
+    portal = get_portal_db()
+    event_id = f"{category}_{post_id}"
+    private_ref = portal.collection("formation_private").document(event_id)
+    public_ref = portal.collection(PUSH_FORMATIONS[category]).document(post_id)
+    outbox_ref = portal.collection(PUSH_OUTBOX_COLLECTION).document(event_id)
+
+    @firestore.transactional
+    def delete(txn):
+        private_snapshot = private_ref.get(transaction=txn)
+        private_data = _snapshot_data(private_snapshot)
+        if not private_snapshot.exists:
+            raise PortalAPIError(403, "DELETE_NOT_AUTHORIZED", "この投稿を削除できません。")
+        stored_hash = private_data.get("delete_secret_hash")
+        if (
+            private_data.get("schema_version") != 1
+            or not isinstance(stored_hash, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", stored_hash)
+        ):
+            _formation_store_inconsistent()
+        if not hmac.compare_digest(stored_hash, delete_secret_hash):
+            raise PortalAPIError(403, "DELETE_NOT_AUTHORIZED", "この投稿を削除できません。")
+
+        public_snapshot = public_ref.get(transaction=txn)
+        outbox_snapshot = outbox_ref.get(transaction=txn)
+        if public_snapshot.exists:
+            txn.delete(public_ref)
+        if private_data.get("deleted_at") is None:
+            txn.set(private_ref, {"deleted_at": now}, merge=True)
+        if outbox_snapshot.exists:
+            outbox_data = _snapshot_data(outbox_snapshot)
+            status = outbox_data.get("status")
+            if status == "canceled":
+                txn.set(outbox_ref, {
+                    "next_attempt_at": firestore.DELETE_FIELD,
+                    "lease_id": firestore.DELETE_FIELD,
+                    "lease_until": firestore.DELETE_FIELD,
+                    "retry_after": firestore.DELETE_FIELD,
+                    "round_attempted": firestore.DELETE_FIELD,
+                }, merge=True)
+            elif status not in {"sent", "failed"}:
+                changes = _push_terminal("canceled", "POST_DELETED")
+                changes["round_attempted"] = firestore.DELETE_FIELD
+                txn.set(outbox_ref, changes, merge=True)
+
+    try:
+        delete(portal.transaction())
+    except PortalAPIError:
+        raise
+    except Exception:
+        print("Portal formation delete store error")
+        raise PortalAPIError(
+            503,
+            "STORE_UNAVAILABLE",
+            "投稿を削除できません。しばらく待って再試行してください。",
+        ) from None
+
+
+@app.delete("/api/formations/{category}/{post_id:path}")
+def delete_formation(category: str, post_id: str, http_request: Request):
+    if category not in PUSH_FORMATIONS:
+        raise PortalAPIError(404, "CATEGORY_NOT_FOUND", "指定された投稿カテゴリはありません。")
+    require_portal_writes_enabled()
+    post_id = validate_delete_post_id(post_id)
+    delete_secret_hash = get_delete_secret_hash(http_request)
+    consume_portal_quota("formation_delete", delete_secret_hash, per_limit=10, global_limit=100)
+    delete_formation_transaction(category, post_id, delete_secret_hash, datetime.now(timezone.utc))
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 def disable_token_if_unchanged(
