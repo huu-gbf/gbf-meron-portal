@@ -1,0 +1,21 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /formations_gw/{document} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /formations_multi/{document} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /formations_high/{document} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

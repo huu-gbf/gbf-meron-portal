@@ -16,19 +16,20 @@
 1. 左メニューの **「構築」 > 「Firestore Database」** を選択します。
 2. **「データベースの作成」** をクリックします。
 3. ロケーションは **`asia-northeast1 (Tokyo)`** を選択します。
-4. セキュリティルールは **「テストモードで開始」** を選択して作成します。
-   > **【重要】セキュリティルールの確認**
-   > Firestore の「ルール」タブで、誰でも読み書きできるように以下になっていることを確認してください：
-   > ```javascript
-   > rules_version = '2';
-   > service cloud.firestore {
-   >   match /databases/{database}/documents {
-   >     match /{document=**} {
-   >       allow read, write: if true;
-   >     }
-   >   }
-   > }
-   > ```
+   > **【重要】セキュリティルールの設定**
+   > 本番では全開放ルール (`allow read, write: if true;`) は使用しません。
+   > 以下の制約を持つ `firestore.rules` で管理されています：
+   > - `formations_gw`, `formations_multi`, `formations_high` の3コレクションのみパブリックリードを許可。
+   > - ブラウザからの直接の書き込みはすべて禁止（すべてCloud RunのAPIを経由）。
+   > - `notification_tokens` やその他の内部コレクションへのブラウザからのアクセスは完全に禁止。
+   >
+   > **テスト方法（Firestore Emulator）**
+   > `npm install` 実行後、ローカルで以下のコマンドによりテストが実行可能です：
+   > `npm test`
+   > ※ この際、本番への接続を防ぐため `demo-` プレフィックスをもつ架空のプロジェクトIDを利用します。
+   >
+   > **本番適用について**
+   > 現在の Phase D1 では本番へのデプロイを行いません。ルールの本番適用は Phase D2 で実施予定です。
 
 ---
 
