@@ -273,7 +273,7 @@
     });
     serverState = confirmed;
     lastRegisteredToken = token;
-    renderNotificationState(STATES.ON, '新着通知を受信します', completed.desired);
+    renderNotificationState(STATES.ON, '新着通知を受信する設定です', completed.desired);
   }
 
   async function reconcileOnAfterTimeout(installationId, token, intent) {
@@ -345,7 +345,7 @@
       const recentlySynced = Date.now() - intent.last_synced_at < REFRESH_INTERVAL_MS;
       if (status.enabled && lastRegisteredToken === token && recentlySynced) {
         serverState = status;
-        renderNotificationState(STATES.ON, '新着通知を受信します', true);
+        renderNotificationState(STATES.ON, '新着通知を受信する設定です', true);
         return;
       }
       const response = await subscribeWithConflictRetry(installationId, token, status.revision, intent);

@@ -1208,8 +1208,8 @@ Qバブ召喚
             onclick="toggleNotificationPermission()"
             style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.35); color: var(--violet-400); font-size: 0.75rem; font-weight: 700; padding: 6px 14px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"
           >
-            <span id="notifyIcon">🔔</span>
-            <span id="notifyLabel">新着通知をONにする</span>
+            <span id="notifyIcon">⏳</span>
+            <span id="notifyLabel">通知設定を確認中…</span>
           </button>
         </div>
       </div>
@@ -1647,7 +1647,7 @@ Qバブ召喚
         btn.style.borderColor = 'rgba(52, 211, 153, 0.35)';
         btn.style.color = 'var(--emerald-400)';
         icon.textContent = '🔔';
-        label.textContent = message || '新着通知: 受信中';
+        label.textContent = message || '新着通知を受信する設定です';
       } else if (state === 'PENDING_ON' || state === 'PENDING_OFF') {
         btn.style.background = 'rgba(245, 158, 11, 0.15)';
         btn.style.borderColor = 'rgba(245, 158, 11, 0.35)';
@@ -1670,8 +1670,8 @@ Qバブ召喚
         btn.style.background = 'rgba(139, 92, 246, 0.15)';
         btn.style.borderColor = 'rgba(139, 92, 246, 0.35)';
         btn.style.color = 'var(--violet-400)';
-        icon.textContent = '🔔';
-        label.textContent = '新着プッシュ通知をONにする';
+        icon.textContent = '🔕';
+        label.textContent = message || '新着通知を受信しない設定です';
       }
     }
 
