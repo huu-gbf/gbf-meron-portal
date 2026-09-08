@@ -780,10 +780,10 @@ def validate_and_clean_file_knowledge_filename(raw_filename: str | None) -> str:
     if not clean_name or clean_name in (".", ".."):
         raise HTTPException(status_code=400, detail="ファイル名が不正です。")
 
-    if not clean_name.lower().endswith(".txt"):
+    if not (clean_name.lower().endswith(".txt") or clean_name.lower().endswith(".md")):
         raise HTTPException(
             status_code=400,
-            detail="未対応のファイル形式です。現在は .txt ファイルのみ対応しています。"
+            detail="未対応のファイル形式です。現在は .txt / .md ファイルのみ対応しています。"
         )
 
     return clean_name
