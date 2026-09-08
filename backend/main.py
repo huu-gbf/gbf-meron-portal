@@ -3616,7 +3616,7 @@ async def extract_file_knowledge(
 
     return FileKnowledgeExtractResponse(
         filename=clean_name,
-        file_type=".txt",
+        file_type=os.path.splitext(clean_name)[1].lower(),
         encoding=encoding_used,
         text=normalized_text,
         char_count=char_count,
@@ -3841,7 +3841,7 @@ def register_file_knowledge(
             "content": chunk,
             "source": clean_name,
             "source_type": "file",
-            "file_type": ".txt",
+            "file_type": os.path.splitext(clean_name)[1].lower(),
             "filename": clean_name,
             "title": title,
             "source_key": source_key,

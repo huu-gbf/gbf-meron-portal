@@ -123,3 +123,53 @@ def test_txt_regression():
     data = response.json()
     assert "this is a simple txt test" in data.get("text", "")
     assert data.get("filename") == "regression.txt"
+
+
+# File type metadata: extract response and mocked persistence.
+@pytest.mark.parametrize("filename, expected_type", [
+    ("sample.txt", ".txt"),
+    ("sample.md", ".md"),
+    ("sample.MD", ".md"),
+])
+def test_extract_file_type_metadata(filename, expected_type):
+    response = client.post(
+        "/api/admin/file-knowledge/extract",
+        files={"file": (filename, b"sample content", "text/plain")},
+        headers=HEADERS,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["filename"] == filename
+    assert data["file_type"] == expected_type
+
+
+@pytest.mark.parametrize("filename, expected_type", [
+    ("sample.txt", ".txt"),
+    ("sample.md", ".md"),
+    ("sample.MD", ".md"),
+])
+def test_register_file_type_metadata(filename, expected_type):
+    with patch("backend.main.db") as mock_db, \
+         patch("backend.main.client") as mock_genai, \
+         patch("backend.main.get_existing_file_knowledge_docs", return_value=[]), \
+         patch("backend.main.find_duplicate_knowledge", return_value=None), \
+         patch("backend.main.get_embedding", return_value=[0.1] * 768) as mock_embedding:
+        response = client.post(
+            "/api/admin/file-knowledge/register",
+            json={
+                "filename": filename,
+                "title": "Metadata regression",
+                "source_key": filename,
+                "text": "sample content",
+            },
+            headers=HEADERS,
+        )
+        assert response.status_code == 200
+        batch = mock_db.batch.return_value
+        batch.set.assert_called_once()
+        saved_data = batch.set.call_args.args[1]
+        assert saved_data["filename"] == filename
+        assert saved_data["file_type"] == expected_type
+        batch.commit.assert_called_once()
+        mock_embedding.assert_called_once()
+        assert not mock_genai.mock_calls
