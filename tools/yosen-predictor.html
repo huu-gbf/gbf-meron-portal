@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🏁 古戦場 予選24:00着地予想</title>
+  <style>
+    /* CSS reset and basics */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      line-height: 1.6;
+      padding: 16px;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; text-align: center; }
+    p.desc { font-size: 0.9rem; color: #94a3b8; margin-bottom: 20px; text-align: center; }
+    
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 1.1rem; }
+    .sub-label { font-size: 0.85rem; color: #cbd5e1; margin-bottom: 4px; display: block; }
+    
+    input[type="text"], select {
+      width: 100%;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1.1rem;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+    
+    .error { color: #ef4444; font-size: 0.9rem; margin-top: 4px; display: none; }
+    .info { color: #38bdf8; font-size: 0.95rem; margin-top: 8px; }
+    
+    .result-section {
+      display: none;
+      margin-top: 24px;
+      animation: fadeIn 0.3s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .metric-card {
+      background: rgba(15, 23, 42, 0.5);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .metric-label { font-size: 0.8rem; color: #94a3b8; }
+    .metric-value { font-size: 1.2rem; font-weight: bold; color: #fff; margin-top: 4px; }
+    .metric-value.highlight { color: #38bdf8; font-size: 1.4rem; }
+    .metric-value.range { font-size: 1.1rem; color: #cbd5e1; }
+    
+    .full-width { grid-column: span 2; }
+    
+    details summary::-webkit-details-marker { display: none; }
+    .calc-details summary { list-style: none; }
+    
+    .note { font-size: 0.75rem; color: #64748b; margin-top: 20px; text-align: center; }
+    .model-section { margin-top:24px; font-size:.85rem; color:#cbd5e1; }
+    .model-section h3 { font-size:1rem; margin-bottom:8px; color:#fff; }
+    .model-section p { margin:8px 0; }
+    .chart-legend { display:flex; flex-wrap:wrap; gap:12px; }
+    #historyChart svg { display:block; width:100%; height:auto; }
+    #chartSelection { min-height:80px; padding:8px; background:#1e293b; border-radius:6px; }
+    .table-scroll { overflow-x:auto; margin:12px 0; }
+    .model-table { border-collapse:collapse; width:100%; white-space:nowrap; font-size:.8rem; }
+    .model-table th,.model-table td { padding:8px; border-bottom:1px solid #334155; text-align:right; }
+    .model-table th:first-child,.model-table td:first-child { text-align:left; }
+    .special-note { color:#fbbf24; }
+    #historyChart [role="button"] { cursor:pointer; outline:none; }
+    #historyChart [role="button"]:focus { stroke:white; stroke-width:2; }
+    .tool-notice { font-size:0.85rem; line-height:1.8; color:#cbd5e1; margin:12px 0; overflow-wrap:anywhere; }
+    .tool-disclaimer { margin-top:24px; padding-top:16px; border-top:1px solid #334155; font-size:0.85rem; line-height:1.8; color:#cbd5e1; overflow-wrap:anywhere; }
+    .tool-disclaimer h2 { font-size:1rem; margin-bottom:12px; }
+    .tool-disclaimer p + p { margin-top:12px; }
+  
+    .portal-nav { max-width:600px; margin:0 auto 12px; }
+    .portal-nav a { display:inline-flex; align-items:center; min-height:44px; padding:10px 14px; color:#cbd5e1; background:#0f172a; border:1px solid #334155; border-radius:8px; text-decoration:none; }
+    .portal-nav a:hover { color:#fcd34d; border-color:#f59e0b; }
+    .portal-nav a:focus-visible { outline:2px solid #38bdf8; outline-offset:3px; }
+  </style>
+</head>
+<body>
+  <nav class="portal-nav" aria-label="ポータルナビゲーション">
+    <a href="../index.html#sec-links">← ツール一覧へ戻る</a>
+  </nav>
+
+  <div class="container">
+    <div class="glass-card">
+      <h1>🏁 古戦場 予選24:00着地予想</h1>
+      <p class="desc">12時・18時の累計貢献度から、過去傾向と当日の実測ペースを参考に予選終了時の着地を予想します。</p>
+      <p class="tool-notice">非公式・ファン制作の予測ツールです。表示される数値は過去データ等をもとにした参考予測であり、実際の結果を保証するものではありません。</p>
+      
+      <div class="form-group">
+        <label>開催条件（曜日）</label>
+        <select id="dayType">
+          <option value="weekday">平日</option>
+          <option value="saturday">土曜</option>
+          <option value="sunday">日曜</option>
+          <option value="holiday">祝日</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label>① 12:00時点</label>
+        <span class="sub-label">累計貢献度</span>
+        <input type="text" id="score12" placeholder="例: 100,000,000,000" inputmode="numeric">
+        <div id="err12" class="error"></div>
+        <div id="info12" class="info">18:00のデータを入力すると予想できます</div>
+      </div>
+      
+      <div class="form-group">
+        <label>② 18:00時点</label>
+        <span class="sub-label">累計貢献度</span>
+        <input type="text" id="score18" placeholder="例: 160,000,000,000" inputmode="numeric">
+        <div id="err18" class="error"></div>
+      </div>
+      
+      <div id="result18" class="result-section">
+        <h2 style="font-size: 1.2rem; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px;">18時時点 予想</h2>
+        <div class="metric-grid">
+          <div class="metric-card full-width">
+            <div class="metric-label">12〜18時 平均時速</div>
+            <div class="metric-value" id="valDaySpeed">-</div>
+          </div>
+          <div class="metric-card full-width" style="background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3);">
+            <div class="metric-label">24:00 通常予想</div>
+            <div class="metric-value highlight" id="valPred18">-</div>
+          </div>
+          <div class="metric-card full-width">
+            <div class="metric-label">予想レンジ</div>
+            <div class="metric-value range" id="valRange18">-</div>
+          </div>
+        </div>
+        <p style="font-size:0.8rem; color:#94a3b8; text-align:center; margin-bottom:4px;">予想は過去大会と当日の実測をもとにした参考値です。</p>
+        <p class="tool-notice">⚠️ 本ツールの数値は予測です。過去の記録と当日の進行状況をもとに統計的に算出した参考値であり、実際の最終結果を保証するものではありません。<br>参加状況、ゲーム内環境、開催条件等により、実際の結果が予測から大きく変動する場合があります。</p>
+        <p id="holidayWarn18" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none;">祝日は過去サンプルが少ないため予想幅を広めにしています。</p>
+        <p id="rangeWarn18" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none;">過去データ範囲外のため不確実性が高めです。</p>
+      </div>
+
+      <div class="form-group" style="margin-top: 24px;">
+        <label>③ 20:00時点 <span style="font-size: 0.9rem; font-weight: normal; color: #94a3b8;">(任意)</span></label>
+        <span class="sub-label">累計貢献度</span>
+        <input type="text" id="score20" placeholder="例: 200,000,000,000" inputmode="numeric">
+        <div id="err20" class="error"></div>
+      </div>
+      
+      <div id="result20" class="result-section">
+        <h2 style="font-size: 1.2rem; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px;">🌙 20時時点 更新予想</h2>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">18〜20時 実測時速</div>
+            <div class="metric-value" id="valNightSpeed">-</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">夜の動き</div>
+            <div class="metric-value" id="valNightPace">-</div>
+          </div>
+          <div class="metric-card full-width" style="background: rgba(167, 139, 250, 0.1); border-color: rgba(167, 139, 250, 0.3);">
+            <div class="metric-label">24:00 通常予想</div>
+            <div class="metric-value highlight" id="valPred20" style="color: #a78bfa;">-</div>
+          </div>
+          <div class="metric-card full-width">
+            <div class="metric-label">予想レンジ</div>
+            <div class="metric-value range" id="valRange20">-</div>
+          </div>
+        </div>
+        <p id="holidayWarn20" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none; margin-top:8px;">休日判定は参考値です。</p>
+        <p id="rangeWarn20" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none;">過去データ範囲外のため予想の不確実性が高めです。</p>
+      </div>
+      
+      <details class="calc-details" id="calcDetails" style="display: none; margin-top: 24px; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 8px;">
+        <summary style="cursor: pointer; font-weight: bold; color: #38bdf8; outline: none; margin-bottom: 8px;">📐 予測の計算・過去データを見る</summary>
+        
+        <div style="margin-top: 16px;">
+          <h3 style="font-size: 1rem; color: #fff; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 4px;">📐 今回の計算</h3>
+          <div id="calcExplanation" style="font-size: 0.9rem; color: #cbd5e1; background: rgba(0, 0, 0, 0.2); padding: 12px; border-radius: 6px; white-space: pre-wrap; font-family: monospace;"></div>
+        </div>
+
+        <div style="margin-top: 24px;">
+          <h3 style="font-size: 1rem; color: #fff; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 4px;">📊 過去古戦場の実測傾向</h3>
+          <p style="font-size:0.8rem;color:#94a3b8">昼平均：12〜18時相当／夜平均：18〜24時相当。夜の伸び倍率 = 夜平均 ÷ 昼平均。</p>
+          <div id="historyStats" style="font-size: 0.9rem; color: #cbd5e1; display: grid; grid-template-columns: 1fr; gap: 8px;">
+            <!-- Generated via JS -->
+          </div>
+          
+          <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 12px;">
+            土日は昼から速度が高くなりやすい一方、平日は昼から夜にかけて速度が大きく伸びる傾向があります。祝日の平均は特殊開催も含む履歴の参考値です。<br><br>
+            近年は貢献度速度そのものが大きく上昇しているため、単純な過去平均だけでは現在の着地予測には使えません。本ツールでは当日の実測速度と過去データから作成した回帰モデルを使って24:00の速度を推定しています。
+          </p>
+          <div style="font-size: 0.75rem; color: #64748b; margin-top: 12px; padding-top: 8px; border-top: 1px dashed #334155;">
+            <span id="historyCoverage"></span><br>
+            ※ 表示されている曜日別平均は単純平均です。古い大会を含むため、現在の速度水準そのものを表す値ではありません。近年ほど絶対速度が上昇しているため、古い大会を含む単純平均は参考値です。
+          </div>
+        </div>
+        <details class="model-section" style="margin-top:16px;overflow-wrap:anywhere">
+          <summary style="cursor:pointer;color:#94a3b8">🧪 候補モデル シャドー比較（18時・検証用）</summary>
+          <p>候補モデルは検証用です。本番予測には使用していません。</p>
+          <p>候補モデルの優位性はまだ確定していません。休日候補は正常6大会、walk-forward有効検証3大会です。20時モデルの比較・自動記録は行いません。</p>
+          <div id="shadowComparison" aria-live="polite">有効な12時・18時の入力が揃うと表示します。</div>
+        </details>
+        <section class="model-section">
+          <h3>📈 過去20大会 夜の伸び倍率</h3>
+          <p>各大会で、12〜18時相当の平均速度に対して18〜24時相当の平均速度が何倍まで伸びたかを示しています。値が高いほど、夜に速度が大きく伸びた大会です。</p>
+          <p>履歴の色・形は実際の曜日を示します。モデル分析上は土曜・日曜・祝日を「休日」として統合します。</p>
+          <div id="chartLegend" class="chart-legend"></div>
+          <div id="historyChart"></div>
+          <p id="chartSelection" aria-live="polite">点をタップ・hover、またはキーボードで選ぶと詳細を表示します。</p>
+          <p class="special-note">⚠ 第65回は特殊開催です。開催障害・日程変更・インターバル中止等があったため、予測モデルの計算対象から除外。履歴として表示していますが、新モデル候補の計算には使用しません（現行モデルは変更していません）。</p>
+        </section>
+        <section class="model-section">
+          <h3>18時モデル候補の比較・検証（未採用）</h3>
+          <p>本番予測は現行CONFIGを使用しています。比較候補は通常回帰（重みなし）と減衰率0.90・0.85の重み付き回帰です。重みは 減衰率 ^ (最新大会番号 − 大会番号)。欠測大会も経過数に含み、特殊開催・対象外指定は重み0です。</p>
+          <p>昼平均 X（12〜18時相当）、夜平均 Y（18〜24時相当）（億/h）として Y = intercept + slope × X を最小二乗法で算出します。誤差は |予測 − 実測| ÷ 実測 × 100。各比較の評価対象は通常開催に統一し、直近5はその評価対象の最新5件です。</p>
+          <p>以下は学習に使った履歴での誤差です。将来の予測精度の改善を保証する検証ではありません。現行の学習数はCONFIG記載値、新候補の学習数は履歴から算出しています。休日の現行評価は大会ごとの曜日に対応する本番係数を使います（土日と祝日で係数が異なります）。</p>
+          <div id="modelComparison"></div>
+          <details style="margin-top:16px">
+            <summary style="cursor:pointer;color:#38bdf8">🧪 過去大会で未来予測テスト</summary>
+            <p>対象大会より前の通常開催だけで、毎回モデルを作り直します。最低学習数は3大会。昼平均の最大値−最小値が0.10億/h未満なら、回帰が不安定なため検証を見送ります。平日は平日、休日は土曜・日曜・祝日を統合して学習します。現行CONFIGの係数は使いません。</p>
+            <p>重み = 減衰率 ^ age。ageは学習対象内の最新大会番号との差（欠測大会も経過数に含む）です。最新学習大会の重みは1。第65回は学習・評価ともに除外します。</p>
+            <p>予測夜平均 = intercept + slope × 昼平均。誤差率 = |予測 − 実測| ÷ 実測 × 100。直近3・5件は各分類の検証対象から選び、必要件数に満たない場合は「算出不可」と表示します。</p>
+            <div id="walkForwardResults"></div>
+            <p>少数の履歴による比較です。結果を見て減衰率を選ぶと過剰適合する可能性があります。本番採用は行いません。将来の精度を保証する結果ではありません。</p>
+          </details>
+          <p class="special-note">20時モデル再計算には元データ不足：18〜20時・20〜24時実測値がありません。現行20時CONFIGを維持しています。</p>
+        </section>
+      </details>
+
+      <p class="note">本ツールの結果は過去大会と当日の実測ペースをもとにした参考予測です。<br>古戦場の環境・ボス・編成・参加状況などにより実際の結果は変動します。</p>
+      <section class="tool-disclaimer" aria-labelledby="tool-disclaimer-title">
+        <h2 id="tool-disclaimer-title">本ツールについて・免責事項</h2>
+        <p>本ツールは『グランブルーファンタジー』の古戦場に関する過去の記録等を参考に、独自に集計・分析して作成した非公式の予測ツールです。</p>
+        <p>本ツールは株式会社Cygamesおよび『グランブルーファンタジー』の運営・関係各社とは関係ありません。ゲーム名、サービス名、商標その他の権利は、それぞれの権利者に帰属します。</p>
+        <p>表示される予測値・分析結果は、過去の傾向および入力された当日のデータをもとに算出した参考情報です。実際の順位、貢献度、終了時の結果等を保証するものではありません。</p>
+        <p>本ツールの分析では第三者が公開した過去の情報を参考にしている場合があります。本ツールは、それら第三者情報の正確性、完全性、継続的な提供、または取得方法等を保証するものではありません。</p>
+        <p>第三者サイトの記事、文章、表、デザイン等をそのまま転載することを目的としたものではなく、本ツールでは主に独自に集計・分析した数値および予測結果を利用しています。</p>
+        <p>本ツールの利用および表示された予測結果に基づく判断は、利用者自身の責任で行ってください。</p>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * CONFIG - 予測用係数
+     * 過去データや仕様変更に応じてここを調整する
+     * 
+     * 履歴データ背景情報:
+     * - historical rounds: 62,63,64,65,66,67,68,69,70,71,72,73,74,75,77,78,80,81,82,83
+     * - 76 / 79: データ未収集
+     * - 62〜73: HP増加前
+     * - 74〜79: HP増加後 / 予選95HELLなし
+     * - 80〜: HP増加後 / 予選95HELLあり
+     * 
+     * モデル背景情報:
+     * - model18 weekday: 13 weekday samples
+     * - model18 weekend: 3 Saturday + 2 Sunday = 5 samples
+     * - model18 holiday fallback: 3 Saturday + 2 Sunday + 2 holidays = 7 non-weekday samples
+     *   (holiday-specific observed range: 2 holiday samples)
+     * - model20 weekday: 13 samples
+     * - model20 nonWeekday: 7 samples
+     */
+    const OKU = 100000000;
+
+    const CONFIG = {
+      model18: {
+        weekday: {
+          intercept: 0.958,
+          slope: 2.196,
+          range: { lower: 0.85, upper: 1.20 },
+          observedDaySpeed: { min: 1.03, max: 5.70 },
+          sampleCount: 13
+        },
+        saturday: {
+          intercept: 2.100,
+          slope: 1.257,
+          range: { lower: 0.80, upper: 1.20 },
+          observedDaySpeed: { min: 2.64, max: 5.38 },
+          sampleCount: 5
+        },
+        sunday: {
+          intercept: 2.100,
+          slope: 1.257,
+          range: { lower: 0.80, upper: 1.20 },
+          observedDaySpeed: { min: 2.64, max: 5.38 },
+          sampleCount: 5
+        },
+        holiday: {
+          intercept: 2.171,
+          slope: 1.237,
+          range: { lower: 0.70, upper: 1.35 },
+          observedDaySpeed: { min: 1.18, max: 1.53 },
+          modelSampleCount: 7,
+          holidaySampleCount: 2
+        }
+      },
+
+      expectedEarly: {
+        weekday: { intercept: 0.504, slope: 1.436 },
+        nonWeekday: { intercept: 0.636, slope: 1.127 }
+      },
+
+      model20: {
+        weekday: {
+          intercept: 0.372,
+          slope: 1.771,
+          range: { lower: 0.80, upper: 1.25 },
+          observedEarlySpeed: { min: 1.89, max: 9.58 },
+          sampleCount: 13
+        },
+        nonWeekday: {
+          intercept: 2.450,
+          slope: 1.090,
+          range: { lower: 0.85, upper: 1.15 },
+          observedEarlySpeed: { min: 1.84, max: 7.37 },
+          sampleCount: 7
+        }
+      },
+
+      paceThresholds: [
+        { limit: 0.85, label: "想定より遅い" },
+        { limit: 1.15, label: "想定内" },
+        { limit: 1.30, label: "想定より速い" }
+      ]
+    };
+
+    /**
+     * 履歴の新定義（億/h）：海外サイトの20分速度データをJSTへ+1時間補正して集計。
+     * dayAvg: サイト11:20〜17:00 ≒ JST 12:20〜18:00（12〜18時相当）。
+     * nightAvg: サイト17:20〜23:00 ≒ JST 18:20〜24:00（18〜24時相当）。
+     * ratio: nightAvg / dayAvg（提供された再集計値を小数4桁で保存）。
+     * 欠損「-」は除外。第62回の日中の不自然な0も欠損として除外。
+     * 第63回：サイト21:00「-」は除外。先頭の「3:00 49184」は並び順から23:00扱い。
+     * 第80回：サイト20:00「-」は除外。第76・79回は未収集のため追加しない。
+     * legacy系は旧JST 7:20〜17:40 → 18:00〜24:00の値を内部保存するだけで、
+     * 通常UI・比較モデル・検証には使用しない。本番CONFIGとは独立した履歴。
+     */
+    const HISTORY_DATA = [
+      { round: 62, dayType: "weekday", dayAvg: 1.0890, nightAvg: 3.3047, ratio: 3.0347, legacyDayAvg: 0.99, legacyNightAvg: 3.20, legacyRatio: 3.24, special: false, specialReason: "", includeInModel: true },
+      { round: 63, dayType: "weekday", dayAvg: 1.0813, nightAvg: 3.2328, ratio: 2.9898, legacyDayAvg: 0.91, legacyNightAvg: 3.15, legacyRatio: 3.48, special: false, specialReason: "", includeInModel: true },
+      { round: 64, dayType: "weekday", dayAvg: 1.0723, nightAvg: 3.1134, ratio: 2.9034, legacyDayAvg: 0.90, legacyNightAvg: 3.04, legacyRatio: 3.39, special: false, specialReason: "", includeInModel: true },
+      { round: 65, dayType: "holiday", dayAvg: 1.1832, nightAvg: 4.1916, ratio: 3.5426, legacyDayAvg: 1.03, legacyNightAvg: 4.04, legacyRatio: 3.93, special: true, specialReason: "開催障害・日程変更・インターバル中止", includeInModel: false },
+      { round: 66, dayType: "weekday", dayAvg: 1.7786, nightAvg: 5.6392, ratio: 3.1706, legacyDayAvg: 1.56, legacyNightAvg: 5.48, legacyRatio: 3.52, special: false, specialReason: "", includeInModel: true },
+      { round: 67, dayType: "weekday", dayAvg: 1.0339, nightAvg: 3.3178, ratio: 3.2091, legacyDayAvg: 0.92, legacyNightAvg: 3.20, legacyRatio: 3.48, special: false, specialReason: "", includeInModel: true },
+      { round: 68, dayType: "holiday", dayAvg: 1.5267, nightAvg: 3.4569, ratio: 2.2643, legacyDayAvg: 1.36, legacyNightAvg: 3.31, legacyRatio: 2.44, special: false, specialReason: "", includeInModel: true },
+      { round: 69, dayType: "weekday", dayAvg: 1.0970, nightAvg: 3.5295, ratio: 3.2173, legacyDayAvg: 1.00, legacyNightAvg: 3.41, legacyRatio: 3.42, special: false, specialReason: "", includeInModel: true },
+      { round: 70, dayType: "weekday", dayAvg: 1.1257, nightAvg: 3.7817, ratio: 3.3593, legacyDayAvg: 0.98, legacyNightAvg: 3.67, legacyRatio: 3.76, special: false, specialReason: "", includeInModel: true },
+      { round: 71, dayType: "saturday", dayAvg: 2.6384, nightAvg: 5.6087, ratio: 2.1258, legacyDayAvg: 2.09, legacyNightAvg: 5.45, legacyRatio: 2.60, special: false, specialReason: "", includeInModel: true },
+      { round: 72, dayType: "weekday", dayAvg: 2.0344, nightAvg: 5.3457, ratio: 2.6277, legacyDayAvg: 1.77, legacyNightAvg: 5.20, legacyRatio: 2.94, special: false, specialReason: "", includeInModel: true },
+      { round: 73, dayType: "saturday", dayAvg: 3.5582, nightAvg: 6.8055, ratio: 1.9126, legacyDayAvg: 3.01, legacyNightAvg: 6.64, legacyRatio: 2.20, special: false, specialReason: "", includeInModel: true },
+      { round: 74, dayType: "sunday", dayAvg: 4.2639, nightAvg: 7.2440, ratio: 1.6989, legacyDayAvg: 3.65, legacyNightAvg: 7.09, legacyRatio: 1.94, special: false, specialReason: "", includeInModel: true },
+      { round: 75, dayType: "weekday", dayAvg: 2.4942, nightAvg: 5.8717, ratio: 2.3541, legacyDayAvg: 2.14, legacyNightAvg: 5.72, legacyRatio: 2.67, special: false, specialReason: "", includeInModel: true },
+      { round: 77, dayType: "weekday", dayAvg: 2.3178, nightAvg: 5.9456, ratio: 2.5653, legacyDayAvg: 2.04, legacyNightAvg: 5.80, legacyRatio: 2.85, special: false, specialReason: "", includeInModel: true },
+      { round: 78, dayType: "sunday", dayAvg: 4.0887, nightAvg: 6.6855, ratio: 1.6351, legacyDayAvg: 3.43, legacyNightAvg: 6.54, legacyRatio: 1.91, special: false, specialReason: "", includeInModel: true },
+      { round: 80, dayType: "saturday", dayAvg: 5.3828, nightAvg: 9.2002, ratio: 1.7092, legacyDayAvg: 4.35, legacyNightAvg: 9.06, legacyRatio: 2.08, special: false, specialReason: "", includeInModel: true },
+      { round: 81, dayType: "weekday", dayAvg: 4.6538, nightAvg: 9.9740, ratio: 2.1432, legacyDayAvg: 4.05, legacyNightAvg: 9.73, legacyRatio: 2.40, special: false, specialReason: "", includeInModel: true },
+      { round: 82, dayType: "weekday", dayAvg: 5.6994, nightAvg: 13.6247, ratio: 2.3906, legacyDayAvg: 5.05, legacyNightAvg: 13.23, legacyRatio: 2.62, special: false, specialReason: "", includeInModel: true },
+      { round: 83, dayType: "weekday", dayAvg: 5.6539, nightAvg: 14.2627, ratio: 2.5226, legacyDayAvg: 4.95, legacyNightAvg: 13.90, legacyRatio: 2.81, special: false, specialReason: "", includeInModel: true }
+    ];
+
+    function renderHistoryStats() {
+      const stats = {
+        weekday: { name: '平日', count: 0, sumDay: 0, sumNight: 0, sumRatio: 0 },
+        saturday: { name: '土曜', count: 0, sumDay: 0, sumNight: 0, sumRatio: 0 },
+        sunday: { name: '日曜', count: 0, sumDay: 0, sumNight: 0, sumRatio: 0 },
+        holiday: { name: '祝日', count: 0, sumDay: 0, sumNight: 0, sumRatio: 0 }
+      };
+
+      HISTORY_DATA.forEach(d => {
+        const s = stats[d.dayType];
+        s.count++;
+        s.sumDay += d.dayAvg;
+        s.sumNight += d.nightAvg;
+        s.sumRatio += d.ratio ?? d.nightAvg / d.dayAvg;
+      });
+
+      const container = document.getElementById('historyStats');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const currentDayType = els.dayType.value;
+      const order = ['weekday', 'saturday', 'sunday', 'holiday'];
+
+      order.forEach(key => {
+        const s = stats[key];
+        if (s.count === 0) return;
+        
+        // 浮動小数点加算の微小な誤差（例: 1.94 + 1.91 = 3.8499999999999996）を吸収するため
+        // Number.EPSILON ではなく、十分な大きさの微小値（0.00001）を足してから四捨五入する
+        const calcAvg = val => (Math.round((val / s.count) * 100 + 0.00001) / 100).toFixed(2);
+        const avgDay = calcAvg(s.sumDay);
+        const avgNight = calcAvg(s.sumNight);
+        const avgRatio = calcAvg(s.sumRatio);
+        
+        const isSelected = (key === currentDayType);
+        const color = isSelected ? '#38bdf8' : '#cbd5e1';
+        const bg = isSelected ? 'rgba(56, 189, 248, 0.1)' : 'transparent';
+        const prefix = isSelected ? '▶ ' : '&nbsp;&nbsp;';
+
+        const html = `
+          <div style="padding: 8px; border-radius: 4px; background: ${bg}; color: ${color};">
+            <div style="font-weight: bold; margin-bottom: 4px;">${prefix}${s.name} <span style="font-size:0.75rem; color:#64748b; font-weight:normal;">(${s.count}大会)</span></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 0.85rem; padding-left: 16px;">
+              <div>昼平均 ${avgDay}億/h</div>
+              <div>夜平均 ${avgNight}億/h</div>
+              <div>夜の伸び ×${avgRatio}</div>
+            </div>
+          </div>
+        `;
+        container.innerHTML += html;
+      });
+    }
+
+    // Comparison-only models. Never referenced by calculate() or CONFIG.
+    const DAY_STYLES = {
+      weekday: { name: '平日', color: '#38bdf8', symbol: '●' },
+      saturday: { name: '土曜', color: '#a78bfa', symbol: '■' },
+      sunday: { name: '日曜', color: '#fb7185', symbol: '▲' },
+      holiday: { name: '祝日', color: '#fbbf24', symbol: '◆' }
+    };
+    // 分析専用の休日定義。本番の曜日選択・CONFIGとは独立。
+    const HOLIDAY_TYPES = ['saturday', 'sunday', 'holiday'];
+    const isHolidayType = d => HOLIDAY_TYPES.includes(d.dayType);
+    let GENERATED_MODEL = {};
+    const isUsable = d => !d.special && d.includeInModel !== false &&
+      Number.isFinite(d.dayAvg) && d.dayAvg > 0 && Number.isFinite(d.nightAvg) && d.nightAvg > 0;
+    const modelWeight = (d, latest, decay = 0.9) => isUsable(d) ? Math.pow(decay, latest - d.round) : 0;
+    const ratioOf = d => d.ratio ?? d.nightAvg / d.dayAvg;
+    const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    function fitWeighted(rows, latest, decay = 0.9) {
+      const used = rows.filter(isUsable);
+      const base = { sampleCount: used.length, excludedCount: rows.length - used.length };
+      if (used.length < 2) return { ...base, available: false };
+      const sw = used.reduce((s,d) => s + modelWeight(d, latest, decay), 0);
+      const mx = used.reduce((s,d) => s + modelWeight(d, latest, decay) * d.dayAvg, 0) / sw;
+      const my = used.reduce((s,d) => s + modelWeight(d, latest, decay) * d.nightAvg, 0) / sw;
+      const xx = used.reduce((s,d) => s + modelWeight(d, latest, decay) * (d.dayAvg-mx)**2, 0);
+      if (!Number.isFinite(xx) || xx <= Number.EPSILON * sw) return { ...base, available: false };
+      const xy = used.reduce((s,d) => s + modelWeight(d, latest, decay) * (d.dayAvg-mx) * (d.nightAvg-my), 0);
+      const slope = xy / xx;
+      return { ...base, available: true, intercept: my - slope * mx, slope };
+    }
+
+    function evaluateModel(model, rows) {
+      const used = rows.filter(isUsable).sort((a,b) => b.round-a.round);
+      if (!used.length || (!model.predict && !Number.isFinite(model.intercept))) return { count: used.length, mean: null, max: null, recent: null };
+      const errors = used.map(d => Math.abs((model.predict ? model.predict(d) : model.intercept + model.slope*d.dayAvg)-d.nightAvg)/d.nightAvg*100);
+      const mean = xs => xs.reduce((s,x) => s+x,0)/xs.length;
+      return { count: used.length, mean: mean(errors), max: Math.max(...errors), recent: mean(errors.slice(0,5)) };
+    }
+
+    function comparisonTable(current, candidates, rows) {
+      const f = n => n == null ? '算出不可' : n.toFixed(2)+'%';
+      const line = (name,m,n,excluded) => {
+        const e = evaluateModel(m,rows);
+        const coefficient = key => Number.isFinite(m[key]) ? m[key].toFixed(6) : m.predict ? '曜日別' : '—';
+        return `<tr><th>${name}</th><td>${coefficient('intercept')}</td><td>${coefficient('slope')}</td><td>${n}</td><td>${excluded}</td><td>${e.count}</td><td>${f(e.mean)}</td><td>${f(e.max)}</td><td>${f(e.recent)}</td></tr>`;
+      };
+      return `<div class="table-scroll"><table class="model-table"><thead><tr><th>モデル</th><th>intercept</th><th>slope</th><th>学習数</th><th>学習除外数</th><th>評価数</th><th>平均誤差</th><th>最大誤差</th><th>直近5件※</th></tr></thead><tbody>${line('現行（本番）',current,current.sampleCount,'不明（固定係数）')}${candidates.map(([name,m]) => line(name,m,m.sampleCount,m.excludedCount)).join('')}</tbody></table></div><p>※5件未満は全件。評価除外 ${rows.filter(d => !isUsable(d)).length}件。候補は比較専用・未採用です。</p>`;
+    }
+
+    function renderHistoryChart() {
+      const all = [...HISTORY_DATA].sort((a,b) => a.round-b.round);
+      const rows = all.slice(-20);
+      document.getElementById('historyCoverage').textContent = all.length ? `※ 第${all[0].round}〜${all.at(-1).round}回のデータが存在する${all.length}大会を集計（欠測大会は含まず）。曜日別平均は特殊開催を含みます。` : '履歴なし';
+      document.getElementById('chartLegend').innerHTML = Object.values(DAY_STYLES).map(s => `<span style="color:${s.color}">${s.symbol} ${s.name}</span>`).join('');
+      if (!rows.length) { document.getElementById('historyChart').textContent = '履歴なし'; return; }
+      const width=440, height=260, left=38, right=18, top=28, bottom=36;
+      const maxY=Math.max(1, Math.ceil(Math.max(...rows.map(ratioOf))));
+      const x=d => left+(d.round-rows[0].round)/Math.max(1,rows.at(-1).round-rows[0].round)*(width-left-right);
+      const y=d => top+(maxY-ratioOf(d))/maxY*(height-top-bottom);
+      const desc=d => `第${d.round}回・${DAY_STYLES[d.dayType].name} / 昼平均（12〜18時相当）${d.dayAvg.toFixed(2)}億/h / 夜平均（18〜24時相当）${d.nightAvg.toFixed(2)}億/h / 夜平均 ÷ 昼平均 ×${ratioOf(d).toFixed(2)} / ${d.special ? '⚠ 特殊開催：'+d.specialReason : '通常開催'} / 新候補の学習：${isUsable(d) ? '対象' : '除外'}`;
+      let svg=`<svg viewBox="0 0 ${width} ${height}" role="group" aria-label="過去20大会の夜の伸び倍率。各点を選択すると詳細を表示"><text x="4" y="17" fill="#cbd5e1" font-size="12">倍率</text>`;
+      for(let i=0;i<=4;i++) {
+        const value=maxY*i/4, py=top+(1-i/4)*(height-top-bottom);
+        svg+=`<path d="M${left} ${py}H${width-right}" stroke="#334155"/><text x="2" y="${py+4}" fill="#cbd5e1" font-size="12">${value.toFixed(1)}</text>`;
+      }
+      for(let i=1;i<rows.length;i++) svg+=`<path d="M${x(rows[i-1])} ${y(rows[i-1])}L${x(rows[i])} ${y(rows[i])}" fill="none" stroke="#94a3b8" ${rows[i].special || rows[i-1].special ? 'stroke-dasharray="4 4"' : ''}/>`;
+      rows.forEach((d,i) => {
+        const px=x(d),py=y(d),s=DAY_STYLES[d.dayType];
+        const shape=d.dayType==='weekday' ? `<circle cx="${px}" cy="${py}" r="5"/>` : d.dayType==='saturday' ? `<rect x="${px-5}" y="${py-5}" width="10" height="10"/>` : d.dayType==='sunday' ? `<path d="M${px} ${py-6}l6 11h-12z"/>` : `<path d="M${px} ${py-6}l6 6l-6 6l-6-6z"/>`;
+        svg+=`<g tabindex="0" role="button" data-round="${d.round}" aria-label="${escapeHTML(desc(d))}" fill="${s.color}"><title>${escapeHTML(desc(d))}</title><circle cx="${px}" cy="${py}" r="11" fill="transparent"/>${shape}${d.special ? `<circle cx="${px}" cy="${py}" r="9" fill="none" stroke="#fbbf24" stroke-dasharray="2 2"/><text x="${px}" y="${py-14}" text-anchor="middle" font-size="12">⚠</text>` : ''}</g>`;
+        if(i===0 || i===rows.length-1 || (d.round%5===0 && i>1 && i<rows.length-2)) svg+=`<text x="${px}" y="${height-16}" text-anchor="middle" fill="#cbd5e1" font-size="12">${d.round}</text>`;
+      });
+      document.getElementById('historyChart').innerHTML=svg+'</svg>';
+      document.querySelectorAll('#historyChart [data-round]').forEach(point => {
+        const show=() => { document.getElementById('chartSelection').textContent=desc(rows.find(d => d.round===Number(point.dataset.round))); };
+        ['pointerenter','click','focus'].forEach(event => point.addEventListener(event,show));
+        point.addEventListener('keydown',e => { if(e.key==='Enter' || e.key===' ') { e.preventDefault(); show(); } });
+      });
+    }
+
+    // Call after a future history-entry UI adds a row; reloading also rebuilds everything.
+    function refreshHistoryModels() {
+      const latest=Math.max(...HISTORY_DATA.map(d => d.round));
+      const weekday=HISTORY_DATA.filter(d => d.dayType==='weekday');
+      const holiday=HISTORY_DATA.filter(isHolidayType);
+      const candidates = rows => [
+        ['通常回帰（重みなし）',fitWeighted(rows,latest,1)],
+        ['重み付き 0.90',fitWeighted(rows,latest,0.90)],
+        ['重み付き 0.85',fitWeighted(rows,latest,0.85)]
+      ];
+      GENERATED_MODEL={ weekday:candidates(weekday), holiday:candidates(holiday) };
+      const currentHoliday = {
+        sampleCount: `土日${CONFIG.model18.saturday.sampleCount}／祝日用${CONFIG.model18.holiday.modelSampleCount}（重複あり）`,
+        predict: d => {
+          const model = CONFIG.model18[d.dayType];
+          return model.intercept + model.slope*d.dayAvg;
+        }
+      };
+      document.getElementById('modelComparison').innerHTML = [
+        ['平日', CONFIG.model18.weekday, GENERATED_MODEL.weekday, weekday],
+        ['休日（土・日・祝）', currentHoliday, GENERATED_MODEL.holiday, holiday]
+      ].map(([name,current,models,rows]) => `<h4>${name}</h4>${comparisonTable(current,models,rows)}`).join('');
+      renderHistoryStats();
+      renderHistoryChart();
+      renderWalkForward();
+    }
+
+    // Validation only: no CONFIG references and no mutation of history or production models.
+    const WF_DECAYS = [1, 0.95, 0.90, 0.85];
+    const WF_MIN_SAMPLES = 3;
+    const WF_MIN_DAY_SPAN = 0.10; // 億/h。昼速度が密集した学習データの異常回帰を防ぐ。
+    const walkForwardDaySpan = training => Math.max(...training.map(d => d.dayAvg)) - Math.min(...training.map(d => d.dayAvg));
+    const wfEligible = d => d.special === false && d.includeInModel === true &&
+      Number.isFinite(d.round) && Number.isFinite(d.dayAvg) && d.dayAvg > 0 &&
+      Number.isFinite(d.nightAvg) && d.nightAvg > 0;
+
+    function fitWalkForward(training, decay) {
+      if (training.length < WF_MIN_SAMPLES) return null;
+      if (walkForwardDaySpan(training) < WF_MIN_DAY_SPAN) return null;
+      const latest = Math.max(...training.map(d => d.round));
+      const weights = training.map(d => decay ** (latest - d.round));
+      const sumWeight = weights.reduce((sum,w) => sum+w,0);
+      const meanX = training.reduce((sum,d,i) => sum+weights[i]*d.dayAvg,0)/sumWeight;
+      const meanY = training.reduce((sum,d,i) => sum+weights[i]*d.nightAvg,0)/sumWeight;
+      const variance = training.reduce((sum,d,i) => sum+weights[i]*(d.dayAvg-meanX)**2,0);
+      if (!Number.isFinite(variance) || variance <= Number.EPSILON*sumWeight) return null;
+      const covariance = training.reduce((sum,d,i) => sum+weights[i]*(d.dayAvg-meanX)*(d.nightAvg-meanY),0);
+      const slope = covariance/variance, intercept = meanY-slope*meanX;
+      if (!Number.isFinite(slope) || !Number.isFinite(intercept)) return null;
+      return { intercept, slope, latest, weights };
+    }
+
+    function walkForward(history, targetTypes, trainingTypes) {
+      const eligible = history.filter(wfEligible).sort((a,b) => a.round-b.round);
+      const tested = [], skipped = [];
+      for (const target of eligible.filter(d => targetTypes.includes(d.dayType))) {
+        const training = eligible.filter(d => d.round < target.round && trainingTypes.includes(d.dayType));
+        const models = WF_DECAYS.map(decay => fitWalkForward(training,decay));
+        if (models.some(model => model === null)) {
+          skipped.push({ round:target.round, count:training.length,
+            reason:training.length < WF_MIN_SAMPLES ? '学習数不足（最低3大会）' :
+              walkForwardDaySpan(training) < WF_MIN_DAY_SPAN ? '昼平均の範囲が狭すぎるため回帰が不安定（0.10億/h未満）' : '昼平均の分散不足などにより回帰算出不可' });
+          continue;
+        }
+        tested.push({ round:target.round, dayType:target.dayType, actual:target.nightAvg,
+          trainingRounds:training.map(d => d.round),
+          predictions:models.map((model,i) => {
+            const predicted = model.intercept+model.slope*target.dayAvg;
+            return { decay:WF_DECAYS[i], ...model, predicted,
+              error:Math.abs(predicted-target.nightAvg)/target.nightAvg*100 };
+          }) });
+      }
+      return { tested, skipped };
+    }
+
+    function summarizeWalkForward(tested, decay) {
+      const errors = [...tested].sort((a,b) => a.round-b.round)
+        .map(d => d.predictions.find(p => p.decay === decay).error);
+      const average = values => values.reduce((sum,v) => sum+v,0)/values.length;
+      const sorted = [...errors].sort((a,b) => a-b), count = errors.length;
+      return { count, mean:count ? average(errors) : null,
+        median:count ? (sorted[Math.floor((count-1)/2)]+sorted[Math.floor(count/2)])/2 : null,
+        max:count ? Math.max(...errors) : null,
+        recent3:count >= 3 ? average(errors.slice(-3)) : null,
+        recent5:count >= 5 ? average(errors.slice(-5)) : null };
+    }
+
+    function renderWalkForward() {
+      const groups = [
+        ['平日',walkForward(HISTORY_DATA,['weekday'],['weekday'])],
+        ['休日（土・日・祝）',walkForward(HISTORY_DATA,HOLIDAY_TYPES,HOLIDAY_TYPES)]
+      ];
+      const percent = v => v === null ? '算出不可' : v.toFixed(2)+'%';
+      const summary = tested => `<div class="table-scroll"><table class="model-table"><thead><tr><th>減衰率</th><th>検証数</th><th>平均誤差</th><th>中央値</th><th>最大誤差</th><th>直近3件</th><th>直近5件</th></tr></thead><tbody>${WF_DECAYS.map(decay => {
+        const s = summarizeWalkForward(tested,decay);
+        return `<tr><th>${decay.toFixed(2)}${decay === 1 ? '（重みなし）' : ''}</th><td>${s.count}</td>${[s.mean,s.median,s.max,s.recent3,s.recent5].map(v => `<td>${percent(v)}</td>`).join('')}</tr>`;
+      }).join('')}</tbody></table></div>`;
+      const combined = [...groups[0][1].tested,...groups[1][1].tested];
+      let html = '<h4>平日＋休日（大会数で集計）</h4>'+summary(combined);
+      for (const [name,result] of groups) {
+        html += `<h4>${name}</h4>`;
+        html += result.tested.length ? `<p>開始：第${result.tested[0].round}回（学習${result.tested[0].trainingRounds.length}大会）。検証${result.tested.length}大会。</p>` : '<p>検証不能：利用可能な過去学習データが不足しています。</p>';
+        html += summary(result.tested);
+        if (result.skipped.length) html += `<p>検証を見送った大会：${result.skipped.map(d => `第${d.round}回：学習${d.count}件・${d.reason}`).join('／')}</p>`;
+        if (!result.tested.length) continue;
+        html += `<details><summary style="cursor:pointer">各大会の予測・誤差を見る</summary><div class="table-scroll"><table class="model-table"><thead><tr><th>大会</th><th>学習大会</th><th>実測夜平均</th><th>通常回帰予測</th><th>通常回帰誤差</th><th>0.90予測</th><th>0.90誤差</th></tr></thead><tbody>${result.tested.map(d => {
+          const normal=d.predictions[0], weighted=d.predictions[2];
+          return `<tr><th>第${d.round}回</th><td>${d.trainingRounds.join(', ')}</td><td>${d.actual.toFixed(2)}億/h</td><td>${normal.predicted.toFixed(3)}億/h</td><td>${percent(normal.error)}</td><td>${weighted.predicted.toFixed(3)}億/h</td><td>${percent(weighted.error)}</td></tr>`;
+        }).join('')}</tbody></table></div></details>`;
+      }
+      document.getElementById('walkForwardResults').innerHTML = html;
+    }
+
+    // 表示・検証専用の固定候補。本番CONFIGとの同期・履歴からの再学習・保存は行わない。
+    const SHADOW_MODEL18 = {
+      weekday: { intercept: 0.536668, slope: 2.298437, label: '平日候補（0.85重み付き）' },
+      holidayGroup: { intercept: 1.555888, slope: 1.382445, label: '休日候補（土日祝統合・重みなし）' }
+    };
+
+    function renderShadowComparison(snapshot = null) {
+      const container = document.getElementById('shadowComparison');
+      if (!container) return;
+      container.innerHTML = '';
+      container.textContent = '有効な12時・18時の入力が揃うと表示します。入力エラーがある場合は本番欄を確認してください。';
+      if (!snapshot) return;
+      const { dayType, daySpeedOku, s18, currentModel, currentNightSpeedOku, currentScore24 } = snapshot;
+      const candidate = dayType === 'weekday' ? SHADOW_MODEL18.weekday :
+        HOLIDAY_TYPES.includes(dayType) ? SHADOW_MODEL18.holidayGroup : null;
+      if (!candidate) return;
+      const night = candidate.intercept + candidate.slope * daySpeedOku;
+      const score = s18 + night * 6 * OKU;
+      const signed = value => (value >= 0 ? '+' : '−') + Math.abs(value).toFixed(6);
+      container.textContent = '';
+      container.innerHTML = `
+        <p>開催条件：${DAY_STYLES[dayType].name}（${dayType}）<br>分析上の分類：${dayType === 'weekday' ? '平日' : '休日（土・日・祝）'}<br>12〜18時 実測速度：${daySpeedOku.toFixed(6)}億/h</p>
+        <div style="display:grid;gap:12px">
+          <div style="padding:12px;background:rgba(0,0,0,0.2);border-radius:6px">
+            <strong>現行本番モデル（18時予測）</strong>
+            <p>係数：切片 ${currentModel.intercept.toFixed(6)}／傾き ${currentModel.slope.toFixed(6)}<br>予測夜速度：${currentNightSpeedOku.toFixed(6)}億/h<br>24:00予想：${(currentScore24 / OKU).toFixed(6)}億</p>
+          </div>
+          <div style="padding:12px;background:rgba(0,0,0,0.2);border-radius:6px">
+            <strong>検証用シャドー：${candidate.label}</strong>
+            <p>係数：切片 ${candidate.intercept.toFixed(6)}／傾き ${candidate.slope.toFixed(6)}<br>予測夜速度：${night.toFixed(6)}億/h<br>24:00予想：${(score / OKU).toFixed(6)}億</p>
+          </div>
+        </div>
+        <p>候補 − 現行（18時予測）<br>夜速度差：${signed(night - currentNightSpeedOku)}億/h<br>着地差：${signed((score - currentScore24) / OKU)}億</p>`;
+    }
+
+    // DOM Elements
+    const els = {
+      dayType: document.getElementById('dayType'),
+      score12: document.getElementById('score12'),
+      score18: document.getElementById('score18'),
+      score20: document.getElementById('score20'),
+      err12: document.getElementById('err12'),
+      err18: document.getElementById('err18'),
+      err20: document.getElementById('err20'),
+      info12: document.getElementById('info12'),
+      result18: document.getElementById('result18'),
+      result20: document.getElementById('result20'),
+      
+      valDaySpeed: document.getElementById('valDaySpeed'),
+      valPred18: document.getElementById('valPred18'),
+      valRange18: document.getElementById('valRange18'),
+      holidayWarn18: document.getElementById('holidayWarn18'),
+      rangeWarn18: document.getElementById('rangeWarn18'),
+      
+      valNightSpeed: document.getElementById('valNightSpeed'),
+      valNightPace: document.getElementById('valNightPace'),
+      valPred20: document.getElementById('valPred20'),
+      valRange20: document.getElementById('valRange20'),
+      holidayWarn20: document.getElementById('holidayWarn20'),
+      rangeWarn20: document.getElementById('rangeWarn20')
+    };
+
+    const STORAGE_KEY = 'gbf_yosen_pred_v1_inputs';
+
+    // Utilities
+    function formatNumber(num) {
+      if (isNaN(num)) return "0";
+      return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    function parseNumber(str) {
+      if (typeof str !== 'string') return NaN;
+      str = str.trim();
+      if (!str) return NaN;
+
+      // 全角数字・全角カンマを半角に変換
+      str = str.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+      str = str.replace(/，/g, ',');
+
+      // カンマの位置が正しいか、またはカンマなしかをチェック
+      if (!/^(\d{1,3}(,\d{3})*|\d+)$/.test(str)) {
+        return NaN;
+      }
+
+      // カンマを除去して数値化
+      const numStr = str.replace(/,/g, '');
+      const val = Number(numStr);
+
+      // 安全な整数か、負でないかを確認
+      if (!Number.isFinite(val) || !Number.isSafeInteger(val) || val < 0) return NaN;
+
+      return val;
+    }
+
+    function formatOku(num) {
+      if (isNaN(num) || !isFinite(num)) return "-";
+      if (num >= 100000000) {
+        return (num / 100000000).toFixed(2) + " 億";
+      } else if (num >= 10000) {
+        return (num / 10000).toFixed(2) + " 万";
+      }
+      return formatNumber(Math.floor(num));
+    }
+
+    // Input handling
+    function handleInput(e) {
+      // 入力中はカンマ自動整形を行わず、値の保持と再計算のみ実行
+      saveToStorage();
+      calculate();
+    }
+
+    function handleBlur(e) {
+      let parsed = parseNumber(e.target.value);
+      // 有効な数値のみカンマ付与。無効な場合は入力文字をそのまま残す（エラー表示用）
+      if (!isNaN(parsed)) {
+        e.target.value = formatNumber(parsed);
+      }
+      saveToStorage();
+      calculate();
+    }
+
+    [els.score12, els.score18, els.score20].forEach(el => {
+      el.addEventListener('input', handleInput);
+      el.addEventListener('blur', handleBlur);
+    });
+    els.dayType.addEventListener('change', () => {
+      saveToStorage();
+      calculate();
+    });
+
+    function saveToStorage() {
+      const data = {
+        dayType: els.dayType.value,
+        score12: els.score12.value,
+        score18: els.score18.value,
+        score20: els.score20.value,
+        date: new Date().toDateString()
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {
+        console.warn('LocalStorage save error', e);
+      }
+    }
+
+    function loadFromStorage() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const data = JSON.parse(stored);
+          if (data.date === new Date().toDateString()) {
+            if (data.dayType) els.dayType.value = data.dayType;
+            
+            ['score12', 'score18', 'score20'].forEach(key => {
+              if (data[key] !== undefined && data[key] !== null) {
+                if (typeof data[key] === 'number') {
+                  if (!isNaN(data[key])) els[key].value = formatNumber(data[key]);
+                } else {
+                  els[key].value = data[key];
+                }
+              }
+            });
+          }
+        }
+      } catch(e) {
+        console.warn('LocalStorage error', e);
+      }
+    }
+
+    function showError(el, msg) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+    function hideError(el) {
+      el.style.display = 'none';
+    }
+
+    // Main calculation logic
+    function calculate() {
+      renderShadowComparison(); // 前回のシャドー表示を消し、不正・未入力時の残留を防ぐ。
+      const raw12 = els.score12.value.trim();
+      const raw18 = els.score18.value.trim();
+      const raw20 = els.score20.value.trim();
+      const s12 = parseNumber(raw12);
+      const s18 = parseNumber(raw18);
+      const s20 = parseNumber(raw20);
+      const dayType = els.dayType.value;
+
+      renderHistoryStats();
+
+      hideError(els.err12);
+      hideError(els.err18);
+      hideError(els.err20);
+      els.info12.style.display = 'block';
+      els.result18.style.display = 'none';
+      els.result20.style.display = 'none';
+      document.getElementById('calcDetails').style.display = 'none';
+
+      let hasError = false;
+
+      // Format validation
+      if (raw12 !== '' && isNaN(s12)) {
+        showError(els.err12, '正しい貢献度（数字のみ）を入力してください');
+        hasError = true;
+      }
+      if (raw18 !== '' && isNaN(s18)) {
+        showError(els.err18, '正しい貢献度（数字のみ）を入力してください');
+        hasError = true;
+      }
+      if (raw20 !== '' && isNaN(s20)) {
+        showError(els.err20, '正しい貢献度（数字のみ）を入力してください');
+        hasError = true;
+      }
+
+      if (hasError) return;
+
+      // Range validation
+      if (!isNaN(s12) && !isNaN(s18)) {
+        if (s18 <= s12) {
+          showError(els.err18, '18時の値は12時より大きくしてください');
+          return;
+        }
+      }
+      if (!isNaN(s18) && !isNaN(s20)) {
+        if (s20 <= s18) {
+          showError(els.err20, '20時の値は18時より大きくしてください');
+          return;
+        }
+      }
+
+      if (isNaN(s12) || isNaN(s18)) return;
+      
+      els.info12.style.display = 'none';
+      
+      // ==========================================
+      // 18:00 Prediction
+      // ==========================================
+      const daySpeed = (s18 - s12) / 6;
+      const daySpeedOku = daySpeed / OKU;
+      
+      const m18 = CONFIG.model18[dayType];
+      els.valDaySpeed.textContent = formatOku(daySpeed) + ' / h';
+
+      // 予測式: predictedNightSpeedOku = intercept + slope * daySpeedOku
+      const predictedNightSpeedOku18 = m18.intercept + m18.slope * daySpeedOku;
+      const predictedNightSpeedRaw18 = predictedNightSpeedOku18 * OKU;
+      
+      const remainingNormal18 = predictedNightSpeedRaw18 * 6;
+      const score24Normal = s18 + remainingNormal18;
+      const score24Low = s18 + remainingNormal18 * m18.range.lower;
+      const score24High = s18 + remainingNormal18 * m18.range.upper;
+
+      // 本番で算出済みの値を表示専用シャドーへ渡す。本番予測は再計算しない。
+      renderShadowComparison({ dayType, daySpeedOku, s18, currentModel: m18,
+        currentNightSpeedOku: predictedNightSpeedOku18, currentScore24: score24Normal });
+
+      els.valPred18.textContent = formatOku(score24Normal);
+      els.valRange18.textContent = `${formatOku(score24Low)} 〜 ${formatOku(score24High)}`;
+      
+      els.holidayWarn18.style.display = dayType === 'holiday' ? 'block' : 'none';
+      els.rangeWarn18.style.display = (daySpeedOku < m18.observedDaySpeed.min || daySpeedOku > m18.observedDaySpeed.max) ? 'block' : 'none';
+
+      els.result18.style.display = 'block';
+
+      let calcText = `12:00\n${formatOku(s12)}\n\n18:00\n${formatOku(s18)}\n\n↓\n\n12〜18時の実測速度\n(${(s18/OKU).toFixed(2)} - ${(s12/OKU).toFixed(2)}) ÷ 6\n= ${daySpeedOku.toFixed(2)}億/h\n\n↓\n\n過去データを利用した18時予測モデル\n(切片: ${m18.intercept.toFixed(3)}, 傾き: ${m18.slope.toFixed(3)})\n\n↓\n\n18〜24時の予測速度\n${predictedNightSpeedOku18.toFixed(2)}億/h\n\n↓\n\n残り6時間の予想増加量\n${predictedNightSpeedOku18.toFixed(2)} × 6\n= ${(remainingNormal18/OKU).toFixed(2)}億\n\n↓\n\n24:00着地予想\n${(s18/OKU).toFixed(2)} + ${(remainingNormal18/OKU).toFixed(2)}\n= ${(score24Normal/OKU).toFixed(2)}億`;
+      document.getElementById('calcExplanation').textContent = calcText;
+      document.getElementById('calcDetails').style.display = 'block';
+
+      // ==========================================
+      // 20:00 Update Prediction
+      // ==========================================
+      if (isNaN(s20)) return;
+
+      const actualNightSpeed18to20 = (s20 - s18) / 2;
+      const actualEarlyNightSpeedOku = actualNightSpeed18to20 / OKU;
+      els.valNightSpeed.textContent = formatOku(actualNightSpeed18to20) + ' / h';
+
+      // ペース判定 (同時間帯の予測値との比較)
+      const expectedModel = (dayType === 'weekday') ? CONFIG.expectedEarly.weekday : CONFIG.expectedEarly.nonWeekday;
+      const expectedEarlyOku = expectedModel.intercept + expectedModel.slope * daySpeedOku;
+      
+      const ratio = actualEarlyNightSpeedOku / expectedEarlyOku;
+      let paceLabel = "大幅に速い";
+      for (let i = 0; i < CONFIG.paceThresholds.length; i++) {
+        if (ratio < CONFIG.paceThresholds[i].limit) {
+          paceLabel = CONFIG.paceThresholds[i].label;
+          break;
+        }
+      }
+      els.valNightPace.textContent = paceLabel;
+
+      // 20時予測式
+      const m20 = (dayType === 'weekday') ? CONFIG.model20.weekday : CONFIG.model20.nonWeekday;
+      const predicted20to24SpeedOku = m20.intercept + m20.slope * actualEarlyNightSpeedOku;
+      const predicted20to24SpeedRaw = predicted20to24SpeedOku * OKU;
+      
+      const remainingNormal20 = predicted20to24SpeedRaw * 4;
+      const score24Updated = s20 + remainingNormal20;
+      const score24Low20 = s20 + remainingNormal20 * m20.range.lower;
+      const score24High20 = s20 + remainingNormal20 * m20.range.upper;
+
+      els.valPred20.textContent = formatOku(score24Updated);
+      els.valRange20.textContent = `${formatOku(score24Low20)} 〜 ${formatOku(score24High20)}`;
+      
+      els.holidayWarn20.style.display = (dayType !== 'weekday') ? 'block' : 'none';
+      els.rangeWarn20.style.display = (actualEarlyNightSpeedOku < m20.observedEarlySpeed.min || actualEarlyNightSpeedOku > m20.observedEarlySpeed.max) ? 'block' : 'none';
+
+      els.result20.style.display = 'block';
+
+      calcText = `18:00\n${formatOku(s18)}\n\n20:00\n${formatOku(s20)}\n\n↓\n\n18〜20時の実測速度\n(${(s20/OKU).toFixed(2)} - ${(s18/OKU).toFixed(2)}) ÷ 2\n= ${actualEarlyNightSpeedOku.toFixed(2)}億/h\n\n↓\n\n過去データを利用した20時予測モデル\n(切片: ${m20.intercept.toFixed(3)}, 傾き: ${m20.slope.toFixed(3)})\n\n↓\n\n20〜24時の予測速度\n${predicted20to24SpeedOku.toFixed(2)}億/h\n\n↓\n\n残り4時間の予想増加量\n${predicted20to24SpeedOku.toFixed(2)} × 4\n= ${(remainingNormal20/OKU).toFixed(2)}億\n\n↓\n\n24:00着地予想\n${(s20/OKU).toFixed(2)} + ${(remainingNormal20/OKU).toFixed(2)}\n= ${(score24Updated/OKU).toFixed(2)}億`;
+      document.getElementById('calcExplanation').textContent = calcText;
+    }
+
+    // Initialize
+    refreshHistoryModels();
+    loadFromStorage();
+    calculate();
+  </script>
+</body>
+</html>
