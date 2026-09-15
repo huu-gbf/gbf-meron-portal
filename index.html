@@ -142,9 +142,12 @@
           <a href="#sec-history" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
             <span>🔄</span><span>更新履歴</span>
           </a>
+          <!-- AI機能は一時休止。復活用にテンプレート内へ保管。 -->
+          <template>
           <a href="#sec-ai" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
             <span>🤖</span><span>AI</span>
           </a>
+          </template>
           <a href="#sec-schedule" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
             <span>📅</span><span>イベント予定</span>
           </a>
@@ -170,9 +173,12 @@
           <a href="#sec-history" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
             <span>🔄</span><span>更新履歴</span>
           </a>
+          <!-- AI機能は一時休止。復活用にテンプレート内へ保管。 -->
+          <template>
           <a href="#sec-ai" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
             <span>🤖</span><span>AI</span>
           </a>
+          </template>
           <a href="#sec-schedule" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
             <span>📅</span><span>イベント予定</span>
           </a>
@@ -434,6 +440,8 @@
       <!-- =========================================================
            SECTION: AI
       ========================================================= -->
+      <!-- AI機能は一時休止。テンプレート内は表示・操作の対象外。 -->
+      <template id="paused-ai-section">
       <section id="sec-ai" class="space-y-4 scroll-mt-32 pt-4">
         <!-- Section Header -->
         <div class="flex items-center gap-3">
@@ -506,6 +514,7 @@
           </div>
         </details>
       </section>
+      </template>
 
 <section id="sec-schedule" class="space-y-4 scroll-mt-32">
         <!-- Section Header -->
@@ -971,8 +980,7 @@
       document.getElementById('portalScreen').classList.remove('hidden');
       initNavObserver();
       initNavAccordionSync();
-      // 認証成功後、1回だけregisteredUpdatesを取得する
-      loadRegisteredUpdatesOnce();
+      // AI機能の一時休止中は登録済み情報を自動取得しない。
       // アクセス解析: 認証成功後にfire-and-forgetで記録
       // 失敗してもポータル本体へ影響しない
       recordVisit();
@@ -1400,7 +1408,7 @@
     }
 
     // DOMContentLoaded時は認証不要の自動呼び出しを行わない
-    // showPortal() → loadRegisteredUpdatesOnce() ルートで認証後に呼ぶ
+    // AI機能の一時休止中は、認証後も自動呼び出しを行わない
     document.addEventListener("DOMContentLoaded", () => {
       // 認証状態の初期化のみ。registeredの取得は行わない
     });
