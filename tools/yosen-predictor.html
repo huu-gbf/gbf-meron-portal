@@ -105,8 +105,7 @@
     .tool-disclaimer { margin-top:24px; padding-top:16px; border-top:1px solid #334155; font-size:0.85rem; line-height:1.8; color:#cbd5e1; overflow-wrap:anywhere; }
     .tool-disclaimer h2 { font-size:1rem; margin-bottom:12px; }
     .tool-disclaimer p + p { margin-top:12px; }
-  
-    .portal-nav { max-width:600px; margin:0 auto 12px; }
+      .portal-nav { max-width:600px; margin:0 auto 12px; }
     .portal-nav a { display:inline-flex; align-items:center; min-height:44px; padding:10px 14px; color:#cbd5e1; background:#0f172a; border:1px solid #334155; border-radius:8px; text-decoration:none; }
     .portal-nav a:hover { color:#fcd34d; border-color:#f59e0b; }
     .portal-nav a:focus-visible { outline:2px solid #38bdf8; outline-offset:3px; }
@@ -136,7 +135,8 @@
       <div class="form-group">
         <label>① 12:00時点</label>
         <span class="sub-label">累計貢献度</span>
-        <input type="text" id="score12" placeholder="例: 100,000,000,000" inputmode="numeric">
+        <input type="text" id="score12" placeholder="例: 1000億 / 100,000,000,000" inputmode="text">
+        <div id="parsed12" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err12" class="error"></div>
         <div id="info12" class="info">18:00のデータを入力すると予想できます</div>
       </div>
@@ -144,7 +144,8 @@
       <div class="form-group">
         <label>② 18:00時点</label>
         <span class="sub-label">累計貢献度</span>
-        <input type="text" id="score18" placeholder="例: 160,000,000,000" inputmode="numeric">
+        <input type="text" id="score18" placeholder="例: 1600億 / 160,000,000,000" inputmode="text">
+        <div id="parsed18" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err18" class="error"></div>
       </div>
       
@@ -156,7 +157,7 @@
             <div class="metric-value" id="valDaySpeed">-</div>
           </div>
           <div class="metric-card full-width" style="background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3);">
-            <div class="metric-label">24:00 通常予想</div>
+            <div class="metric-label">18時時点の24時予測</div>
             <div class="metric-value highlight" id="valPred18">-</div>
           </div>
           <div class="metric-card full-width">
@@ -165,7 +166,6 @@
           </div>
         </div>
         <p style="font-size:0.8rem; color:#94a3b8; text-align:center; margin-bottom:4px;">予想は過去大会と当日の実測をもとにした参考値です。</p>
-        <p class="tool-notice">⚠️ 本ツールの数値は予測です。過去の記録と当日の進行状況をもとに統計的に算出した参考値であり、実際の最終結果を保証するものではありません。<br>参加状況、ゲーム内環境、開催条件等により、実際の結果が予測から大きく変動する場合があります。</p>
         <p id="holidayWarn18" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none;">祝日は過去サンプルが少ないため予想幅を広めにしています。</p>
         <p id="rangeWarn18" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none;">過去データ範囲外のため不確実性が高めです。</p>
       </div>
@@ -173,7 +173,8 @@
       <div class="form-group" style="margin-top: 24px;">
         <label>③ 20:00時点 <span style="font-size: 0.9rem; font-weight: normal; color: #94a3b8;">(任意)</span></label>
         <span class="sub-label">累計貢献度</span>
-        <input type="text" id="score20" placeholder="例: 200,000,000,000" inputmode="numeric">
+        <input type="text" id="score20" placeholder="例: 2000億 / 200,000,000,000" inputmode="text">
+        <div id="parsed20" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err20" class="error"></div>
       </div>
       
@@ -189,7 +190,7 @@
             <div class="metric-value" id="valNightPace">-</div>
           </div>
           <div class="metric-card full-width" style="background: rgba(167, 139, 250, 0.1); border-color: rgba(167, 139, 250, 0.3);">
-            <div class="metric-label">24:00 通常予想</div>
+            <div class="metric-label">20時時点の24時更新予測</div>
             <div class="metric-value highlight" id="valPred20" style="color: #a78bfa;">-</div>
           </div>
           <div class="metric-card full-width">
@@ -199,6 +200,27 @@
         </div>
         <p id="holidayWarn20" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none; margin-top:8px;">休日判定は参考値です。</p>
         <p id="rangeWarn20" style="font-size:0.8rem; color:#fbbf24; text-align:center; display:none;">過去データ範囲外のため予想の不確実性が高めです。</p>
+      </div>
+      
+      <div id="diffSection" class="result-section" style="display: none; margin-top: 24px;">
+        <h2 style="font-size: 1.2rem; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px;">📊 予測変化</h2>
+        <div class="metric-grid">
+          <div class="metric-card full-width" style="background: rgba(30, 41, 59, 0.8);">
+            <div style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 4px;" id="valDiffContext">-</div>
+            <div style="display: flex; align-items: baseline; justify-content: center; gap: 8px;">
+              <div id="valDiffValue" style="font-size: 1.4rem; font-weight: bold;">-</div>
+              <div id="valDiffPercent" style="font-size: 0.9rem;">-</div>
+            </div>
+            <div id="valDiffLabel" style="font-size: 0.85rem; margin-top: 4px;">-</div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="progressChartSection" class="result-section" style="margin-top: 24px;">
+        <h2 style="font-size: 1.2rem; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px;">📈 今日の推移グラフ</h2>
+        <div id="progressChartContainer" style="background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 16px;"></div>
+        <div id="progressChartLegend" style="display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; font-size:0.8rem; justify-content:center;"></div>
+        <p id="progressChartNote" style="font-size:0.75rem; color:#94a3b8; text-align:center; margin-top:8px;"></p>
       </div>
       
       <details class="calc-details" id="calcDetails" style="display: none; margin-top: 24px; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 8px;">
@@ -225,14 +247,11 @@
             ※ 表示されている曜日別平均は単純平均です。古い大会を含むため、現在の速度水準そのものを表す値ではありません。近年ほど絶対速度が上昇しているため、古い大会を含む単純平均は参考値です。
           </div>
         </div>
-        <details class="model-section" style="margin-top:16px;overflow-wrap:anywhere">
-          <summary style="cursor:pointer;color:#94a3b8">🧪 候補モデル シャドー比較（18時・検証用）</summary>
-          <p>候補モデルは検証用です。本番予測には使用していません。</p>
-          <p>候補モデルの優位性はまだ確定していません。休日候補は正常6大会、walk-forward有効検証3大会です。20時モデルの比較・自動記録は行いません。</p>
-          <div id="shadowComparison" aria-live="polite">有効な12時・18時の入力が揃うと表示します。</div>
-        </details>
-        <section class="model-section">
-          <h3>📈 過去20大会 夜の伸び倍率</h3>
+
+        <details style="margin-top: 24px; padding-top: 12px; border-top: 1px dashed #334155;">
+          <summary style="cursor: pointer; color: #94a3b8; font-weight: bold;">🛠️ モデル開発・検証データ（高度な情報）</summary>
+        <section class="model-section" style="margin-top:24px;">
+          <h3 style="font-size: 1rem; color: #fff; border-bottom: 1px solid #334155; padding-bottom: 4px;">📈 過去20大会 夜の伸び倍率</h3>
           <p>各大会で、12〜18時相当の平均速度に対して18〜24時相当の平均速度が何倍まで伸びたかを示しています。値が高いほど、夜に速度が大きく伸びた大会です。</p>
           <p>履歴の色・形は実際の曜日を示します。モデル分析上は土曜・日曜・祝日を「休日」として統合します。</p>
           <div id="chartLegend" class="chart-legend"></div>
@@ -240,22 +259,32 @@
           <p id="chartSelection" aria-live="polite">点をタップ・hover、またはキーボードで選ぶと詳細を表示します。</p>
           <p class="special-note">⚠ 第65回は特殊開催です。開催障害・日程変更・インターバル中止等があったため、予測モデルの計算対象から除外。履歴として表示していますが、新モデル候補の計算には使用しません（現行モデルは変更していません）。</p>
         </section>
-        <section class="model-section">
-          <h3>18時モデル候補の比較・検証（未採用）</h3>
-          <p>本番予測は現行CONFIGを使用しています。比較候補は通常回帰（重みなし）と減衰率0.90・0.85の重み付き回帰です。重みは 減衰率 ^ (最新大会番号 − 大会番号)。欠測大会も経過数に含み、特殊開催・対象外指定は重み0です。</p>
-          <p>昼平均 X（12〜18時相当）、夜平均 Y（18〜24時相当）（億/h）として Y = intercept + slope × X を最小二乗法で算出します。誤差は |予測 − 実測| ÷ 実測 × 100。各比較の評価対象は通常開催に統一し、直近5はその評価対象の最新5件です。</p>
-          <p>以下は学習に使った履歴での誤差です。将来の予測精度の改善を保証する検証ではありません。現行の学習数はCONFIG記載値、新候補の学習数は履歴から算出しています。休日の現行評価は大会ごとの曜日に対応する本番係数を使います（土日と祝日で係数が異なります）。</p>
-          <div id="modelComparison"></div>
-          <details style="margin-top:16px">
-            <summary style="cursor:pointer;color:#38bdf8">🧪 過去大会で未来予測テスト</summary>
-            <p>対象大会より前の通常開催だけで、毎回モデルを作り直します。最低学習数は3大会。昼平均の最大値−最小値が0.10億/h未満なら、回帰が不安定なため検証を見送ります。平日は平日、休日は土曜・日曜・祝日を統合して学習します。現行CONFIGの係数は使いません。</p>
-            <p>重み = 減衰率 ^ age。ageは学習対象内の最新大会番号との差（欠測大会も経過数に含む）です。最新学習大会の重みは1。第65回は学習・評価ともに除外します。</p>
-            <p>予測夜平均 = intercept + slope × 昼平均。誤差率 = |予測 − 実測| ÷ 実測 × 100。直近3・5件は各分類の検証対象から選び、必要件数に満たない場合は「算出不可」と表示します。</p>
-            <div id="walkForwardResults"></div>
-            <p>少数の履歴による比較です。結果を見て減衰率を選ぶと過剰適合する可能性があります。本番採用は行いません。将来の精度を保証する結果ではありません。</p>
+
+          
+          <details class="model-section" style="margin-top:16px;overflow-wrap:anywhere">
+            <summary style="cursor:pointer;color:#38bdf8">🧪 候補モデル シャドー比較（18時・検証用）</summary>
+            <p>候補モデルは検証用です。本番予測には使用していません。</p>
+            <p>候補モデルの優位性はまだ確定していません。休日候補は正常6大会、walk-forward有効検証3大会です。20時モデルの比較・自動記録は行いません。</p>
+            <div id="shadowComparison" aria-live="polite">有効な12時・18時の入力が揃うと表示します。</div>
           </details>
-          <p class="special-note">20時モデル再計算には元データ不足：18〜20時・20〜24時実測値がありません。現行20時CONFIGを維持しています。</p>
-        </section>
+          
+          <section class="model-section" style="margin-top:24px;">
+            <h3 style="font-size: 0.95rem;">18時モデル候補の比較・検証（未採用）</h3>
+            <p>本番予測は現行CONFIGを使用しています。比較候補は通常回帰（重みなし）と減衰率0.90・0.85の重み付き回帰です。重みは 減衰率 ^ (最新大会番号 − 大会番号)。欠測大会も経過数に含み、特殊開催・対象外指定は重み0です。</p>
+            <p>昼平均 X（12〜18時相当）、夜平均 Y（18〜24時相当）（億/h）として Y = intercept + slope × X を最小二乗法で算出します。誤差は |予測 − 実測| ÷ 実測 × 100。各比較の評価対象は通常開催に統一し、直近5はその評価対象の最新5件です。</p>
+            <p>以下は学習に使った履歴での誤差です。将来の予測精度の改善を保証する検証ではありません。現行の学習数はCONFIG記載値、新候補の学習数は履歴から算出しています。休日の現行評価は大会ごとの曜日に対応する本番係数を使います（土日と祝日で係数が異なります）。</p>
+            <div id="modelComparison"></div>
+            <details style="margin-top:16px">
+              <summary style="cursor:pointer;color:#38bdf8">🧪 過去大会で未来予測テスト</summary>
+              <p>対象大会より前の通常開催だけで、毎回モデルを作り直します。最低学習数は3大会。昼平均の最大値−最小値が0.10億/h未満なら、回帰が不安定なため検証を見送ります。平日は平日、休日は土曜・日曜・祝日を統合して学習します。現行CONFIGの係数は使いません。</p>
+              <p>重み = 減衰率 ^ age。ageは学習対象内の最新大会番号との差（欠測大会も経過数に含む）です。最新学習大会の重みは1。第65回は学習・評価ともに除外します。</p>
+              <p>予測夜平均 = intercept + slope × 昼平均。誤差率 = |予測 − 実測| ÷ 実測 × 100。直近3・5件は各分類の検証対象から選び、必要件数に満たない場合は「算出不可」と表示します。</p>
+              <div id="walkForwardResults"></div>
+              <p>少数の履歴による比較です。結果を見て減衰率を選ぶと過剰適合する可能性があります。本番採用は行いません。将来の精度を保証する結果ではありません。</p>
+            </details>
+            <p class="special-note" style="margin-top:12px;">20時モデル再計算には元データ不足：18〜20時・20〜24時実測値がありません。現行20時CONFIGを維持しています。</p>
+          </section>
+        </details>
       </details>
 
       <p class="note">本ツールの結果は過去大会と当日の実測ペースをもとにした参考予測です。<br>古戦場の環境・ボス・編成・参加状況などにより実際の結果は変動します。</p>
@@ -710,20 +739,51 @@
       str = str.trim();
       if (!str) return NaN;
 
-      // 全角数字・全角カンマを半角に変換
       str = str.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
       str = str.replace(/，/g, ',');
 
-      // カンマの位置が正しいか、またはカンマなしかをチェック
+      if (str.includes('億') || str.includes('万')) {
+        if (!/^[0-9.,]+(億[0-9.,]*万?|万)$/.test(str)) return NaN;
+        
+        let oku = 0;
+        let man = 0;
+        let remaining = str;
+        
+        if (remaining.includes('億')) {
+          const parts = remaining.split('億');
+          if (parts.length > 2) return NaN;
+          
+          const okuStr = parts[0].replace(/,/g, '');
+          if (okuStr === '' || isNaN(Number(okuStr))) return NaN;
+          
+          oku = Number(okuStr);
+          remaining = parts[1];
+        }
+        
+        if (remaining.includes('万')) {
+          const parts = remaining.split('万');
+          if (parts.length > 2 || parts[1] !== '') return NaN;
+          
+          const manStr = parts[0].replace(/,/g, '');
+          if (manStr === '' || isNaN(Number(manStr))) return NaN;
+          
+          man = Number(manStr);
+        } else if (remaining !== '') {
+           return NaN;
+        }
+
+        const val = oku * 100000000 + man * 10000;
+        if (!Number.isFinite(val) || !Number.isSafeInteger(val) || val < 0) return NaN;
+        return val;
+      }
+
       if (!/^(\d{1,3}(,\d{3})*|\d+)$/.test(str)) {
         return NaN;
       }
 
-      // カンマを除去して数値化
       const numStr = str.replace(/,/g, '');
       const val = Number(numStr);
 
-      // 安全な整数か、負でないかを確認
       if (!Number.isFinite(val) || !Number.isSafeInteger(val) || val < 0) return NaN;
 
       return val;
@@ -747,10 +807,16 @@
     }
 
     function handleBlur(e) {
-      let parsed = parseNumber(e.target.value);
-      // 有効な数値のみカンマ付与。無効な場合は入力文字をそのまま残す（エラー表示用）
+      const original = e.target.value;
+      let parsed = parseNumber(original);
       if (!isNaN(parsed)) {
-        e.target.value = formatNumber(parsed);
+        if (original.includes('億') || original.includes('万') || /[０-９]/.test(original)) {
+          e.target.value = original
+            .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+            .replace(/，/g, ',');
+        } else {
+          e.target.value = formatNumber(parsed);
+        }
       }
       saveToStorage();
       calculate();
@@ -823,6 +889,20 @@
       const s20 = parseNumber(raw20);
       const dayType = els.dayType.value;
 
+      const updateParsedDisplay = (id, raw, val) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (raw === '' || isNaN(val)) {
+          el.style.display = 'none';
+        } else {
+          el.textContent = '→ ' + (val / OKU).toFixed(2) + '億';
+          el.style.display = 'block';
+        }
+      };
+      updateParsedDisplay('parsed12', raw12, s12);
+      updateParsedDisplay('parsed18', raw18, s18);
+      updateParsedDisplay('parsed20', raw20, s20);
+
       renderHistoryStats();
 
       hideError(els.err12);
@@ -849,23 +929,31 @@
         hasError = true;
       }
 
-      if (hasError) return;
+      if (hasError) {
+        if (typeof updateProgressChart === 'function') updateProgressChart(NaN, NaN, NaN, NaN, NaN);
+        return;
+      }
 
       // Range validation
       if (!isNaN(s12) && !isNaN(s18)) {
         if (s18 <= s12) {
           showError(els.err18, '18時の値は12時より大きくしてください');
+          if (typeof updateProgressChart === 'function') updateProgressChart(s12, NaN, NaN, NaN, NaN);
           return;
         }
       }
       if (!isNaN(s18) && !isNaN(s20)) {
         if (s20 <= s18) {
           showError(els.err20, '20時の値は18時より大きくしてください');
+          if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN);
           return;
         }
       }
 
-      if (isNaN(s12) || isNaN(s18)) return;
+      if (isNaN(s12) || isNaN(s18)) {
+        if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN);
+        return;
+      }
       
       els.info12.style.display = 'none';
       
@@ -906,7 +994,12 @@
       // ==========================================
       // 20:00 Update Prediction
       // ==========================================
-      if (isNaN(s20)) return;
+      if (isNaN(s20)) {
+        const diffSection = document.getElementById('diffSection');
+        if (diffSection) diffSection.style.display = 'none';
+        updateProgressChart(s12, s18, NaN, score24Normal, NaN);
+        return;
+      }
 
       const actualNightSpeed18to20 = (s20 - s18) / 2;
       const actualEarlyNightSpeedOku = actualNightSpeed18to20 / OKU;
@@ -946,6 +1039,200 @@
 
       calcText = `18:00\n${formatOku(s18)}\n\n20:00\n${formatOku(s20)}\n\n↓\n\n18〜20時の実測速度\n(${(s20/OKU).toFixed(2)} - ${(s18/OKU).toFixed(2)}) ÷ 2\n= ${actualEarlyNightSpeedOku.toFixed(2)}億/h\n\n↓\n\n過去データを利用した20時予測モデル\n(切片: ${m20.intercept.toFixed(3)}, 傾き: ${m20.slope.toFixed(3)})\n\n↓\n\n20〜24時の予測速度\n${predicted20to24SpeedOku.toFixed(2)}億/h\n\n↓\n\n残り4時間の予想増加量\n${predicted20to24SpeedOku.toFixed(2)} × 4\n= ${(remainingNormal20/OKU).toFixed(2)}億\n\n↓\n\n24:00着地予想\n${(s20/OKU).toFixed(2)} + ${(remainingNormal20/OKU).toFixed(2)}\n= ${(score24Updated/OKU).toFixed(2)}億`;
       document.getElementById('calcExplanation').textContent = calcText;
+
+      const diffSection = document.getElementById('diffSection');
+      if (diffSection) {
+        const diffRaw = score24Updated - score24Normal;
+        const diffOku = diffRaw / OKU;
+        const percent = (diffRaw / score24Normal) * 100;
+        
+        let diffColor = '#cbd5e1';
+        let diffSign = diffOku > 0 ? '+' : '';
+        let labelText = 'ほぼ変化なし';
+        
+        if (diffOku > 0.005) {
+          diffColor = '#a78bfa'; // 上振れ
+          labelText = '18時予測より上振れ';
+        } else if (diffOku < -0.005) {
+          diffColor = '#f87171'; // 下振れ
+          labelText = '18時予測より下振れ';
+        }
+        
+        document.getElementById('valDiffContext').textContent = `18時予測 ${(score24Normal/OKU).toFixed(2)}億 → 20時更新 ${(score24Updated/OKU).toFixed(2)}億`;
+        document.getElementById('valDiffValue').textContent = `${diffSign}${diffOku.toFixed(2)}億`;
+        document.getElementById('valDiffValue').style.color = diffColor;
+        document.getElementById('valDiffPercent').textContent = `(${diffSign}${percent.toFixed(2)}%)`;
+        document.getElementById('valDiffPercent').style.color = diffColor;
+        document.getElementById('valDiffLabel').textContent = labelText;
+        document.getElementById('valDiffLabel').style.color = diffColor;
+        
+        diffSection.style.display = 'block';
+      }
+
+      updateProgressChart(s12, s18, s20, score24Normal, score24Updated);
+    }
+    
+    function updateProgressChart(s12, s18, s20, pred18, pred20) {
+      const section = document.getElementById('progressChartSection');
+      const container = document.getElementById('progressChartContainer');
+      const legend = document.getElementById('progressChartLegend');
+      const note = document.getElementById('progressChartNote');
+
+      if (!section || !container) return;
+      section.style.display = 'block';
+
+      if (isNaN(s12) || isNaN(s18)) {
+        container.innerHTML = '<div style="text-align:center; padding: 20px; color:#94a3b8;">12時・18時データを入力するとグラフが表示されます</div>';
+        legend.innerHTML = '';
+        note.textContent = '';
+        return;
+      }
+
+      const width = 600;
+      const height = 300;
+      const padding = { top: 40, right: 120, bottom: 30, left: 55 };
+
+      const timeToX = (t) => {
+        const hoursFrom12 = t - 12;
+        const ratio = hoursFrom12 / 12;
+        return padding.left + ratio * (width - padding.left - padding.right);
+      };
+
+      const pts = [];
+      pts.push({ t: 12, val: s12 });
+      pts.push({ t: 18, val: s18 });
+      if (!isNaN(s20)) pts.push({ t: 20, val: s20 });
+      if (!isNaN(pred18)) pts.push({ t: 24, val: pred18, type: 'pred18' });
+      if (!isNaN(pred20)) pts.push({ t: 24, val: pred20, type: 'pred20' });
+
+      const values = pts.map(p => p.val / OKU);
+      const dataMax = Math.max(...values);
+      
+      const getNiceScale = (max) => {
+        if (max === 0) return { max: 1000, step: 250 };
+        const rawMax = max * 1.1;
+        const roughStep = rawMax / 4;
+        const mag = Math.floor(Math.log10(roughStep));
+        const pow10 = Math.pow(10, mag);
+        const relStep = roughStep / pow10;
+        
+        let niceRel;
+        if (relStep <= 1) niceRel = 1;
+        else if (relStep <= 2) niceRel = 2;
+        else if (relStep <= 2.5) niceRel = 2.5;
+        else if (relStep <= 5) niceRel = 5;
+        else niceRel = 10;
+        
+        const step = niceRel * pow10;
+        const yMax = Math.ceil(rawMax / step) * step;
+        return { max: yMax, step: step };
+      };
+      
+      const scale = getNiceScale(dataMax);
+      const minVal = 0;
+      const maxVal = scale.max;
+
+      const valToY = (v) => {
+        const ratio = (maxVal === minVal) ? 0 : (v - minVal) / (maxVal - minVal);
+        return height - padding.bottom - ratio * (height - padding.top - padding.bottom);
+      };
+
+      const x12 = timeToX(12);
+      const x18 = timeToX(18);
+      const x20 = timeToX(20);
+      const x24 = timeToX(24);
+
+      const y12 = valToY(s12 / OKU);
+      const y18 = valToY(s18 / OKU);
+
+      let svg = `<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; overflow:visible;">`;
+      
+      const yAxis = height - padding.bottom;
+      svg += `<line x1="${padding.left}" y1="${yAxis}" x2="${width - padding.right}" y2="${yAxis}" stroke="#334155" stroke-width="1" />`;
+      
+      [12, 18, 20, 24].forEach(t => {
+        const x = timeToX(t);
+        svg += `<text x="${x}" y="${yAxis + 20}" fill="#94a3b8" font-size="12" text-anchor="middle">${t}:00</text>`;
+        svg += `<line x1="${x}" y1="${padding.top}" x2="${x}" y2="${yAxis}" stroke="#334155" stroke-width="1" stroke-dasharray="2 2" />`;
+      });
+
+      const yTicks = [];
+      for (let i = 0; i * scale.step <= maxVal + 1e-9; i++) {
+        yTicks.push(i * scale.step);
+      }
+      yTicks.forEach(v => {
+        const y = valToY(v);
+        let label = v >= 1000 ? v.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : v.toString();
+        svg += `<text x="${padding.left - 10}" y="${y + 4}" fill="#94a3b8" font-size="12" text-anchor="end">${label}億</text>`;
+      });
+
+      if (!isNaN(pred18)) {
+        const y24_18 = valToY(pred18 / OKU);
+        svg += `<line x1="${x18}" y1="${y18}" x2="${x24}" y2="${y24_18}" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 4" />`;
+        svg += `<circle cx="${x24}" cy="${y24_18}" r="4" fill="#cbd5e1" />`;
+        svg += `<text x="${x24 + 8}" y="${y24_18 + 4}" fill="#cbd5e1" font-size="12">18時予測 ${(pred18/OKU).toFixed(1)}億</text>`;
+      }
+
+      if (!isNaN(s20) && !isNaN(pred20)) {
+        const y20 = valToY(s20 / OKU);
+        const y24_20 = valToY(pred20 / OKU);
+        svg += `<line x1="${x20}" y1="${y20}" x2="${x24}" y2="${y24_20}" stroke="#a78bfa" stroke-width="2" stroke-dasharray="6 4" />`;
+        svg += `<circle cx="${x24}" cy="${y24_20}" r="4" fill="#a78bfa" />`;
+        
+        let labelY = y24_20;
+        if (!isNaN(pred18)) {
+            const y24_18 = valToY(pred18 / OKU);
+            if (Math.abs(y24_18 - y24_20) < 16) {
+               if (y24_20 < y24_18) labelY -= 8;
+               else labelY += 14;
+            } else {
+               labelY += 4;
+            }
+        } else {
+            labelY += 4;
+        }
+        svg += `<text x="${x24 + 8}" y="${labelY}" fill="#a78bfa" font-size="12">20時更新 ${(pred20/OKU).toFixed(1)}億</text>`;
+      }
+
+      let actualPath = `M ${x12} ${y12} L ${x18} ${y18}`;
+      if (!isNaN(s20)) {
+        const y20 = valToY(s20 / OKU);
+        actualPath += ` L ${x20} ${y20}`;
+      }
+      svg += `<path d="${actualPath}" fill="none" stroke="#38bdf8" stroke-width="3" />`;
+
+      svg += `<circle cx="${x12}" cy="${y12}" r="5" fill="#38bdf8" />`;
+      svg += `<circle cx="${x18}" cy="${y18}" r="5" fill="#38bdf8" />`;
+      if (!isNaN(s20)) {
+        const y20 = valToY(s20 / OKU);
+        svg += `<circle cx="${x20}" cy="${y20}" r="5" fill="#38bdf8" />`;
+      }
+
+      svg += `</svg>`;
+      container.innerHTML = svg;
+
+      let legendHtml = `
+        <div style="display:flex; align-items:center; gap:4px;">
+          <div style="width:16px; height:3px; background:#38bdf8;"></div>
+          <span style="color:#e2e8f0;">実績</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:4px;">
+          <div style="width:16px; height:0; border-top:2px dashed #cbd5e1;"></div>
+          <span style="color:#e2e8f0;">18時時点の24時予測</span>
+        </div>
+      `;
+      if (!isNaN(s20)) {
+        legendHtml += `
+          <div style="display:flex; align-items:center; gap:4px;">
+            <div style="width:16px; height:0; border-top:2px dashed #a78bfa;"></div>
+            <span style="color:#e2e8f0;">20時時点の24時更新予測</span>
+          </div>
+        `;
+        note.textContent = '';
+      } else {
+        note.textContent = '20時データを入力すると更新予測も表示されます';
+      }
+      legend.innerHTML = legendHtml;
     }
 
     // Initialize
