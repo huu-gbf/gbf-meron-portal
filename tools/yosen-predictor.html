@@ -109,6 +109,17 @@
     .portal-nav a { display:inline-flex; align-items:center; min-height:44px; padding:10px 14px; color:#cbd5e1; background:#0f172a; border:1px solid #334155; border-radius:8px; text-decoration:none; }
     .portal-nav a:hover { color:#fcd34d; border-color:#f59e0b; }
     .portal-nav a:focus-visible { outline:2px solid #38bdf8; outline-offset:3px; }
+
+    [hidden] { display:none !important; }
+    .form-group input, .form-group select, .form-group .info, .form-group .error, .form-group [id^="parsed"] { display:none !important; }
+    .shared-value { font-size:1.15rem; padding:12px; background:#0f172a; border-radius:8px; overflow-wrap:anywhere; }
+    body:not(.shared-ready) .form-group, body:not(.shared-ready) .result-section { display:none !important; }
+    .admin-panel { margin:20px 0; padding:16px; border:1px solid #475569; border-radius:10px; }
+    .admin-panel label { font-size:.9rem; margin-top:12px; }
+    .admin-panel input { width:100%; box-sizing:border-box; }
+    button { font:inherit; border:1px solid #64748b; background:#1e293b; color:#e2e8f0; border-radius:8px; padding:10px 14px; cursor:pointer; min-height:44px; }
+    button:disabled { opacity:.5; cursor:default; }
+    #sharedStatus, #adminStatus { overflow-wrap:anywhere; margin:12px 0; }
   </style>
 </head>
 <body>
@@ -122,6 +133,20 @@
       <p class="desc">12時・18時の累計貢献度から、過去傾向と当日の実測ペースを参考に予選終了時の着地を予想します。</p>
       <p class="tool-notice">非公式・ファン制作の予測ツールです。表示される数値は過去データ等をもとにした参考予測であり、実際の結果を保証するものではありません。</p>
       
+      <p id="sharedStatus" role="status">最新データを読み込んでいます…</p>
+      <p id="sharedMeta" hidden></p>
+      <section id="adminPanel" class="admin-panel" hidden>
+        <h2>管理モード</h2><p>入力中の値は公開されません。「保存して公開」で団員へ反映します。</p>
+        <form id="publishForm">
+          <label for="editDate">対象日</label><input id="editDate" type="date" required>
+          <label for="editDay">開催条件</label><select id="editDay"><option value="weekday">平日</option><option value="saturday">土曜</option><option value="sunday">日曜</option><option value="holiday">祝日</option></select>
+          <label for="edit12">12時累計貢献度</label><input id="edit12" type="text" required placeholder="1000億">
+          <label for="edit18">18時累計貢献度</label><input id="edit18" type="text" required placeholder="1600億">
+          <label for="edit20">20時累計貢献度（任意）</label><input id="edit20" type="text" placeholder="未入力可">
+          <button id="publishButton" type="submit" style="margin-top:16px">保存して公開</button>
+          <button id="resetDraft" type="button">公開値に戻す</button>
+        </form>
+      </section>
       <div class="form-group">
         <label>開催条件（曜日）</label>
         <select id="dayType">
@@ -130,12 +155,14 @@
           <option value="sunday">日曜</option>
           <option value="holiday">祝日</option>
         </select>
+        <p id="sharedDay" class="shared-value"></p>
       </div>
       
       <div class="form-group">
         <label>① 12:00時点</label>
         <span class="sub-label">累計貢献度</span>
         <input type="text" id="score12" placeholder="例: 1000億 / 100,000,000,000" inputmode="text">
+        <p id="shared12" class="shared-value"></p>
         <div id="parsed12" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err12" class="error"></div>
         <div id="info12" class="info">18:00のデータを入力すると予想できます</div>
@@ -145,6 +172,7 @@
         <label>② 18:00時点</label>
         <span class="sub-label">累計貢献度</span>
         <input type="text" id="score18" placeholder="例: 1600億 / 160,000,000,000" inputmode="text">
+        <p id="shared18" class="shared-value"></p>
         <div id="parsed18" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err18" class="error"></div>
       </div>
@@ -174,6 +202,7 @@
         <label>③ 20:00時点 <span style="font-size: 0.9rem; font-weight: normal; color: #94a3b8;">(任意)</span></label>
         <span class="sub-label">累計貢献度</span>
         <input type="text" id="score20" placeholder="例: 2000億 / 200,000,000,000" inputmode="text">
+        <p id="shared20" class="shared-value"></p>
         <div id="parsed20" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err20" class="error"></div>
       </div>
@@ -297,6 +326,15 @@
         <p>第三者サイトの記事、文章、表、デザイン等をそのまま転載することを目的としたものではなく、本ツールでは主に独自に集計・分析した数値および予測結果を利用しています。</p>
         <p>本ツールの利用および表示された予測結果に基づく判断は、利用者自身の責任で行ってください。</p>
       </section>
+      <section class="admin-panel">
+        <button id="loginToggle" type="button">管理者ログイン</button><button id="signOut" type="button" hidden>ログアウト</button>
+        <form id="loginForm" hidden>
+          <label for="adminEmail">メールアドレス</label><input id="adminEmail" type="email" autocomplete="username" required>
+          <label for="adminPassword">パスワード</label><input id="adminPassword" type="password" autocomplete="current-password" required>
+          <button id="signIn" type="submit" style="margin-top:12px">ログイン</button>
+        </form><p id="adminStatus" role="status"></p>
+      </section>
+
     </div>
   </div>
 
@@ -799,77 +837,6 @@
       return formatNumber(Math.floor(num));
     }
 
-    // Input handling
-    function handleInput(e) {
-      // 入力中はカンマ自動整形を行わず、値の保持と再計算のみ実行
-      saveToStorage();
-      calculate();
-    }
-
-    function handleBlur(e) {
-      const original = e.target.value;
-      let parsed = parseNumber(original);
-      if (!isNaN(parsed)) {
-        if (original.includes('億') || original.includes('万') || /[０-９]/.test(original)) {
-          e.target.value = original
-            .replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
-            .replace(/，/g, ',');
-        } else {
-          e.target.value = formatNumber(parsed);
-        }
-      }
-      saveToStorage();
-      calculate();
-    }
-
-    [els.score12, els.score18, els.score20].forEach(el => {
-      el.addEventListener('input', handleInput);
-      el.addEventListener('blur', handleBlur);
-    });
-    els.dayType.addEventListener('change', () => {
-      saveToStorage();
-      calculate();
-    });
-
-    function saveToStorage() {
-      const data = {
-        dayType: els.dayType.value,
-        score12: els.score12.value,
-        score18: els.score18.value,
-        score20: els.score20.value,
-        date: new Date().toDateString()
-      };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      } catch (e) {
-        console.warn('LocalStorage save error', e);
-      }
-    }
-
-    function loadFromStorage() {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const data = JSON.parse(stored);
-          if (data.date === new Date().toDateString()) {
-            if (data.dayType) els.dayType.value = data.dayType;
-            
-            ['score12', 'score18', 'score20'].forEach(key => {
-              if (data[key] !== undefined && data[key] !== null) {
-                if (typeof data[key] === 'number') {
-                  if (!isNaN(data[key])) els[key].value = formatNumber(data[key]);
-                } else {
-                  els[key].value = data[key];
-                }
-              }
-            });
-          }
-        }
-      } catch(e) {
-        console.warn('LocalStorage error', e);
-      }
-    }
-
     function showError(el, msg) {
       el.textContent = msg;
       el.style.display = 'block';
@@ -1237,8 +1204,11 @@
 
     // Initialize
     refreshHistoryModels();
-    loadFromStorage();
-    calculate();
   </script>
+  <script src="../firebase-config.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="yosen-shared.js"></script>
 </body>
 </html>
