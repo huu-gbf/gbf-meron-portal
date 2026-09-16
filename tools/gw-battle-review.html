@@ -1,0 +1,3016 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>古戦場 戦況分析ツール | 団長レビュー版</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* ==============================
+   CSS Custom Properties
+   ============================== */
+:root {
+  --bg-base: #080c14;
+  --bg-card: rgba(18, 24, 41, 0.82);
+  --bg-card-hover: rgba(22, 30, 54, 0.92);
+  --border: rgba(36, 47, 76, 0.8);
+  --border-bright: rgba(245, 200, 66, 0.35);
+  --gold: #f5c842;
+  --gold-dim: #c9a228;
+  --blue: #38bdf8;
+  --blue-dim: #0ea5e9;
+  --purple: #a78bfa;
+  --red: #f87171;
+  --green: #34d399;
+  --orange: #fb923c;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.5);
+  --font-main: 'Noto Sans JP', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ==============================
+   Reset & Base
+   ============================== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 16px; }
+
+body {
+  font-family: var(--font-main);
+  background-color: var(--bg-base);
+  background-image:
+    radial-gradient(circle at 8% 12%, rgba(245,200,66,0.05) 0%, transparent 42%),
+    radial-gradient(circle at 92% 78%, rgba(56,189,248,0.05) 0%, transparent 42%),
+    radial-gradient(circle at 50% 50%, rgba(139,92,246,0.03) 0%, transparent 60%);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Stars background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(1.2px 1.2px at 18px 28px, rgba(255,255,255,0.7), transparent),
+    radial-gradient(1px 1px at 52px 84px, rgba(253,224,71,0.6), transparent),
+    radial-gradient(1.5px 1.5px at 88px 42px, rgba(56,189,248,0.5), transparent),
+    radial-gradient(0.8px 0.8px at 135px 110px, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 200px 60px, rgba(167,139,250,0.5), transparent),
+    radial-gradient(1.2px 1.2px at 260px 140px, rgba(255,255,255,0.3), transparent);
+  background-size: 300px 200px;
+  background-repeat: repeat;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ==============================
+   Layout
+   ============================== */
+.app-wrapper {
+  position: relative;
+  z-index: 1;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 12px 40px;
+}
+
+/* ==============================
+   Glass Panel
+   ============================== */
+.glass {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+}
+
+.glass-bright {
+  border-color: var(--border-bright);
+}
+
+/* ==============================
+   Header
+   ============================== */
+.header {
+  text-align: center;
+  padding: 24px 16px 18px;
+  margin-bottom: 4px;
+}
+
+.header-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, var(--gold) 0%, #fde68a 50%, var(--gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1.2;
+}
+
+.header-subtitle {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(248,113,113,0.15);
+  border: 1px solid rgba(248,113,113,0.35);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--red);
+  letter-spacing: 0.04em;
+}
+
+.header-meta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.badge-gold {
+  background: rgba(245,200,66,0.12);
+  border: 1px solid rgba(245,200,66,0.3);
+  color: var(--gold);
+}
+
+.badge-muted {
+  background: rgba(100,116,139,0.15);
+  border: 1px solid rgba(100,116,139,0.25);
+  color: var(--text-secondary);
+}
+
+/* ==============================
+   Section
+   ============================== */
+.section {
+  margin-top: 12px;
+  padding: 18px 16px;
+}
+
+.section-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--border), transparent);
+}
+
+.section-title .icon {
+  font-size: 1rem;
+}
+
+/* ==============================
+   Toggle Button Group
+   ============================== */
+.toggle-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.toggle-group label {
+  flex: 1;
+  min-width: 60px;
+}
+
+.toggle-group input[type="radio"] {
+  display: none;
+}
+
+.toggle-btn {
+  display: block;
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.toggle-group input:checked + .toggle-btn {
+  background: rgba(245,200,66,0.15);
+  border-color: var(--gold-dim);
+  color: var(--gold);
+  box-shadow: 0 0 12px rgba(245,200,66,0.12);
+}
+
+.toggle-btn:active {
+  transform: scale(0.97);
+}
+
+/* ==============================
+   Input Fields
+   ============================== */
+.field-group {
+  margin-bottom: 14px;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+  letter-spacing: 0.03em;
+}
+
+.field-label .required {
+  color: var(--red);
+  margin-left: 3px;
+}
+
+.field-label .optional {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+
+.input-wrapper {
+  position: relative;
+}
+
+input[type="text"],
+input[type="time"],
+input[type="number"] {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+}
+
+input:focus {
+  border-color: rgba(245,200,66,0.5);
+  box-shadow: 0 0 0 3px rgba(245,200,66,0.08);
+}
+
+input.error {
+  border-color: rgba(248,113,113,0.6);
+}
+
+.input-hint {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--blue);
+  font-family: var(--font-mono);
+  min-height: 18px;
+  transition: opacity 0.2s;
+}
+
+.input-hint.ok { color: var(--green); }
+.input-hint.warn { color: var(--orange); }
+.input-hint.err { color: var(--red); }
+
+/* ==============================
+   Buttons
+   ============================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 13px 20px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-main);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  letter-spacing: 0.03em;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: linear-gradient(135deg, #d4a017 0%, var(--gold) 50%, #d4a017 100%);
+  color: #080c14;
+  box-shadow: 0 4px 16px rgba(245,200,66,0.25);
+  width: 100%;
+  font-size: 1rem;
+  padding: 15px;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 6px 24px rgba(245,200,66,0.4);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: rgba(56,189,248,0.12);
+  border: 1px solid rgba(56,189,248,0.3);
+  color: var(--blue);
+  width: 100%;
+}
+
+.btn-secondary:hover {
+  background: rgba(56,189,248,0.2);
+}
+
+.btn-danger {
+  background: rgba(248,113,113,0.1);
+  border: 1px solid rgba(248,113,113,0.3);
+  color: var(--red);
+  font-size: 0.8rem;
+  padding: 8px 12px;
+}
+
+.btn-danger:hover {
+  background: rgba(248,113,113,0.2);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  border-radius: 6px;
+}
+
+.btn-ghost {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  padding: 7px 12px;
+}
+
+.btn-ghost:hover { background: rgba(255,255,255,0.1); }
+
+/* ==============================
+   Team Divider
+   ============================== */
+.team-section-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  display: inline-block;
+}
+
+.team-enemy {
+  background: rgba(248,113,113,0.12);
+  border: 1px solid rgba(248,113,113,0.3);
+  color: var(--red);
+}
+
+.team-own {
+  background: rgba(56,189,248,0.1);
+  border: 1px solid rgba(56,189,248,0.25);
+  color: var(--blue);
+}
+
+.team-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border), transparent);
+  margin: 16px 0;
+}
+
+/* ==============================
+   Results Section
+   ============================== */
+.result-area {
+  margin-top: 12px;
+}
+
+.result-hidden { display: none; }
+
+/* Main Prediction Cards */
+.pred-primary {
+  text-align: center;
+  padding: 20px 16px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(245,200,66,0.1) 0%, rgba(245,200,66,0.04) 100%);
+  border: 1px solid rgba(245,200,66,0.3);
+  margin-bottom: 10px;
+}
+
+.pred-primary .pred-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--gold-dim);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.pred-primary .pred-value {
+  font-family: var(--font-mono);
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1.1;
+}
+
+.pred-primary .pred-sub {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.pred-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pred-card {
+  text-align: center;
+  padding: 14px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+}
+
+.pred-card.standard { border-color: rgba(56,189,248,0.25); }
+.pred-card.caution { border-color: rgba(251,146,60,0.25); }
+
+.pred-card .pred-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.pred-card.standard .pred-label { color: var(--blue-dim); }
+.pred-card.caution .pred-label { color: var(--orange); }
+
+.pred-card .pred-value {
+  font-family: var(--font-mono);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pred-card.standard .pred-value { color: var(--blue); }
+.pred-card.caution .pred-value { color: var(--orange); }
+
+/* Status Info Rows */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.03);
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.info-row .info-key {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.info-row .info-val {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.info-val.positive { color: var(--green); }
+.info-val.negative { color: var(--red); }
+.info-val.warning { color: var(--orange); }
+.info-val.highlight { color: var(--gold); }
+
+/* Lead Indicator */
+.lead-indicator {
+  text-align: center;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+
+.lead-indicator.own-lead {
+  background: rgba(52,211,153,0.1);
+  border: 1px solid rgba(52,211,153,0.3);
+  color: var(--green);
+}
+
+.lead-indicator.enemy-lead {
+  background: rgba(248,113,113,0.1);
+  border: 1px solid rgba(248,113,113,0.3);
+  color: var(--red);
+}
+
+.lead-indicator.tied {
+  background: rgba(148,163,184,0.1);
+  border: 1px solid rgba(148,163,184,0.2);
+  color: var(--text-secondary);
+}
+
+/* Overtake Block */
+.overtake-block {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(167,139,250,0.08);
+  border: 1px solid rgba(167,139,250,0.25);
+  margin-bottom: 10px;
+}
+
+.overtake-block .overtake-label {
+  font-size: 0.72rem;
+  color: var(--purple);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.overtake-block .overtake-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ==============================
+   Snapshot / History
+   ============================== */
+.snapshot-item {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  transition: border-color 0.2s;
+}
+
+.snapshot-item:hover {
+  border-color: rgba(56,189,248,0.3);
+}
+
+.snapshot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.snapshot-time {
+  font-family: var(--font-mono);
+  font-size: 1.0rem;
+  font-weight: 700;
+  color: var(--blue);
+}
+
+.snapshot-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.snapshot-data {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.snapshot-team {
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.snapshot-team.own {
+  background: rgba(56,189,248,0.07);
+  border: 1px solid rgba(56,189,248,0.2);
+}
+
+.snapshot-team.enemy {
+  background: rgba(248,113,113,0.07);
+  border: 1px solid rgba(248,113,113,0.2);
+}
+
+.snapshot-team-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.snapshot-team.own .snapshot-team-label { color: var(--blue); }
+.snapshot-team.enemy .snapshot-team-label { color: var(--red); }
+
+.snapshot-team-value {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.snapshot-team-speed {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+
+/* Edit form in snapshot */
+.snapshot-edit-form {
+  margin-top: 10px;
+  padding: 10px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.snapshot-edit-form .edit-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.snapshot-edit-form .edit-label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.snapshot-edit-form input {
+  padding: 7px 10px;
+  font-size: 0.85rem;
+}
+
+/* ==============================
+   Day description
+   ============================== */
+.day-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  line-height: 1.5;
+  margin-top: 12px;
+}
+
+/* ==============================
+   Alert / Notice
+   ============================== */
+.notice {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.notice-info {
+  background: rgba(56,189,248,0.08);
+  border: 1px solid rgba(56,189,248,0.2);
+  color: var(--text-secondary);
+}
+
+.notice-warn {
+  background: rgba(251,146,60,0.08);
+  border: 1px solid rgba(251,146,60,0.25);
+  color: var(--orange);
+}
+
+.notice-err {
+  background: rgba(248,113,113,0.08);
+  border: 1px solid rgba(248,113,113,0.25);
+  color: var(--red);
+}
+
+.notice strong { font-weight: 700; }
+
+/* ==============================
+   Provisional badge
+   ============================== */
+.provisional-badge {
+  display: inline-block;
+  background: rgba(251,146,60,0.15);
+  border: 1px solid rgba(251,146,60,0.4);
+  color: var(--orange);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+/* ==============================
+   Section Divider  
+   ============================== */
+.divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border), transparent);
+  margin: 16px 0;
+}
+
+/* ==============================
+   23h comparison block
+   ============================== */
+.late-night-block {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(245,200,66,0.06);
+  border: 1px solid rgba(245,200,66,0.2);
+  margin-bottom: 10px;
+}
+
+.late-night-block .lnb-title {
+  font-size: 0.72rem;
+  color: var(--gold-dim);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.lnb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.lnb-row .lnb-key {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.lnb-row .lnb-val {
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ==============================
+   Help / Tooltip text
+   ============================== */
+.help-text {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.02);
+  border-radius: var(--radius-sm);
+  margin-top: 10px;
+}
+
+.help-text strong { color: var(--text-secondary); }
+
+/* ==============================
+   Footer
+   ============================== */
+.footer {
+  text-align: center;
+  padding: 24px 16px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+  margin-top: 16px;
+}
+
+.footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+/* ==============================
+   Responsive - PC
+   ============================== */
+@media (min-width: 600px) {
+  .app-wrapper {
+    padding: 0 20px 60px;
+  }
+  .header-title {
+    font-size: 1.8rem;
+  }
+  .pred-primary .pred-value {
+    font-size: 2.8rem;
+  }
+  .section {
+    padding: 22px 22px;
+  }
+}
+
+/* ==============================
+   Utility
+   ============================== */
+.mt4 { margin-top: 4px; }
+.mt8 { margin-top: 8px; }
+.mt12 { margin-top: 12px; }
+.flex-row { display: flex; gap: 8px; align-items: center; }
+.flex-1 { flex: 1; }
+.text-center { text-align: center; }
+.text-sm { font-size: 0.78rem; }
+.text-muted { color: var(--text-muted); }
+.mono { font-family: var(--font-mono); }
+.bold { font-weight: 700; }
+
+/* Animate fade in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-in { animation: fadeIn 0.3s ease forwards; }
+
+/* Pulse on update */
+@keyframes pulseUpdate {
+  0% { box-shadow: 0 0 0 0 rgba(245,200,66,0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(245,200,66,0); }
+  100% { box-shadow: 0 0 0 0 rgba(245,200,66,0); }
+}
+.pulse { animation: pulseUpdate 0.5s ease; }
+
+/* ==============================
+   Battle Chart
+   ============================== */
+#sec-chart { margin-top: 12px; }
+
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+}
+
+.chart-wrap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-empty {
+  text-align: center;
+  padding: 32px 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  padding: 0 2px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.legend-line {
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legend-line.dashed {
+  background: repeating-linear-gradient(to right, currentColor 0, currentColor 4px, transparent 4px, transparent 8px);
+  height: 2px;
+}
+
+</style>
+</head>
+<body>
+<div class="app-wrapper">
+
+  <!-- ========================
+       HEADER
+       ======================== -->
+  <header class="header">
+    <a href="../index.html#sec-links" style="display:inline-block;margin-bottom:14px;color:var(--gold);font-size:0.85rem;">← ツール一覧へ戻る</a>
+    <h1 class="header-title">⚔️ 古戦場 戦況分析ツール</h1>
+    <div class="header-subtitle">🔒 団長レビュー版 / 正式版ではありません</div>
+    <div class="header-meta">
+      <span class="badge badge-gold">📊 予測基準：総合300位付近</span>
+      <span class="badge badge-muted">💾 データはこの端末内だけに保存</span>
+    </div>
+  </header>
+
+  <!-- ========================
+       CONDITION SELECT
+       ======================== -->
+  <section class="glass section" id="sec-conditions">
+    <div class="section-title"><span class="icon">⚙️</span>条件選択</div>
+
+    <div class="field-group">
+      <span class="field-label">本戦日</span>
+      <div class="toggle-group" id="day-select">
+        <label><input type="radio" name="gw-day" value="day1" checked><span class="toggle-btn">1戦目</span></label>
+        <label><input type="radio" name="gw-day" value="day2"><span class="toggle-btn">2戦目</span></label>
+        <label><input type="radio" name="gw-day" value="day3"><span class="toggle-btn">3戦目</span></label>
+        <label><input type="radio" name="gw-day" value="day4"><span class="toggle-btn">4戦目</span></label>
+      </div>
+    </div>
+
+    <div class="field-group mt8">
+      <span class="field-label">日区分</span>
+      <div class="toggle-group" id="daytype-select">
+        <label style="flex:2"><input type="radio" name="day-type" value="weekday" checked><span class="toggle-btn">平日</span></label>
+        <label style="flex:3"><input type="radio" name="day-type" value="weekend"><span class="toggle-btn">土日祝</span></label>
+      </div>
+    </div>
+
+    <!-- Day description -->
+    <div class="day-desc" id="day-description"></div>
+
+    <!-- Provisional notice (shown when needed) -->
+    <div class="notice notice-warn mt8 result-hidden" id="provisional-notice">
+      <strong>⚠️ 暫定モデル</strong>：このパターンの現行仕様（第80回以降）300位データは1開催のみです。モデル精度は参考値としてご利用ください。
+    </div>
+  </section>
+
+  <!-- ========================
+       12h BASE DATA
+       ======================== -->
+  <section class="glass section" id="sec-base">
+    <div class="section-title"><span class="icon">🕛</span>12時基準データ</div>
+
+    <!-- Enemy -->
+    <div class="team-section-label team-enemy">⚔️ 相手団</div>
+
+    <div class="field-group">
+      <label class="field-label" for="enemy-contrib12">12:00時点 累計貢献度<span class="required">*</span></label>
+      <div class="input-wrapper">
+        <input type="text" id="enemy-contrib12" placeholder="例: 573億 / 57302556255 / 573.2億" autocomplete="off" inputmode="text">
+      </div>
+      <div class="input-hint" id="hint-enemy-contrib12"></div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="enemy-speed">7〜12時 平均時速（万/h入力）<span class="required">*</span></label>
+      <div class="input-wrapper">
+        <input type="text" id="enemy-speed" placeholder="例: 250715 (万/h) / 25.07億" autocomplete="off" inputmode="decimal">
+      </div>
+      <div class="input-hint" id="hint-enemy-speed"></div>
+    </div>
+
+    <div class="team-divider"></div>
+
+    <!-- Own team -->
+    <div class="team-section-label team-own">🛡️ 自団 <span style="font-size:0.65rem;font-weight:400;opacity:0.7">（任意）</span></div>
+
+    <div class="field-group">
+      <label class="field-label" for="own-contrib12">12:00時点 累計貢献度<span class="optional">（任意）</span></label>
+      <div class="input-wrapper">
+        <input type="text" id="own-contrib12" placeholder="例: 543億" autocomplete="off" inputmode="text">
+      </div>
+      <div class="input-hint" id="hint-own-contrib12"></div>
+    </div>
+
+    <div class="field-group">
+      <label class="field-label" for="own-speed">7〜12時 平均時速（万/h入力）<span class="optional">（任意）</span></label>
+      <div class="input-wrapper">
+        <input type="text" id="own-speed" placeholder="例: 230000 (万/h) / 23億" autocomplete="off" inputmode="decimal">
+      </div>
+      <div class="input-hint" id="hint-own-speed"></div>
+    </div>
+
+    <div class="mt12">
+      <button class="btn btn-primary" id="btn-predict">🔮 予測する</button>
+    </div>
+
+    <!-- Error display -->
+    <div class="notice notice-err mt8 result-hidden" id="input-error"></div>
+  </section>
+
+  <!-- ========================
+       PREDICTION RESULTS
+       ======================== -->
+  <section class="glass section result-area result-hidden" id="sec-results">
+    <div class="section-title"><span class="icon">📈</span>24時終点予測</div>
+
+    <!-- Model info notice -->
+    <div class="notice notice-info" id="model-notice"></div>
+
+    <!-- PRIMARY / REALTIME CORRECTED (shown >= 18:00 with snapshot) -->
+    <div id="pred-realtime-block" class="result-hidden">
+      <div class="pred-primary glass-bright animate-in" id="pred-realtime-card">
+        <div class="pred-label">🎯 現在補正予測（相手団）</div>
+        <div class="pred-value" id="pred-realtime-value">—</div>
+        <div class="pred-sub" id="pred-realtime-sub"></div>
+      </div>
+    </div>
+
+    <!-- Notice for before 18h -->
+    <div id="pred-early-notice" class="notice notice-info result-hidden">
+      まだ序盤のため統計予測を優先しています（18時以降に現在データがある場合、補正予測が表示されます）
+    </div>
+
+    <!-- Standard + Caution -->
+    <div class="pred-row">
+      <div class="pred-card standard">
+        <div class="pred-label">📊 12時時点の24時予測</div>
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-top:1px;">12:00の累計・7〜12時平均時速から算出</div>
+        <div class="pred-value" id="pred-std-enemy">—</div>
+        <div id="pred-std-enemy-sub" style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;"></div>
+      </div>
+      <div class="pred-card caution">
+        <div class="pred-label">⚠️ 12時時点の警戒予測</div>
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-top:1px;">強めの展開を想定した安全側の24時予測</div>
+        <div class="pred-value" id="pred-caut-enemy">—</div>
+        <div id="pred-caut-enemy-sub" style="font-size:0.65rem;color:var(--text-muted);margin-top:2px;"></div>
+      </div>
+    </div>
+
+    <!-- Own team prediction (if entered) -->
+    <div id="own-pred-block" class="result-hidden">
+      <div class="divider"></div>
+      <div class="section-title" style="font-size:0.72rem;margin-bottom:10px;"><span class="icon">🛡️</span>自団 24時予測</div>
+      <div class="pred-row">
+        <div class="pred-card standard">
+          <div class="pred-label">標準</div>
+          <div class="pred-value" id="pred-std-own">—</div>
+        </div>
+        <div class="pred-card caution">
+          <div class="pred-label">警戒</div>
+          <div class="pred-value" id="pred-caut-own">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 23h comparison block -->
+    <div id="late-night-block" class="late-night-block result-hidden">
+      <div class="lnb-title">🌙 23時台 速度比較</div>
+      <div class="lnb-row">
+        <span class="lnb-key">直近区間時速</span>
+        <span class="lnb-val" id="lnb-current-speed">—</span>
+      </div>
+      <div class="lnb-row">
+        <span class="lnb-key">統計上の23時台基準速度</span>
+        <span class="lnb-val" id="lnb-stat-speed">—</span>
+      </div>
+      <div class="lnb-row">
+        <span class="lnb-key">直近 / 統計比</span>
+        <span class="lnb-val" id="lnb-ratio">—</span>
+      </div>
+      <div id="lnb-note" class="text-sm text-muted mt4"></div>
+    </div>
+
+    <!-- Pace info -->
+    <div id="pace-info-block" class="result-hidden">
+      <div class="info-row">
+        <span class="info-key">📊 現在までの実績ペース：12時予測比</span>
+        <span class="info-val" id="pace-ratio-val">—</span>
+      </div>
+      <div class="info-row" id="correction-clamp-row" style="display:none">
+        <span class="info-key">⚡ 補正上限適用</span>
+        <span class="info-val warning">±10%クリップ済み</span>
+      </div>
+    </div>
+
+    <div class="help-text mt8">
+      📌 <strong>警戒予測について：</strong>統計的な上限値ではなく「過去の強いケースより少し安全側に置いた警戒用予測」です。相手が現在遅い場合でも下げません。<br><br>
+      📌 <strong>予測精度について：</strong>過去データでは良好な結果を確認していますが、現行仕様（第80回以降）の開催数が少ないため精度は参考値です。特に2・3戦目の土日祝は1開催のみの暫定モデルです。
+    </div>
+  </section>
+
+  <!-- ========================
+       CURRENT SITUATION
+       ======================== -->
+  <section class="glass section" id="sec-snapshot">
+    <div class="section-title"><span class="icon">⚡</span>現在の戦況</div>
+
+    <div class="field-group">
+      <label class="field-label" for="snap-time">現在時刻</label>
+      <input type="time" id="snap-time" step="60">
+    </div>
+
+    <div class="flex-row mt8" style="gap:10px">
+      <div class="flex-1">
+        <label class="field-label" for="snap-own">自団 累計<span class="optional">（任意）</span></label>
+        <input type="text" id="snap-own" placeholder="例: 320億" autocomplete="off" inputmode="text">
+        <div class="input-hint" id="hint-snap-own"></div>
+      </div>
+      <div class="flex-1">
+        <label class="field-label" for="snap-enemy">相手団 累計</label>
+        <input type="text" id="snap-enemy" placeholder="例: 301億" autocomplete="off" inputmode="text">
+        <div class="input-hint" id="hint-snap-enemy"></div>
+      </div>
+    </div>
+
+    <!-- Snapshot error -->
+    <div class="notice notice-err mt8 result-hidden" id="snap-error"></div>
+
+    <div class="mt12">
+      <button class="btn btn-secondary" id="btn-record">📌 戦況を記録</button>
+    </div>
+  </section>
+
+  <!-- ========================
+       BATTLE STATUS ANALYSIS
+       ======================== -->
+  <section class="glass section result-area result-hidden" id="sec-analysis">
+    <div class="section-title"><span class="icon">🔍</span>戦況分析</div>
+
+    <!-- Lead indicator -->
+    <div id="lead-indicator" class="lead-indicator"></div>
+
+    <!-- Speed / overtake -->
+    <div id="speed-analysis-block">
+      <div class="info-row">
+        <span class="info-key">🛡️ 自団 区間時速</span>
+        <span class="info-val" id="ana-own-speed">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">⚔️ 相手 区間時速</span>
+        <span class="info-val" id="ana-enemy-speed">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-key">⚡ 時速差</span>
+        <span class="info-val" id="ana-speed-diff">—</span>
+      </div>
+    </div>
+
+    <!-- Overtake block -->
+    <div class="overtake-block result-hidden" id="overtake-block">
+      <div class="overtake-label">⏰ 追いつき予測</div>
+      <div class="overtake-text" id="overtake-text"></div>
+    </div>
+  </section>
+
+  <!-- ========================
+       BATTLE CHART
+       ======================== -->
+  <section class="glass section" id="sec-chart">
+    <div class="section-title"><span class="icon">📈</span>戦況グラフ</div>
+    <div id="chart-area">
+      <div class="chart-empty" id="chart-empty">戦況を記録するとグラフが表示されます</div>
+    </div>
+  </section>
+
+  <!-- ========================
+       SNAPSHOT HISTORY
+       ======================== -->
+  <section class="glass section" id="sec-history">
+    <div class="section-title"><span class="icon">🕐</span>記録履歴</div>
+    <div id="history-list">
+      <div class="text-center text-sm text-muted" style="padding:20px 0;" id="history-empty">記録がありません</div>
+    </div>
+  </section>
+
+  <!-- ========================
+       REFERENCE MULTIPLIERS
+       ======================== -->
+  <section class="glass section" id="sec-ref-mult">
+    <div class="section-title" style="font-size: 1rem;"><span class="icon">📊</span>参考倍率</div>
+    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">
+      7〜12時の平均時速を1.00とした参考倍率です。<br>
+      現在：<span id="ref-mult-current-cond"></span>
+    </div>
+    
+    <div id="ref-mult-provisional-note" class="result-hidden" style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 8px;">
+      ※この条件の倍率は現行仕様の開催データが少ないため暫定値です。
+    </div>
+
+    <div style="overflow-x: auto;">
+      <table class="history-table" style="margin-top: 0; min-width: 100%;">
+        <thead>
+          <tr>
+            <th style="width: 33%">時間帯</th>
+            <th style="width: 33%; text-align: right;">標準</th>
+            <th style="width: 34%; text-align: right;">12時警戒</th>
+          </tr>
+        </thead>
+        <tbody id="ref-mult-tbody">
+          <!-- JS will populate -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========================
+       MODEL INFO
+       ======================== -->
+  <section class="glass section" id="sec-model-info">
+    <div class="section-title"><span class="icon">ℹ️</span>予測モデルについて</div>
+    <div class="help-text">
+      本ツールは主に<strong>全体貢献度300位付近</strong>の過去速度データを基準にしています。<br><br>
+      300位と2500位の比較では、上位側ほど朝から高い速度で走り、その後の相対倍率が低くなる傾向が確認されています。そのため、300位より大幅に上位・下位の団では予測値にずれが生じる可能性があります。特に本戦後半では順位帯による走り方の違いが大きくなる場合があります。<br><br>
+      なお「順位が高いほど必ず倍率が低い」とは断定しません。現在確認できているのは300位と2500位の2点の比較のみです。
+    </div>
+  </section>
+
+  <!-- ========================
+       DATA MANAGEMENT
+       ======================== -->
+  <section class="glass section" id="sec-data-mgmt">
+    <div class="section-title"><span class="icon">🗂️</span>データ管理</div>
+    <div class="notice notice-info" style="margin-bottom:12px;">
+      <strong>レビュー版：</strong>入力データはこの端末内だけに保存されます。別PC・別スマホとは同期されません。
+    </div>
+    <button class="btn btn-danger" id="btn-clear-all" style="width:100%">🗑️ この端末のレビュー用データをすべて削除</button>
+  </section>
+
+  <!-- ========================
+       FOOTER
+       ======================== -->
+  <footer class="footer">
+    <div>古戦場 戦況分析ツール 団長レビュー版</div>
+    <div style="margin-top:4px;">計算モデル・UIはレビュー後に変更される可能性があります</div>
+    <div style="margin-top:4px;font-size:0.68rem;">予測基準：総合300位付近 ／ 2026</div>
+  </footer>
+
+</div><!-- /app-wrapper -->
+
+<!-- ==============================
+     JAVASCRIPT
+     ============================== -->
+<script>
+'use strict';
+
+/* ================================================
+   SECTION 1: MODEL DATA
+   ================================================ */
+
+const MODELS = {
+  day1: {
+    label: '1戦目',
+    description: '昼は比較的静か。平日は19時以降に大きく加速し、23時台は失速しやすい傾向があります。',
+    note23: '失速しやすい',
+    weekday: {
+      standard: { t12_17: 0.95, t17_19: 1.05, t19_23: 1.55, t23_24: 1.25 },
+      caution:  { t12_17: 1.00, t17_19: 1.20, t19_23: 1.60, t23_24: 1.45 }
+    },
+    weekend: {
+      standard: { t12_17: 1.30, t17_19: 1.15, t19_23: 1.40, t23_24: 1.20 },
+      caution:  { t12_17: 1.40, t17_19: 1.25, t19_23: 1.45, t23_24: 1.25 },
+      provisional: false
+    }
+  },
+  day2: {
+    label: '2戦目',
+    description: '昼から速度が上がりやすく、夜はさらに加速します。23時台も高速度を維持しやすい傾向があります。',
+    note23: '高速度を維持しやすい',
+    weekday: {
+      standard: { t12_17: 1.15, t17_19: 1.25, t19_23: 1.75, t23_24: 1.75 },
+      caution:  { t12_17: 1.25, t17_19: 1.40, t19_23: 1.85, t23_24: 1.95 }
+    },
+    weekend: {
+      standard: { t12_17: 1.25, t17_19: 1.25, t19_23: 1.40, t23_24: 1.30 },
+      caution:  { t12_17: 1.35, t17_19: 1.35, t19_23: 1.50, t23_24: 1.45 },
+      provisional: true
+    }
+  },
+  day3: {
+    label: '3戦目',
+    description: '朝から高速度になりやすく、夜も伸びます。23時台の動きには開催ごとのばらつきがあります。',
+    note23: '開催によるばらつきあり',
+    weekday: {
+      standard: { t12_17: 1.15, t17_19: 1.25, t19_23: 1.55, t23_24: 1.45 },
+      caution:  { t12_17: 1.25, t17_19: 1.40, t19_23: 1.65, t23_24: 1.60 }
+    },
+    weekend: {
+      standard: { t12_17: 1.15, t17_19: 1.20, t19_23: 1.30, t23_24: 1.30 },
+      caution:  { t12_17: 1.25, t17_19: 1.30, t19_23: 1.45, t23_24: 1.45 },
+      provisional: true
+    }
+  },
+  day4: {
+    label: '4戦目',
+    description: '朝から高稼働になりやすく、昼〜夕方の倍率変化は小さめです。300位データでは23時台に失速する傾向があります。',
+    note23: '300位では失速しやすい',
+    weekday: {
+      standard: { t12_17: 1.00, t17_19: 1.00, t19_23: 1.20, t23_24: 0.90 },
+      caution:  { t12_17: 1.10, t17_19: 1.10, t19_23: 1.30, t23_24: 1.00 }
+    },
+    weekend: {
+      standard: { t12_17: 1.05, t17_19: 1.00, t19_23: 1.10, t23_24: 0.90 },
+      caution:  { t12_17: 1.10, t17_19: 1.10, t19_23: 1.20, t23_24: 1.00 },
+      provisional: false
+    }
+  }
+};
+
+// Time block durations in hours
+const TIME_BLOCKS = { t12_17: 5, t17_19: 2, t19_23: 4, t23_24: 1 };
+
+/* ================================================
+   SECTION 2: NUMBER PARSERS
+   ================================================ */
+
+/**
+ * Parse a contribution (貢献度) string.
+ * Accepts:
+ *   Plain:    57302556255 / 57,302,556,255
+ *   億のみ:   573億 / 14.5億
+ *   万のみ:   5000万 / 5,000万
+ *   億+万複合: 14億5000万 / 14億5,000万 / 100億2500万
+ * Returns absolute value (integer), or null on parse error / unknown format.
+ *
+ * 設計方針:
+ *   - 正規表現で文字列全体をパターンマッチしてから数値変換する。
+ *   - parseFloat による先頭読み取り（後続文字の無視）は行わない。
+ *   - 不正文字が混ざっている場合は null を返す。
+ */
+function parseContrib(str) {
+  if (!str || typeof str !== 'string') return null;
+  // スペース除去のみ（カンマは各分岐で除去）
+  str = str.trim().replace(/\s/g, '');
+  if (!str) return null;
+
+  // ---- 数字＋カンマのみを許可する汎用バリデーション ----
+  // 使用可能文字: 数字 0-9、小数点、カンマ、億、万
+  // それ以外が混ざっていれば null
+  if (/[^\d.,億万]/.test(str)) return null;
+
+  // ---- ケース1: 億+万の複合形式 ----
+  // 例: 14億5000万 / 14億5,000万 / 100億2500万
+  const compoundMatch = str.match(/^(\d+(?:\.\d+)?)億(\d[\d,]*)万$/);
+  if (compoundMatch) {
+    const okuPart = parseFloat(compoundMatch[1]);
+    const manPart = parseFloat(compoundMatch[2].replace(/,/g, ''));
+    if (isNaN(okuPart) || isNaN(manPart) || okuPart < 0 || manPart < 0) return null;
+    return Math.round(okuPart * 1e8 + manPart * 1e4);
+  }
+
+  // ---- ケース2: 億のみ ----
+  // 例: 573億 / 14.5億 / 14.50億
+  const okuMatch = str.match(/^(\d+(?:\.\d+)?)億$/);
+  if (okuMatch) {
+    const num = parseFloat(okuMatch[1]);
+    if (isNaN(num) || num < 0) return null;
+    return Math.round(num * 1e8);
+  }
+
+  // ---- ケース3: 万のみ ----
+  // 例: 5000万 / 5,000万
+  const manMatch = str.match(/^(\d[\d,]*)万$/);
+  if (manMatch) {
+    const num = parseFloat(manMatch[1].replace(/,/g, ''));
+    if (isNaN(num) || num < 0) return null;
+    return Math.round(num * 1e4);
+  }
+
+  // ---- ケース4: 純粋な数値（カンマ区切り可） ----
+  // 例: 1450000000 / 1,450,000,000
+  const plainMatch = str.match(/^\d[\d,]*$/);
+  if (plainMatch) {
+    const num = parseFloat(str.replace(/,/g, ''));
+    if (isNaN(num) || num < 0) return null;
+    return Math.round(num);
+  }
+
+  // いずれにも合致しない（小数点のある純粋数値など非対応形式）→ null
+  return null;
+}
+
+/**
+ * Parse a speed (時速) string.
+ * Rules:
+ *   - If input ends with '億' → treat as ×1e8
+ *   - If input < 10000 (no obvious scale) → treat as 億/h (×1e8)
+ *   - Otherwise → treat as 万/h (×1e4)
+ * This covers: 250715 → 250715万/h, 25.07億 → 25.07億/h
+ * Returns absolute value (貢献度/h), or null on error.
+ */
+function parseSpeed(str) {
+  if (!str || typeof str !== 'string') return null;
+  str = str.trim().replace(/\s/g, '').replace(/[\/h時hH]/g, '').trim();
+  if (!str) return null;
+
+  // 億/h
+  if (str.includes('億')) {
+    const num = parseFloat(str.replace('億', '').replace(/,/g, ''));
+    if (isNaN(num) || num <= 0) return null;
+    return Math.round(num * 1e8);
+  }
+
+  // 万/h (explicit suffix)
+  if (str.includes('万')) {
+    const num = parseFloat(str.replace('万', '').replace(/,/g, ''));
+    if (isNaN(num) || num <= 0) return null;
+    return Math.round(num * 1e4);
+  }
+
+  // Plain number
+  const stripped = str.replace(/,/g, '');
+  const num = parseFloat(stripped);
+  if (isNaN(num) || num <= 0) return null;
+
+  // Heuristic: if >= 10000, assume 万/h; else assume 億/h
+  if (num >= 10000) {
+    return Math.round(num * 1e4); // 万/h → absolute
+  } else if (num >= 1) {
+    return Math.round(num * 1e8); // 億/h → absolute
+  }
+  return null;
+}
+
+/**
+ * Format a large number as 億.xx億
+ */
+function fmt億(n, decimals = 1) {
+  if (n == null || isNaN(n)) return '—';
+  const oku = n / 1e8;
+  return oku.toFixed(decimals) + '億';
+}
+
+/**
+ * Format a speed value for display.
+ */
+function fmtSpeed(n) {
+  if (n == null || isNaN(n)) return '—';
+  const oku = n / 1e8;
+  if (oku >= 1) return oku.toFixed(2) + '億/h';
+  const man = n / 1e4;
+  return man.toFixed(0) + '万/h';
+}
+
+/**
+ * Describe parsed contrib for hint.
+ */
+function describeContrib(val) {
+  if (val == null) return null;
+  const oku = val / 1e8;
+  if (oku >= 1) return `→ ${oku.toFixed(2)}億（${val.toLocaleString()}）`;
+  return `→ ${val.toLocaleString()}`;
+}
+
+/**
+ * Describe parsed speed for hint.
+ */
+function describeSpeed(val) {
+  if (val == null) return null;
+  const oku = val / 1e8;
+  return `→ ${oku.toFixed(2)}億/h`;
+}
+
+/* ================================================
+   SECTION 3: PREDICTION CALCULATOR
+   ================================================ */
+
+/**
+ * Calculate prediction for 12〜24h.
+ * @param {number} contrib12 - cumulative contribution at 12:00
+ * @param {number} speed - 7-12h average speed (absolute)
+ * @param {string} dayKey - 'day1'|'day2'|'day3'|'day4'
+ * @param {string} dayType - 'weekday'|'weekend'
+ * @param {string} modelType - 'standard'|'caution'
+ * @returns {{ total: number, added: number, multiplier: number }}
+ */
+function calcPrediction(contrib12, speed, dayKey, dayType, modelType) {
+  const m = MODELS[dayKey][dayType][modelType];
+  let added = 0;
+  for (const [key, hours] of Object.entries(TIME_BLOCKS)) {
+    added += speed * m[key] * hours;
+  }
+  return {
+    total: contrib12 + added,
+    added: added,
+    multiplier: calcTotalMultiplier(m)
+  };
+}
+
+/**
+ * Calculate sum of (hours × ratio) = total multiplier for 12-24h.
+ */
+function calcTotalMultiplier(m) {
+  let sum = 0;
+  for (const [key, hours] of Object.entries(TIME_BLOCKS)) {
+    sum += m[key] * hours;
+  }
+  return sum;
+}
+
+/**
+ * Calculate model speed at a specific hour (0-23).
+ * Returns expected speed = baseSpeed × ratio at that hour.
+ */
+function calcModelSpeedAtHour(hour, dayKey, dayType, modelType, baseSpeed) {
+  const m = MODELS[dayKey][dayType][modelType];
+  let ratio;
+  if (hour >= 12 && hour < 17) ratio = m.t12_17;
+  else if (hour >= 17 && hour < 19) ratio = m.t17_19;
+  else if (hour >= 19 && hour < 23) ratio = m.t19_23;
+  else if (hour >= 23) ratio = m.t23_24;
+  else ratio = 1.0; // before 12 = base speed
+  return baseSpeed * ratio;
+}
+
+/**
+ * Calculate expected addition from startMinutes to endMinutes (both in minutes from midnight)
+ * using the standard model.
+ */
+function calcModelAddedInRange(startMin, endMin, dayKey, dayType, modelType, baseSpeed) {
+  const m = MODELS[dayKey][dayType][modelType];
+  const RANGES = [
+    { start: 12*60, end: 17*60, ratio: m.t12_17 },
+    { start: 17*60, end: 19*60, ratio: m.t17_19 },
+    { start: 19*60, end: 23*60, ratio: m.t19_23 },
+    { start: 23*60, end: 24*60, ratio: m.t23_24 }
+  ];
+
+  let added = 0;
+  for (const r of RANGES) {
+    const s = Math.max(r.start, startMin);
+    const e = Math.min(r.end, endMin);
+    if (e > s) {
+      added += baseSpeed * r.ratio * ((e - s) / 60);
+    }
+  }
+  return added;
+}
+
+/**
+ * Calculate realtime correction factor.
+ * actualAdded / expectedAdded, clamped to [0.90, 1.10].
+ */
+function calcRealtimeCorrection(contrib12, currentContrib, currentMin, dayKey, dayType, baseSpeed) {
+  const startMin = 12 * 60;
+  const actualAdded = currentContrib - contrib12;
+  const expectedAdded = calcModelAddedInRange(startMin, currentMin, dayKey, dayType, 'standard', baseSpeed);
+
+  if (expectedAdded <= 0) return null;
+
+  const raw = actualAdded / expectedAdded;
+  const clamped = Math.max(0.90, Math.min(1.10, raw));
+  return { raw, clamped, wasClamped: raw !== clamped };
+}
+
+/**
+ * Calculate realtime-corrected prediction.
+ * = currentContrib + model(currentMin → 24:00) × correctionFactor
+ */
+function calcRealtimePrediction(currentContrib, currentMin, dayKey, dayType, baseSpeed, corrFactor) {
+  const endMin = 24 * 60;
+  const remainingModelAdd = calcModelAddedInRange(currentMin, endMin, dayKey, dayType, 'standard', baseSpeed);
+  return currentContrib + remainingModelAdd * corrFactor;
+}
+
+/* ================================================
+   SECTION 4: BATTLE ANALYSIS
+   ================================================ */
+
+/**
+ * Calculate overtake time.
+ * Returns { hoursUntil, reachesBy24 } or null if impossible.
+ */
+function calcOvertake(deficit, speedDiff) {
+  if (speedDiff <= 0) return null; // catching side is not faster
+  const hoursUntil = deficit / speedDiff;
+  return { hoursUntil, reachesBy24: true }; // caller checks vs remaining time
+}
+
+/**
+ * Format hours to "約X時間Y分"
+ */
+function fmtHours(h) {
+  const totalMin = Math.round(h * 60);
+  const hrs = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  if (hrs === 0) return `約${mins}分`;
+  if (mins === 0) return `約${hrs}時間`;
+  return `約${hrs}時間${mins}分`;
+}
+
+/* ================================================
+   SECTION 5: STORAGE MANAGER
+   ================================================ */
+
+const StorageManager = {
+  KEYS: {
+    base: 'gw_review_base',
+    snapshots: 'gw_review_snapshots',
+    conditions: 'gw_review_conditions'
+  },
+
+  saveBase(data) {
+    try { localStorage.setItem(this.KEYS.base, JSON.stringify(data)); } catch(e) {}
+  },
+
+  loadBase() {
+    try {
+      const s = localStorage.getItem(this.KEYS.base);
+      return s ? JSON.parse(s) : null;
+    } catch(e) { return null; }
+  },
+
+  saveSnapshots(list) {
+    try { localStorage.setItem(this.KEYS.snapshots, JSON.stringify(list)); } catch(e) {}
+  },
+
+  loadSnapshots() {
+    try {
+      const s = localStorage.getItem(this.KEYS.snapshots);
+      return s ? JSON.parse(s) : [];
+    } catch(e) { return []; }
+  },
+
+  saveConditions(data) {
+    try { localStorage.setItem(this.KEYS.conditions, JSON.stringify(data)); } catch(e) {}
+  },
+
+  loadConditions() {
+    try {
+      const s = localStorage.getItem(this.KEYS.conditions);
+      return s ? JSON.parse(s) : null;
+    } catch(e) { return null; }
+  },
+
+  clearAll() {
+    try {
+      Object.values(this.KEYS).forEach(k => localStorage.removeItem(k));
+    } catch(e) {}
+  }
+};
+
+/* ================================================
+   SECTION 6: APP STATE
+   ================================================ */
+
+const state = {
+  dayKey: 'day1',
+  dayType: 'weekday',
+  enemyContrib12: null,
+  enemySpeed: null,
+  ownContrib12: null,
+  ownSpeed: null,
+  snapshots: [],
+  predictDone: false
+};
+
+/* ================================================
+   SECTION 7: UI HELPERS
+   ================================================ */
+
+function show(el) { el.classList.remove('result-hidden'); }
+function hide(el) { el.classList.add('result-hidden'); }
+function toggle(el, visible) { visible ? show(el) : hide(el); }
+
+function setHint(id, text, type = '') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'input-hint' + (type ? ' ' + type : '');
+}
+
+function setInputError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('error', !!msg);
+}
+
+function showError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (msg) {
+    el.innerHTML = `⚠️ ${msg}`;
+    show(el);
+  } else {
+    hide(el);
+  }
+}
+
+function getCurrentTimeStr() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
+function timeStrToMinutes(str) {
+  if (!str) return null;
+  const parts = str.split(':');
+  if (parts.length < 2) return null;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function minutesToTimeStr(min) {
+  const h = Math.floor(min / 60) % 24;
+  const m = min % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+/* ================================================
+   SECTION 8: INPUT LISTENERS
+   ================================================ */
+
+function setupInputHint(inputId, hintId, parser, describer) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    const val = parser(el.value);
+    if (!el.value.trim()) {
+      setHint(hintId, '', '');
+      setInputError(inputId, false);
+      return;
+    }
+    if (val == null) {
+      setHint(hintId, '⚠️ 解釈できません', 'err');
+      setInputError(inputId, true);
+    } else {
+      setHint(hintId, describer(val), 'ok');
+      setInputError(inputId, false);
+    }
+  });
+}
+
+function setupInputListeners() {
+  setupInputHint('enemy-contrib12', 'hint-enemy-contrib12', parseContrib, describeContrib);
+  setupInputHint('enemy-speed', 'hint-enemy-speed', parseSpeed, describeSpeed);
+  setupInputHint('own-contrib12', 'hint-own-contrib12', parseContrib, describeContrib);
+  setupInputHint('own-speed', 'hint-own-speed', parseSpeed, describeSpeed);
+  setupInputHint('snap-own', 'hint-snap-own', parseContrib, describeContrib);
+  setupInputHint('snap-enemy', 'hint-snap-enemy', parseContrib, describeContrib);
+
+  const enemySpeedEl = document.getElementById('enemy-speed');
+  if (enemySpeedEl) {
+    enemySpeedEl.addEventListener('input', updateRefMultipliers);
+  }
+}
+
+/* ================================================
+   SECTION 9: CONDITION MANAGEMENT
+   ================================================ */
+
+function updateDayDescription() {
+  const model = MODELS[state.dayKey];
+  const el = document.getElementById('day-description');
+  if (el) el.textContent = model.description;
+
+  // Provisional notice
+  const notice = document.getElementById('provisional-notice');
+  if (notice) {
+    const isProvisional = state.dayType === 'weekend' && MODELS[state.dayKey].weekend.provisional;
+    toggle(notice, isProvisional);
+  }
+  updateRefMultipliers();
+}
+
+function updateRefMultipliers() {
+  const table = document.getElementById('ref-mult-tbody');
+  const condEl = document.getElementById('ref-mult-current-cond');
+  const provEl = document.getElementById('ref-mult-provisional-note');
+  if (!table) return;
+
+  const m = MODELS[state.dayKey];
+  const typeLabel = state.dayType === 'weekday' ? '平日' : '土日祝';
+  condEl.textContent = `${m.label}・${typeLabel}`;
+
+  const isProv = state.dayType === 'weekend' && m.weekend.provisional;
+  toggle(provEl, isProv);
+
+  const modelData = m[state.dayType];
+  const speedStr = document.getElementById('enemy-speed').value;
+  const speedVal = speedStr.trim() ? parseSpeed(speedStr) : null;
+
+  const rows = [
+    { label: '12〜17時', key: 't12_17' },
+    { label: '17〜19時', key: 't17_19' },
+    { label: '19〜23時', key: 't19_23' },
+    { label: '23〜24時', key: 't23_24' }
+  ];
+
+  let html = '';
+  for (const r of rows) {
+    const stdMult = modelData.standard[r.key];
+    const cautMult = modelData.caution[r.key];
+    
+    let stdSpd = '—';
+    let cautSpd = '—';
+    if (speedVal != null) {
+      stdSpd = (speedVal * stdMult / 1e8).toFixed(2) + '億/h';
+      cautSpd = (speedVal * cautMult / 1e8).toFixed(2) + '億/h';
+    } else if (!speedStr.trim()) {
+      stdSpd = '朝時速入力後に表示';
+      cautSpd = '—';
+    }
+
+    html += `
+      <tr>
+        <td>${r.label}</td>
+        <td style="text-align: right;">
+          ${stdMult.toFixed(2)}倍
+          <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 2px;">${stdSpd}</div>
+        </td>
+        <td style="text-align: right;">
+          ${cautMult.toFixed(2)}倍
+          <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 2px;">${cautSpd}</div>
+        </td>
+      </tr>
+    `;
+  }
+  table.innerHTML = html;
+}
+
+function setupConditionListeners() {
+  document.querySelectorAll('input[name="gw-day"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      state.dayKey = radio.value;
+      updateDayDescription();
+      saveConditions();
+      if (state.predictDone) runPrediction();
+    });
+  });
+
+  document.querySelectorAll('input[name="day-type"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      state.dayType = radio.value;
+      updateDayDescription();
+      saveConditions();
+      if (state.predictDone) runPrediction();
+    });
+  });
+}
+
+function saveConditions() {
+  StorageManager.saveConditions({ dayKey: state.dayKey, dayType: state.dayType });
+}
+
+function loadConditions() {
+  const c = StorageManager.loadConditions();
+  if (!c) return;
+  state.dayKey = c.dayKey || 'day1';
+  state.dayType = c.dayType || 'weekday';
+
+  // Update radio buttons
+  const dayRadio = document.querySelector(`input[name="gw-day"][value="${state.dayKey}"]`);
+  if (dayRadio) dayRadio.checked = true;
+  const typeRadio = document.querySelector(`input[name="day-type"][value="${state.dayType}"]`);
+  if (typeRadio) typeRadio.checked = true;
+}
+
+/* ================================================
+   SECTION 10: PREDICTION
+   ================================================ */
+
+function runPrediction() {
+  // Validate inputs
+  const enemyContrib12Str = document.getElementById('enemy-contrib12').value;
+  const enemySpeedStr = document.getElementById('enemy-speed').value;
+  const ownContrib12Str = document.getElementById('own-contrib12').value;
+  const ownSpeedStr = document.getElementById('own-speed').value;
+
+  const errEl = document.getElementById('input-error');
+
+  let errors = [];
+
+  const ec = parseContrib(enemyContrib12Str);
+  const es = parseSpeed(enemySpeedStr);
+
+  if (!enemyContrib12Str.trim()) errors.push('相手団の12:00累計貢献度を入力してください');
+  else if (ec == null) errors.push('相手団の累計貢献度を正しく解釈できませんでした');
+
+  if (!enemySpeedStr.trim()) errors.push('相手団の7〜12時平均時速を入力してください');
+  else if (es == null) errors.push('相手団の平均時速を正しく解釈できませんでした');
+
+  const oc = ownContrib12Str.trim() ? parseContrib(ownContrib12Str) : null;
+  const os = ownSpeedStr.trim() ? parseSpeed(ownSpeedStr) : null;
+
+  if (ownContrib12Str.trim() && oc == null) errors.push('自団の累計貢献度を正しく解釈できませんでした');
+  if (ownSpeedStr.trim() && os == null) errors.push('自団の平均時速を正しく解釈できませんでした');
+
+  if (errors.length > 0) {
+    showError('input-error', errors.join('<br>'));
+    return;
+  }
+
+  showError('input-error', null);
+
+  // Save state
+  state.enemyContrib12 = ec;
+  state.enemySpeed = es;
+  state.ownContrib12 = oc;
+  state.ownSpeed = os;
+  state.predictDone = true;
+
+  // Save base data
+  StorageManager.saveBase({
+    enemyContrib12: ec,
+    enemySpeed: es,
+    ownContrib12: oc,
+    ownSpeed: os
+  });
+
+  // Calculate predictions
+  const enemyStd = calcPrediction(ec, es, state.dayKey, state.dayType, 'standard');
+  const enemyCaut = calcPrediction(ec, es, state.dayKey, state.dayType, 'caution');
+
+  // Update enemy results
+  document.getElementById('pred-std-enemy').textContent = fmt億(enemyStd.total);
+  document.getElementById('pred-caut-enemy').textContent = fmt億(enemyCaut.total);
+  document.getElementById('pred-std-enemy-sub').textContent = `+${fmt億(enemyStd.added)}`;
+  document.getElementById('pred-caut-enemy-sub').textContent = `+${fmt億(enemyCaut.added)}`;
+
+  // Own team
+  const ownBlock = document.getElementById('own-pred-block');
+  if (oc && os) {
+    const ownStd = calcPrediction(oc, os, state.dayKey, state.dayType, 'standard');
+    const ownCaut = calcPrediction(oc, os, state.dayKey, state.dayType, 'caution');
+    document.getElementById('pred-std-own').textContent = fmt億(ownStd.total);
+    document.getElementById('pred-caut-own').textContent = fmt億(ownCaut.total);
+    show(ownBlock);
+  } else {
+    hide(ownBlock);
+  }
+
+  // Model notice
+  const noticeEl = document.getElementById('model-notice');
+  const isProvisional = state.dayType === 'weekend' && MODELS[state.dayKey].weekend.provisional;
+  const dayLabel = MODELS[state.dayKey].label;
+  const typeLabel = state.dayType === 'weekday' ? '平日' : '土日祝';
+  noticeEl.innerHTML = `<strong>${dayLabel}・${typeLabel}モデル</strong>を使用${isProvisional ? '&ensp;<span class="provisional-badge">暫定</span>' : ''}`;
+
+  // Show results section
+  show(document.getElementById('sec-results'));
+
+  // Update realtime display with current snapshots
+  updateRealtimeDisplay();
+
+  // Update chart
+  drawChart();
+
+  // Scroll to results
+  document.getElementById('sec-results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ================================================
+   SECTION 11: REALTIME DISPLAY
+   ================================================ */
+
+function updateRealtimeDisplay() {
+  if (!state.predictDone || state.enemyContrib12 == null) return;
+
+  const realtimeBlock = document.getElementById('pred-realtime-block');
+  const earlyNotice = document.getElementById('pred-early-notice');
+  const paceBlock = document.getElementById('pace-info-block');
+  const lateNightBlock = document.getElementById('late-night-block');
+
+  // Get latest snapshot with enemy data
+  const snapsWithEnemy = state.snapshots.filter(s => s.enemy != null);
+  const lastSnap = snapsWithEnemy.length > 0 ? snapsWithEnemy[snapsWithEnemy.length - 1] : null;
+
+  if (!lastSnap) {
+    hide(realtimeBlock);
+    hide(earlyNotice);
+    hide(paceBlock);
+    hide(lateNightBlock);
+    return;
+  }
+
+  const currentMin = timeStrToMinutes(lastSnap.time);
+  const currentHour = Math.floor(currentMin / 60);
+
+  // Correction
+  const corr = calcRealtimeCorrection(
+    state.enemyContrib12,
+    lastSnap.enemy,
+    currentMin,
+    state.dayKey,
+    state.dayType,
+    state.enemySpeed
+  );
+
+  if (corr == null) {
+    hide(realtimeBlock);
+    hide(paceBlock);
+    return;
+  }
+
+  const corrPred = calcRealtimePrediction(
+    lastSnap.enemy,
+    currentMin,
+    state.dayKey,
+    state.dayType,
+    state.enemySpeed,
+    corr.clamped
+  );
+
+  if (currentHour >= 18) {
+    // Show realtime as primary
+    document.getElementById('pred-realtime-value').textContent = fmt億(corrPred);
+    document.getElementById('pred-realtime-sub').textContent =
+      `現在までの実績を反映した24時予測（${lastSnap.time}時点 / 12時予測比: ${(corr.clamped * 100).toFixed(0)}%）`;
+    show(realtimeBlock);
+    hide(earlyNotice);
+  } else {
+    // Before 18h: hide realtime primary, show early notice
+    hide(realtimeBlock);
+    show(earlyNotice);
+  }
+
+  // Pace info
+  const paceVal = document.getElementById('pace-ratio-val');
+  paceVal.textContent = `${(corr.clamped * 100).toFixed(1)}%`;
+  paceVal.className = 'info-val ' + (corr.clamped >= 1.05 ? 'warning' : corr.clamped <= 0.95 ? 'positive' : '');
+
+  const clampRow = document.getElementById('correction-clamp-row');
+  clampRow.style.display = corr.wasClamped ? 'flex' : 'none';
+
+  show(paceBlock);
+
+  // 23h block
+  if (currentHour >= 23) {
+    show(lateNightBlock);
+    updateLateNightBlock(lastSnap);
+  } else {
+    hide(lateNightBlock);
+  }
+}
+
+function updateLateNightBlock(lastSnap) {
+  const snaps = state.snapshots.filter(s => s.enemy != null);
+  if (snaps.length < 2) { hide(document.getElementById('late-night-block')); return; }
+
+  const prev = snaps[snaps.length - 2];
+  const curr = snaps[snaps.length - 1];
+
+  const prevMin = timeStrToMinutes(prev.time);
+  const currMin = timeStrToMinutes(curr.time);
+  const deltaH = (currMin - prevMin) / 60;
+
+  if (deltaH <= 0) return;
+
+  const recentSpeed = (curr.enemy - prev.enemy) / deltaH;
+  const m = MODELS[state.dayKey][state.dayType]['standard'];
+  const stat23Speed = state.enemySpeed * m.t23_24;
+
+  const ratio = recentSpeed / stat23Speed;
+
+  document.getElementById('lnb-current-speed').textContent = fmtSpeed(recentSpeed);
+  document.getElementById('lnb-stat-speed').textContent = fmtSpeed(stat23Speed);
+  document.getElementById('lnb-ratio').textContent = `${ratio.toFixed(2)}倍`;
+
+  const note = MODELS[state.dayKey].note23;
+  const aboveBelow = ratio >= 1.0 ? '📈 統計値を上回っています' : '📉 統計値を下回っています';
+  document.getElementById('lnb-note').textContent = `${aboveBelow}（23時台傾向：${note}）`;
+}
+
+/* ================================================
+   SECTION 12: SNAPSHOT RECORDING
+   ================================================ */
+
+function recordSnapshot() {
+  const timeStr = document.getElementById('snap-time').value;
+  const ownStr = document.getElementById('snap-own').value;
+  const enemyStr = document.getElementById('snap-enemy').value;
+  const errEl = document.getElementById('snap-error');
+
+  const errors = [];
+
+  if (!timeStr) { errors.push('時刻を入力してください'); }
+  const currentMin = timeStrToMinutes(timeStr);
+  if (currentMin == null) errors.push('時刻を正しく入力してください');
+  else if (currentMin < 12 * 60) errors.push('時刻が12:00より前です。本戦は12時から開始です');
+  else if (currentMin > timeStrToMinutes(getCurrentTimeStr())) errors.push('現在時刻より未来の時刻は記録できません。');
+
+  const own = ownStr.trim() ? parseContrib(ownStr) : null;
+  const enemy = enemyStr.trim() ? parseContrib(enemyStr) : null;
+
+  if (ownStr.trim() && own == null) errors.push('自団の累計貢献度を正しく解釈できませんでした');
+  if (enemyStr.trim() && enemy == null) errors.push('相手団の累計貢献度を正しく解釈できませんでした');
+
+  if (!ownStr.trim() && !enemyStr.trim()) errors.push('自団または相手団の累計を入力してください');
+
+  if (errors.length > 0) {
+    showError('snap-error', errors.join('<br>'));
+    return;
+  }
+
+  // Check for duplicate time
+  const existingIdx = state.snapshots.findIndex(s => s.time === timeStr);
+  if (existingIdx >= 0) {
+    showError('snap-error', `${timeStr} はすでに記録されています。編集する場合は履歴の「編集」ボタンを使用してください`);
+    return;
+  }
+
+  // Check for earlier time
+  if (state.snapshots.length > 0) {
+    const lastMin = timeStrToMinutes(state.snapshots[state.snapshots.length - 1].time);
+    if (currentMin < lastMin) {
+      showError('snap-error', `前回の記録（${state.snapshots[state.snapshots.length - 1].time}）より前の時刻です。時刻を確認してください`);
+      return;
+    }
+  }
+
+  // Check for decreasing values
+  if (state.snapshots.length > 0) {
+    const last = state.snapshots[state.snapshots.length - 1];
+    if (own != null && last.own != null && own < last.own) {
+      errors.push(`自団の貢献度が前回（${fmt億(last.own)}）より減っています`);
+    }
+    if (enemy != null && last.enemy != null && enemy < last.enemy) {
+      errors.push(`相手団の貢献度が前回（${fmt億(last.enemy)}）より減っています`);
+    }
+    if (errors.length > 0) {
+      showError('snap-error', errors.join('<br>'));
+      return;
+    }
+  }
+
+  showError('snap-error', null);
+
+  // Add snapshot
+  const snap = { time: timeStr, own, enemy, id: Date.now() };
+  state.snapshots.push(snap);
+  state.snapshots.sort((a, b) => a.time.localeCompare(b.time));
+
+  StorageManager.saveSnapshots(state.snapshots);
+
+  // Clear input (keep time updated)
+  document.getElementById('snap-own').value = '';
+  document.getElementById('snap-enemy').value = '';
+  document.getElementById('snap-time').value = getCurrentTimeStr();
+  setHint('hint-snap-own', '', '');
+  setHint('hint-snap-enemy', '', '');
+
+  renderHistory();
+  drawChart();
+  updateAnalysis();
+  updateRealtimeDisplay();
+}
+
+/* ================================================
+   SECTION 13: ANALYSIS UPDATE
+   ================================================ */
+
+function updateAnalysis() {
+  const secAnalysis = document.getElementById('sec-analysis');
+
+  // Determine the "virtual first record" at 12:00
+  let allPoints = [];
+
+  if (state.enemyContrib12 != null) {
+    allPoints.push({ time: '12:00', own: state.ownContrib12, enemy: state.enemyContrib12, virtual: true });
+  }
+  allPoints = allPoints.concat(state.snapshots);
+
+  // Need at least 2 points and latest must have both own+enemy for speed analysis
+  const latest = allPoints.length > 0 ? allPoints[allPoints.length - 1] : null;
+
+  if (!latest) { hide(secAnalysis); return; }
+
+  // Current lead/deficit
+  const ownLatest = latest.own;
+  const enemyLatest = latest.enemy;
+
+  if (ownLatest == null && enemyLatest == null) { hide(secAnalysis); return; }
+  show(secAnalysis);
+
+  const leadEl = document.getElementById('lead-indicator');
+  if (ownLatest != null && enemyLatest != null) {
+    const diff = ownLatest - enemyLatest;
+    const absDiff = Math.abs(diff);
+    if (Math.abs(diff) < 1e6) {
+      leadEl.textContent = '⚖️ ほぼ同点';
+      leadEl.className = 'lead-indicator tied';
+    } else if (diff > 0) {
+      leadEl.textContent = `🛡️ 自団が ${fmt億(absDiff)} リード`;
+      leadEl.className = 'lead-indicator own-lead';
+    } else {
+      leadEl.textContent = `⚔️ 相手団が ${fmt億(absDiff)} リード`;
+      leadEl.className = 'lead-indicator enemy-lead';
+    }
+  } else {
+    leadEl.textContent = '';
+    leadEl.className = 'lead-indicator';
+  }
+
+  // Speed analysis: need 2 points with enemy data
+  const pointsWithEnemy = allPoints.filter(p => p.enemy != null);
+  const ownSpeedEl = document.getElementById('ana-own-speed');
+  const enemySpeedEl = document.getElementById('ana-enemy-speed');
+  const diffSpeedEl = document.getElementById('ana-speed-diff');
+  const overtakeBlock = document.getElementById('overtake-block');
+  const overtakeText = document.getElementById('overtake-text');
+
+  if (pointsWithEnemy.length >= 2) {
+    const prev = pointsWithEnemy[pointsWithEnemy.length - 2];
+    const curr = pointsWithEnemy[pointsWithEnemy.length - 1];
+
+    const prevMin = timeStrToMinutes(prev.time);
+    const currMin = timeStrToMinutes(curr.time);
+    const deltaH = (currMin - prevMin) / 60;
+
+    if (deltaH > 0) {
+      let ownSpeed = null, enemySpeed = null;
+
+      // Calculate own speed if both points have own data
+      const pointsWithOwn = allPoints.filter(p => p.own != null);
+      if (pointsWithOwn.length >= 2) {
+        const prevO = pointsWithOwn[pointsWithOwn.length - 2];
+        const currO = pointsWithOwn[pointsWithOwn.length - 1];
+        const prevOMin = timeStrToMinutes(prevO.time);
+        const currOMin = timeStrToMinutes(currO.time);
+        const deltaOH = (currOMin - prevOMin) / 60;
+        if (deltaOH > 0) ownSpeed = (currO.own - prevO.own) / deltaOH;
+      }
+
+      enemySpeed = (curr.enemy - prev.enemy) / deltaH;
+
+      ownSpeedEl.textContent = ownSpeed != null ? fmtSpeed(ownSpeed) : '—';
+      enemySpeedEl.textContent = fmtSpeed(enemySpeed);
+
+      if (ownSpeed != null) {
+        const diff = ownSpeed - enemySpeed;
+        if (Math.abs(diff) < 1e6) {
+          diffSpeedEl.textContent = '同速';
+          diffSpeedEl.className = 'info-val';
+        } else if (diff > 0) {
+          diffSpeedEl.textContent = `自団が${(diff / 1e8).toFixed(2)}億/h速い`;
+          diffSpeedEl.className = 'info-val positive';
+        } else {
+          diffSpeedEl.textContent = `相手団が${(-diff / 1e8).toFixed(2)}億/h速い`;
+          diffSpeedEl.className = 'info-val negative';
+        }
+
+        // Overtake calculation
+        const latestMin = currMin;
+        const remainingH = (24 * 60 - latestMin) / 60;
+
+        if (ownLatest != null && enemyLatest != null) {
+          const leadDiff = ownLatest - enemyLatest;
+
+          if (Math.abs(leadDiff) < 1e6) {
+            // Tied
+            hide(overtakeBlock);
+          } else if (leadDiff < 0 && diff > 0) {
+            // Own is behind but faster
+            const hoursUntil = calcOvertake(-leadDiff, diff);
+            if (hoursUntil && hoursUntil.hoursUntil <= remainingH) {
+              const eta = Math.floor(latestMin / 60 * 60 + latestMin % 60 + hoursUntil.hoursUntil * 60);
+              overtakeText.textContent = `現在ペースでは ${fmtHours(hoursUntil.hoursUntil)} で追いつく見込み`;
+            } else {
+              overtakeText.textContent = `現在ペースでは24時までに追いつきません`;
+            }
+            show(overtakeBlock);
+          } else if (leadDiff > 0 && diff < 0) {
+            // Own is ahead but enemy is faster
+            const hoursUntil = calcOvertake(leadDiff, -diff);
+            if (hoursUntil && hoursUntil.hoursUntil <= remainingH) {
+              overtakeText.textContent = `相手団は現在ペースでは ${fmtHours(hoursUntil.hoursUntil)} で追いつく見込み`;
+            } else {
+              overtakeText.textContent = `相手団は現在ペースでは24時までに追いつきません`;
+            }
+            show(overtakeBlock);
+          } else {
+            hide(overtakeBlock);
+          }
+        } else {
+          hide(overtakeBlock);
+        }
+      } else {
+        diffSpeedEl.textContent = '—';
+        diffSpeedEl.className = 'info-val';
+        hide(overtakeBlock);
+      }
+    }
+  } else {
+    ownSpeedEl.textContent = '—';
+    enemySpeedEl.textContent = '—';
+    diffSpeedEl.textContent = '—';
+    hide(overtakeBlock);
+  }
+}
+
+/* ================================================
+   SECTION 13b: BATTLE CHART (SVG)
+   ================================================ */
+
+/**
+ * Collect all data points for the chart.
+ * Returns { enemyPoints, ownPoints, predStd, predCaut, predCorr }
+ * each point: { min: number, val: number }
+ * min = minutes from midnight (720 = 12:00)
+ */
+function collectChartData() {
+  const enemy = [];  // {min, val}
+  const own   = [];  // {min, val}
+
+  // 12:00 anchor from base data
+  if (state.enemyContrib12 != null) {
+    enemy.push({ min: 720, val: state.enemyContrib12 });
+  }
+  if (state.ownContrib12 != null) {
+    own.push({ min: 720, val: state.ownContrib12 });
+  }
+
+  // Snapshots
+  const sorted = [...state.snapshots].sort((a, b) => a.time.localeCompare(b.time));
+  for (const s of sorted) {
+    const m = timeStrToMinutes(s.time);
+    if (m == null) continue;
+    if (s.enemy != null) enemy.push({ min: m, val: s.enemy });
+    if (s.own   != null) own.push({   min: m, val: s.own   });
+  }
+
+  // Prediction targets at min=1440 (24:00)
+  let predStd = null, predCaut = null, predCorr = null;
+  if (state.predictDone && state.enemyContrib12 != null && state.enemySpeed != null) {
+    const std  = calcPrediction(state.enemyContrib12, state.enemySpeed, state.dayKey, state.dayType, 'standard');
+    const caut = calcPrediction(state.enemyContrib12, state.enemySpeed, state.dayKey, state.dayType, 'caution');
+    predStd  = std.total;
+    predCaut = caut.total;
+
+    // Realtime correction: use last snapshot with enemy data
+    const snapsWithEnemy = state.snapshots.filter(s => s.enemy != null);
+    if (snapsWithEnemy.length > 0) {
+      const last = snapsWithEnemy[snapsWithEnemy.length - 1];
+      const lastMin = timeStrToMinutes(last.time);
+      const corr = calcRealtimeCorrection(
+        state.enemyContrib12, last.enemy, lastMin,
+        state.dayKey, state.dayType, state.enemySpeed
+      );
+      if (corr != null) {
+        predCorr = calcRealtimePrediction(
+          last.enemy, lastMin, state.dayKey, state.dayType, state.enemySpeed, corr.clamped
+        );
+      }
+    }
+  }
+
+  return { enemy, own, predStd, predCaut, predCorr };
+}
+
+function drawChart() {
+  const area = document.getElementById('chart-area');
+  const emptyDiv = document.getElementById('chart-empty');
+  if (!area) return;
+
+  const { enemy, own, predStd, predCaut, predCorr } = collectChartData();
+
+  const totalPoints = enemy.length + own.length;
+
+  // Show empty state
+  if (totalPoints === 0) {
+    area.innerHTML = '<div class="chart-empty" id="chart-empty">戦況を記録するとグラフが表示されます</div>';
+    return;
+  }
+
+  // SVG dimensions
+  const SVG_W = 320;
+  const SVG_H = 200;
+  const PAD_L = 44;  // left: y-axis labels
+  const PAD_R = 8;
+  const PAD_T = 12;
+  const PAD_B = 26;  // bottom: x-axis labels
+  const PLOT_W = SVG_W - PAD_L - PAD_R;
+  const PLOT_H = SVG_H - PAD_T - PAD_B;
+
+  // X-axis: 12:00 (720) to 24:00 (1440)
+  const X_MIN = 720;
+  const X_MAX = 1440;
+  function toX(min) {
+    return PAD_L + (min - X_MIN) / (X_MAX - X_MIN) * PLOT_W;
+  }
+
+  // Y-axis: determine range
+  const allVals = [
+    ...enemy.map(p => p.val),
+    ...own.map(p => p.val),
+    ...(predStd  != null ? [predStd]  : []),
+    ...(predCaut != null ? [predCaut] : []),
+    ...(predCorr != null ? [predCorr] : [])
+  ];
+  if (allVals.length === 0) {
+    area.innerHTML = '<div class="chart-empty" id="chart-empty">戦況を記録するとグラフが表示されます</div>';
+    return;
+  }
+
+  const rawMin = Math.min(...allVals);
+  const rawMax = Math.max(...allVals);
+  const span = rawMax - rawMin || 1e8;
+  const yMin = rawMin - span * 0.08;
+  const yMax = rawMax + span * 0.12;
+
+  function toY(val) {
+    return PAD_T + PLOT_H - (val - yMin) / (yMax - yMin) * PLOT_H;
+  }
+
+  // Y-axis tick labels
+  function fmtAxisOku(v) {
+    const o = v / 1e8;
+    if (Math.abs(o) >= 10) return o.toFixed(0) + '億';
+    if (Math.abs(o) >= 1)  return o.toFixed(1) + '億';
+    return o.toFixed(2) + '億';
+  }
+
+  function yTicks() {
+    const range = yMax - yMin;
+    const roughStep = range / 4;
+    // round to nice value
+    const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+    const steps = [1, 2, 2.5, 5, 10].map(s => s * magnitude);
+    let step = steps.find(s => s >= roughStep) || roughStep;
+    const start = Math.ceil(yMin / step) * step;
+    const ticks = [];
+    for (let v = start; v <= yMax + step * 0.01; v += step) {
+      ticks.push(v);
+    }
+    return ticks.slice(0, 6);
+  }
+
+  // Helper: polyline points string
+  function pts(points) {
+    return points.map(p => `${toX(p.min).toFixed(1)},${toY(p.val).toFixed(1)}`).join(' ');
+  }
+
+  // Helper: single prediction dashed line from last actual point to 24:00
+  function predLine(actualPoints, predVal, color, dashLen) {
+    if (predVal == null || actualPoints.length === 0) return '';
+    const last = actualPoints[actualPoints.length - 1];
+    const x1 = toX(last.min).toFixed(1);
+    const y1 = toY(last.val).toFixed(1);
+    const x2 = toX(1440).toFixed(1);
+    const y2 = toY(predVal).toFixed(1);
+    const dash = dashLen || '5,4';
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.5" stroke-dasharray="${dash}" stroke-linecap="round" opacity="0.75"/>`;
+  }
+
+  // Prediction endpoint markers with collision avoidance
+  function drawPredMarkers() {
+    if (!hasPred) return '';
+    const items = [];
+    if (predStd != null) items.push({ val: predStd, color: COL_STD, label: '12時予測' });
+    if (predCaut != null) items.push({ val: predCaut, color: COL_CAUT, label: '12時警戒' });
+    if (predCorr != null) items.push({ val: predCorr, color: COL_CORR, label: '現在補正' });
+
+    // Initial positions
+    items.forEach(p => {
+      p.markerY = toY(p.val);
+      p.labelY = p.markerY - 3;
+    });
+
+    // Sort top to bottom
+    items.sort((a, b) => a.labelY - b.labelY);
+
+    const MIN_DIST = 9;
+    
+    // Pass 1: push down
+    for (let i = 1; i < items.length; i++) {
+      if (items[i].labelY - items[i-1].labelY < MIN_DIST) {
+        items[i].labelY = items[i-1].labelY + MIN_DIST;
+      }
+    }
+    
+    // Pass 2: push up from bottom boundary
+    const maxLabelY = PAD_T + PLOT_H - 2;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (i === items.length - 1) {
+        if (items[i].labelY > maxLabelY) items[i].labelY = maxLabelY;
+      } else {
+        if (items[i+1].labelY - items[i].labelY < MIN_DIST) {
+          items[i].labelY = items[i+1].labelY - MIN_DIST;
+        }
+      }
+    }
+
+    // Pass 3: push down from top boundary
+    const minLabelY = PAD_T + 6;
+    for (let i = 0; i < items.length; i++) {
+      if (i === 0) {
+        if (items[i].labelY < minLabelY) items[i].labelY = minLabelY;
+      } else {
+        if (items[i].labelY - items[i-1].labelY < MIN_DIST) {
+          items[i].labelY = items[i-1].labelY + MIN_DIST;
+        }
+      }
+    }
+
+    const cx = toX(1440).toFixed(1);
+    let html = '';
+    items.forEach(p => {
+      html += `<circle cx="${cx}" cy="${p.markerY.toFixed(1)}" r="3" fill="${p.color}" opacity="0.9"/>`;
+      html += `<text x="${parseFloat(cx) - 3}" y="${p.labelY.toFixed(1)}" text-anchor="end" font-size="6.5" fill="${p.color}" opacity="0.9">${p.label}: ${fmtAxisOku(p.val)}</text>`;
+    });
+    return html;
+  }
+
+  // X-axis tick times
+  const xTickMins = [720, 840, 960, 1080, 1200, 1320, 1440];
+  const xTickLabels = ['12','14','16','18','20','22','24'];
+
+  // Build SVG
+  const ticks = yTicks();
+
+  const gridLines = ticks.map(v => {
+    const y = toY(v).toFixed(1);
+    return `<line x1="${PAD_L}" y1="${y}" x2="${SVG_W - PAD_R}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+  }).join('');
+
+  const xGridLines = xTickMins.map(m => {
+    const x = toX(m).toFixed(1);
+    return `<line x1="${x}" y1="${PAD_T}" x2="${x}" y2="${PAD_T + PLOT_H}" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>`;
+  }).join('');
+
+  const yAxisLabels = ticks.map(v => {
+    const y = toY(v).toFixed(1);
+    return `<text x="${PAD_L - 3}" y="${y}" text-anchor="end" dominant-baseline="middle" font-size="7" fill="rgba(255,255,255,0.45)">${fmtAxisOku(v)}</text>`;
+  }).join('');
+
+  const xAxisLabels = xTickMins.map((m, i) => {
+    const x = toX(m).toFixed(1);
+    return `<text x="${x}" y="${PAD_T + PLOT_H + 12}" text-anchor="middle" font-size="7" fill="rgba(255,255,255,0.45)">${xTickLabels[i]}</text>`;
+  }).join('');
+
+  // Actual lines / dots
+  const COL_ENEMY = '#f87171';  // red
+  const COL_OWN   = '#38bdf8';  // blue
+  const COL_STD   = '#a3e635';  // lime green
+  const COL_CAUT  = '#fb923c';  // orange
+  const COL_CORR  = '#e879f9';  // fuchsia
+
+  function actualLine(points, color) {
+    if (points.length === 0) return '';
+    if (points.length === 1) {
+      const cx = toX(points[0].min).toFixed(1);
+      const cy = toY(points[0].val).toFixed(1);
+      return `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${color}" opacity="0.9"/>`;
+    }
+    return [
+      `<polyline points="${pts(points)}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>`,
+      ...points.map(p => `<circle cx="${toX(p.min).toFixed(1)}" cy="${toY(p.val).toFixed(1)}" r="2.5" fill="${color}" opacity="1"/>`)
+    ].join('');
+  }
+
+  // Prediction lines: only draw if there are actual enemy points to connect from
+  const hasPred = enemy.length > 0 && (predStd != null || predCaut != null || predCorr != null);
+
+  const svgContent = [
+    // background
+    `<rect x="0" y="0" width="${SVG_W}" height="${SVG_H}" fill="transparent"/>`,
+    // grid
+    xGridLines, gridLines,
+    // axes
+    `<line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T + PLOT_H}" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>`,
+    `<line x1="${PAD_L}" y1="${PAD_T + PLOT_H}" x2="${SVG_W - PAD_R}" y2="${PAD_T + PLOT_H}" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>`,
+    // labels
+    yAxisLabels, xAxisLabels,
+    // prediction dashed lines (drawn under actual lines)
+    hasPred ? predLine(enemy, predStd,  COL_STD,  '5,3') : '',
+    hasPred ? predLine(enemy, predCaut, COL_CAUT, '3,3') : '',
+    hasPred ? predLine(enemy, predCorr, COL_CORR, '7,3') : '',
+    // prediction endpoint markers and labels
+    drawPredMarkers(),
+    // actual lines (on top)
+    actualLine(enemy, COL_ENEMY),
+    actualLine(own,   COL_OWN),
+  ].join('');
+
+  const svg = `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" style="overflow:visible">${svgContent}</svg>`;
+
+  // Legend
+  function legendItem(color, label, dashed) {
+    const style = dashed
+      ? `background:repeating-linear-gradient(to right,${color} 0,${color} 4px,transparent 4px,transparent 8px);height:2px;`
+      : `background:${color};height:3px;`;
+    return `<div class="legend-item"><div class="legend-line" style="${style}width:20px;border-radius:2px;"></div><span>${label}</span></div>`;
+  }
+
+  const legend = [
+    enemy.length > 0 ? legendItem(COL_ENEMY, '相手団', false)  : '',
+    own.length   > 0 ? legendItem(COL_OWN,   '自団',   false)  : '',
+    predStd  != null ? legendItem(COL_STD,   '12時時点の24時予測', true)  : '',
+    predCaut != null ? legendItem(COL_CAUT,  '12時時点の警戒予測', true)  : '',
+    predCorr != null ? legendItem(COL_CORR,  '現在補正予測', true)  : '',
+  ].join('');
+
+  const noteHtml = `<div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 10px; line-height: 1.5; padding: 0 4px;">
+    ※「12時警戒」は12時時点で強めの展開を想定した予測です。現在の実績次第では、「現在補正予測」が12時警戒を上回る場合があります。
+  </div>`;
+
+  area.innerHTML = `<div class="chart-wrap">${svg}</div><div class="chart-legend">${legend}</div>${hasPred ? noteHtml : ''}`;
+}
+
+/* ================================================
+   SECTION 14: HISTORY RENDERING
+   ================================================ */
+
+function renderHistory() {
+  const container = document.getElementById('history-list');
+  let emptyEl = document.getElementById('history-empty');
+
+  if (!emptyEl) {
+    container.innerHTML = '<div class="text-center text-sm text-muted" style="padding:20px 0;" id="history-empty">記録がありません</div>';
+    emptyEl = document.getElementById('history-empty');
+  }
+
+  if (state.snapshots.length === 0) {
+    show(emptyEl);
+    Array.from(container.children).forEach(c => {
+      if (c.id !== 'history-empty') container.removeChild(c);
+    });
+    return;
+  }
+
+  hide(emptyEl);
+
+  // Build virtual points for speed calculation
+  let allPoints = [];
+  if (state.enemyContrib12 != null) {
+    allPoints.push({ time: '12:00', own: state.ownContrib12, enemy: state.enemyContrib12, virtual: true });
+  }
+  allPoints = allPoints.concat(state.snapshots);
+
+  // Render in reverse order (latest first)
+  const items = [...state.snapshots].reverse().map((snap, revIdx) => {
+    const idx = state.snapshots.length - 1 - revIdx;
+    return renderSnapshotItem(snap, idx, allPoints);
+  });
+
+  Array.from(container.children).forEach(c => {
+    if (c.id !== 'history-empty') container.removeChild(c);
+  });
+  items.forEach(el => container.appendChild(el));
+}
+
+function calcSpeedBetween(points, idx) {
+  if (idx <= 0) return { own: null, enemy: null };
+
+  // For own speed, find the previous point with own data
+  let ownSpeed = null;
+  const currOwn = points[idx].own;
+  if (currOwn != null) {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (points[i].own != null) {
+        const dt = (timeStrToMinutes(points[idx].time) - timeStrToMinutes(points[i].time)) / 60;
+        if (dt > 0) { ownSpeed = (currOwn - points[i].own) / dt; break; }
+      }
+    }
+  }
+
+  // For enemy speed
+  let enemySpeed = null;
+  const currEnemy = points[idx].enemy;
+  if (currEnemy != null) {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (points[i].enemy != null) {
+        const dt = (timeStrToMinutes(points[idx].time) - timeStrToMinutes(points[i].time)) / 60;
+        if (dt > 0) { enemySpeed = (currEnemy - points[i].enemy) / dt; break; }
+      }
+    }
+  }
+
+  return { own: ownSpeed, enemy: enemySpeed };
+}
+
+function renderSnapshotItem(snap, idx, allPoints) {
+  const el = document.createElement('div');
+  el.className = 'snapshot-item animate-in';
+  el.dataset.id = snap.id;
+
+  // Find this snap's position in allPoints
+  const allIdx = allPoints.findIndex(p => !p.virtual && p.id === snap.id);
+  const speeds = allIdx > 0 ? calcSpeedBetween(allPoints, allIdx) : { own: null, enemy: null };
+
+  el.innerHTML = `
+    <div class="snapshot-header">
+      <span class="snapshot-time">🕐 ${snap.time}</span>
+      <div class="snapshot-actions">
+        <button class="btn btn-ghost btn-sm" onclick="startEditSnap(${snap.id})">✏️ 編集</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSnap(${snap.id})">🗑️ 削除</button>
+      </div>
+    </div>
+    <div class="snapshot-data">
+      <div class="snapshot-team own">
+        <div class="snapshot-team-label">🛡️ 自団</div>
+        <div class="snapshot-team-value">${snap.own != null ? fmt億(snap.own) : '—'}</div>
+        ${speeds.own != null ? `<div class="snapshot-team-speed">区間: ${fmtSpeed(speeds.own)}</div>` : ''}
+      </div>
+      <div class="snapshot-team enemy">
+        <div class="snapshot-team-label">⚔️ 相手</div>
+        <div class="snapshot-team-value">${snap.enemy != null ? fmt億(snap.enemy) : '—'}</div>
+        ${speeds.enemy != null ? `<div class="snapshot-team-speed">区間: ${fmtSpeed(speeds.enemy)}</div>` : ''}
+      </div>
+    </div>
+    <div class="snapshot-edit-form result-hidden" id="edit-form-${snap.id}">
+      <div class="edit-row">
+        <span class="edit-label">時刻</span>
+        <input type="time" id="edit-time-${snap.id}" value="${snap.time}" step="60">
+      </div>
+      <div class="edit-row">
+        <span class="edit-label">自団</span>
+        <input type="text" id="edit-own-${snap.id}" value="${snap.own != null ? fmt億(snap.own, 4).replace('億','') + '億' : ''}" placeholder="例: 320億">
+      </div>
+      <div class="edit-row">
+        <span class="edit-label">相手</span>
+        <input type="text" id="edit-enemy-${snap.id}" value="${snap.enemy != null ? fmt億(snap.enemy, 4).replace('億','') + '億' : ''}" placeholder="例: 301億">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-primary" style="flex:1;padding:10px;" onclick="saveEditSnap(${snap.id})">💾 保存</button>
+        <button class="btn btn-ghost" style="flex:1;padding:10px;" onclick="cancelEditSnap(${snap.id})">✕ キャンセル</button>
+      </div>
+      <div class="notice notice-err result-hidden mt4" id="edit-err-${snap.id}"></div>
+    </div>
+  `;
+  return el;
+}
+
+function startEditSnap(id) {
+  document.querySelectorAll('.snapshot-edit-form').forEach(f => {
+    f.classList.add('result-hidden');
+  });
+  const form = document.getElementById(`edit-form-${id}`);
+  if (form) show(form);
+}
+
+function cancelEditSnap(id) {
+  const form = document.getElementById(`edit-form-${id}`);
+  if (form) hide(form);
+}
+
+function saveEditSnap(id) {
+  const timeEl = document.getElementById(`edit-time-${id}`);
+  const ownEl = document.getElementById(`edit-own-${id}`);
+  const enemyEl = document.getElementById(`edit-enemy-${id}`);
+  const errEl = document.getElementById(`edit-err-${id}`);
+
+  const timeStr = timeEl ? timeEl.value : '';
+  const ownStr = ownEl ? ownEl.value : '';
+  const enemyStr = enemyEl ? enemyEl.value : '';
+
+  const errors = [];
+  const currentMin = timeStrToMinutes(timeStr);
+  if (!timeStr) errors.push('時刻を入力してください');
+  else if (currentMin == null) errors.push('時刻を正しく入力してください');
+  else if (currentMin < 12 * 60) errors.push('時刻が12:00より前です');
+
+  const own = ownStr.trim() ? parseContrib(ownStr) : null;
+  const enemy = enemyStr.trim() ? parseContrib(enemyStr) : null;
+  if (ownStr.trim() && own == null) errors.push('自団の貢献度を正しく解釈できませんでした');
+  if (enemyStr.trim() && enemy == null) errors.push('相手団の貢献度を正しく解釈できませんでした');
+
+  // Check duplicate time (excluding itself)
+  const dupIdx = state.snapshots.findIndex(s => s.id !== id && s.time === timeStr);
+  if (dupIdx >= 0) errors.push(`${timeStr} は他の記録と重複しています`);
+
+  if (errors.length > 0) {
+    if (errEl) { errEl.innerHTML = errors.join('<br>'); show(errEl); }
+    return;
+  }
+
+  if (errEl) hide(errEl);
+
+  // Update snapshot
+  const snapIdx = state.snapshots.findIndex(s => s.id === id);
+  if (snapIdx >= 0) {
+    state.snapshots[snapIdx] = { ...state.snapshots[snapIdx], time: timeStr, own, enemy };
+    state.snapshots.sort((a, b) => a.time.localeCompare(b.time));
+    StorageManager.saveSnapshots(state.snapshots);
+    renderHistory();
+    drawChart();
+    updateAnalysis();
+    updateRealtimeDisplay();
+  }
+}
+
+function deleteSnap(id) {
+  const snap = state.snapshots.find(s => s.id === id);
+  if (!snap) return;
+  if (!confirm(`${snap.time} の記録を削除しますか？`)) return;
+
+  state.snapshots = state.snapshots.filter(s => s.id !== id);
+  StorageManager.saveSnapshots(state.snapshots);
+  renderHistory();
+  drawChart();
+  updateAnalysis();
+  updateRealtimeDisplay();
+}
+
+/* ================================================
+   SECTION 15: DATA CLEAR
+   ================================================ */
+
+function clearAllData() {
+  if (!confirm('この端末のレビュー用データをすべて削除します。\n\n入力した12時データ・戦況記録がすべて消えます。\nよろしいですか？')) return;
+  if (!confirm('本当に削除してよいですか？（この操作は元に戻せません）')) return;
+
+  StorageManager.clearAll();
+  state.enemyContrib12 = null;
+  state.enemySpeed = null;
+  state.ownContrib12 = null;
+  state.ownSpeed = null;
+  state.snapshots = [];
+  state.predictDone = false;
+
+  // Clear form fields
+  ['enemy-contrib12', 'enemy-speed', 'own-contrib12', 'own-speed'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  ['hint-enemy-contrib12','hint-enemy-speed','hint-own-contrib12','hint-own-speed'].forEach(id => setHint(id, '', ''));
+
+  hide(document.getElementById('sec-results'));
+  renderHistory();
+  drawChart();
+  updateAnalysis();
+  updateRefMultipliers();
+
+  alert('データを削除しました。');
+}
+
+/* ================================================
+   SECTION 16: LOAD FROM STORAGE
+   ================================================ */
+
+function loadFromStorage() {
+  loadConditions();
+
+  const base = StorageManager.loadBase();
+  if (base) {
+    state.enemyContrib12 = base.enemyContrib12;
+    state.enemySpeed = base.enemySpeed;
+    state.ownContrib12 = base.ownContrib12;
+    state.ownSpeed = base.ownSpeed;
+
+    // Restore input fields
+    if (state.enemyContrib12 != null) {
+      document.getElementById('enemy-contrib12').value = fmt億(state.enemyContrib12, 2);
+      setHint('hint-enemy-contrib12', describeContrib(state.enemyContrib12), 'ok');
+    }
+    if (state.enemySpeed != null) {
+      const man = state.enemySpeed / 1e4;
+      document.getElementById('enemy-speed').value = man.toFixed(0);
+      setHint('hint-enemy-speed', describeSpeed(state.enemySpeed), 'ok');
+    }
+    if (state.ownContrib12 != null) {
+      document.getElementById('own-contrib12').value = fmt億(state.ownContrib12, 2);
+      setHint('hint-own-contrib12', describeContrib(state.ownContrib12), 'ok');
+    }
+    if (state.ownSpeed != null) {
+      const man = state.ownSpeed / 1e4;
+      document.getElementById('own-speed').value = man.toFixed(0);
+      setHint('hint-own-speed', describeSpeed(state.ownSpeed), 'ok');
+    }
+
+    state.predictDone = true;
+  }
+
+  state.snapshots = StorageManager.loadSnapshots();
+}
+
+/* ================================================
+   SECTION 17: SELF-TEST (Theory Verification)
+   ================================================ */
+
+function selfTest() {
+  const EXPECTED_STD = {
+    day1: { weekday: 14.30, weekend: null },
+    day2: { weekday: 17.00, weekend: null },
+    day3: { weekday: 15.90, weekend: null },
+    day4: { weekday: 12.70, weekend: null }
+  };
+  const EXPECTED_CAUT = {
+    day1: { weekday: 15.25 },
+    day2: { weekday: 18.40 },
+    day3: { weekday: 17.25 },
+    day4: { weekday: 13.90 }
+  };
+
+  let ok = true;
+  for (const [dayKey, vals] of Object.entries(EXPECTED_STD)) {
+    const m = calcTotalMultiplier(MODELS[dayKey].weekday.standard);
+    const exp = vals.weekday;
+    if (Math.abs(m - exp) > 0.001) {
+      console.error(`[SELF-TEST FAIL] ${dayKey} weekday standard: expected ${exp}, got ${m.toFixed(4)}`);
+      ok = false;
+    }
+  }
+  for (const [dayKey, vals] of Object.entries(EXPECTED_CAUT)) {
+    const m = calcTotalMultiplier(MODELS[dayKey].weekday.caution);
+    const exp = vals.weekday;
+    if (Math.abs(m - exp) > 0.001) {
+      console.error(`[SELF-TEST FAIL] ${dayKey} weekday caution: expected ${exp}, got ${m.toFixed(4)}`);
+      ok = false;
+    }
+  }
+
+  if (ok) {
+    console.log('[SELF-TEST PASS] All model multipliers verified.');
+  }
+
+  // Parser tests
+  const tests = [
+    { input: '57300000000', type: 'contrib', expected: 57300000000 },
+    { input: '57,300,000,000', type: 'contrib', expected: 57300000000 },
+    { input: '573億', type: 'contrib', expected: 57300000000 },
+    { input: '573.0億', type: 'contrib', expected: 57300000000 },
+    { input: '250715', type: 'speed', expected: 2507150000 },
+    { input: '25.0715億', type: 'speed', expected: 2507150000 },
+  ];
+
+  let parserOk = true;
+  for (const t of tests) {
+    const result = t.type === 'contrib' ? parseContrib(t.input) : parseSpeed(t.input);
+    if (result !== t.expected) {
+      console.error(`[SELF-TEST FAIL] Parser "${t.input}": expected ${t.expected}, got ${result}`);
+      parserOk = false;
+    }
+  }
+  if (parserOk) console.log('[SELF-TEST PASS] All parser tests verified.');
+}
+
+/* ================================================
+   SECTION 18: INITIALIZATION
+   ================================================ */
+
+function init() {
+  // Self-test
+  selfTest();
+
+  // Load saved data
+  loadFromStorage();
+
+  // Setup UI
+  updateDayDescription();
+  setupConditionListeners();
+  setupInputListeners();
+
+  // Set current time for snapshot input
+  document.getElementById('snap-time').value = getCurrentTimeStr();
+
+  // Event listeners
+  document.getElementById('btn-predict').addEventListener('click', runPrediction);
+  document.getElementById('btn-record').addEventListener('click', recordSnapshot);
+  document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
+
+  // Render from storage
+  if (state.predictDone) {
+    runPrediction();
+  }
+  renderHistory();
+  drawChart();
+  updateAnalysis();
+  updateRealtimeDisplay();
+}
+
+// Start when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+</script>
+</body>
+</html>
