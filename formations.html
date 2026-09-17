@@ -1367,6 +1367,14 @@ Qバブ召喚
         >×</button>
       </div>
 
+      <!-- 閲覧側タグ絞り込みUI -->
+      <div id="viewerTagSelectionContainer" class="tag-selection-area" style="display:none; margin-top: -4px; margin-bottom: 14px;">
+        <!-- JSで生成 -->
+      </div>
+      <div id="viewerTagClearWrap" style="display:none; text-align:right; margin-top:-10px; margin-bottom:14px;">
+        <button type="button" onclick="clearViewerTags()" style="background:none; border:none; color:#64748b; font-size:0.75rem; cursor:pointer; text-decoration:underline;">タグ条件をクリア</button>
+      </div>
+
       <div id="postList">
         <div class="glass-panel empty-state" id="emptyState">
           <div class="empty-state-icon">📭</div>
@@ -1550,6 +1558,86 @@ Qバブ召喚
       }
     };
 
+
+    let viewerSelectedTags = [];
+
+    function renderViewerTagSelectionUI() {
+      const container = document.getElementById('viewerTagSelectionContainer');
+      const clearWrap = document.getElementById('viewerTagClearWrap');
+      if (!container) return;
+      container.innerHTML = '';
+
+      let hasTags = false;
+
+      const createGroup = (title, tags, isExclusive) => {
+        if (!tags || tags.length === 0) return;
+        hasTags = true;
+        const groupEl = document.createElement('div');
+        groupEl.className = 'tag-group';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'tag-group-title';
+        titleEl.textContent = title;
+
+        const listEl = document.createElement('div');
+        listEl.className = 'tag-list';
+
+        tags.forEach(tag => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'tag-btn' + (viewerSelectedTags.includes(tag) ? ' selected' : '');
+          btn.textContent = tag;
+          btn.onclick = () => toggleViewerTag(tag, isExclusive, btn);
+          listEl.appendChild(btn);
+        });
+
+        groupEl.appendChild(titleEl);
+        groupEl.appendChild(listEl);
+        container.appendChild(groupEl);
+      };
+
+      createGroup('属性', AVAILABLE_TAGS.attributes, true);
+      createGroup('編成タイプ', AVAILABLE_TAGS.types, true);
+      createGroup('戦い方', AVAILABLE_TAGS.styles, false);
+      createGroup('カテゴリ専用', AVAILABLE_TAGS.categories[category] || [], false);
+
+      if (hasTags) {
+        container.style.display = 'block';
+      } else {
+        container.style.display = 'none';
+      }
+
+      if (clearWrap) {
+        clearWrap.style.display = viewerSelectedTags.length > 0 ? 'block' : 'none';
+      }
+    }
+
+    function toggleViewerTag(tag, isExclusive, btnEl) {
+      if (viewerSelectedTags.includes(tag)) {
+        viewerSelectedTags = viewerSelectedTags.filter(t => t !== tag);
+        btnEl.classList.remove('selected');
+      } else {
+        if (isExclusive) {
+          let exclusiveGroup = [];
+          if (AVAILABLE_TAGS.attributes.includes(tag)) {
+            exclusiveGroup = AVAILABLE_TAGS.attributes;
+          } else if (AVAILABLE_TAGS.types.includes(tag)) {
+            exclusiveGroup = AVAILABLE_TAGS.types;
+          }
+          viewerSelectedTags = viewerSelectedTags.filter(t => !exclusiveGroup.includes(t));
+        }
+        viewerSelectedTags.push(tag);
+      }
+      renderViewerTagSelectionUI();
+      renderPosts();
+    }
+
+    function clearViewerTags() {
+      viewerSelectedTags = [];
+      renderViewerTagSelectionUI();
+      renderPosts();
+    }
+
     function renderTagSelectionUI() {
       const container = document.getElementById('tagSelectionContainer');
       if (!container) return;
@@ -1626,6 +1714,7 @@ Qバブ召喚
       setupDragAndDrop();
       setupCharCounter();
       renderTagSelectionUI();
+      renderViewerTagSelectionUI();
     });
 
     // ==========================================================
@@ -2571,12 +2660,23 @@ Qバブ召喚
         ? allPosts.filter(p => favs.includes(p.id))
         : allPosts;
 
+
       // 文字検索フィルター適用
       const searchKeywords = getSearchKeywords(currentSearchQuery);
       const isSearching = searchKeywords.length > 0;
       if (isSearching) {
         posts = posts.filter(p => matchesSearch(p, searchKeywords));
       }
+
+      // タグ絞り込み適用
+      const hasViewerTags = viewerSelectedTags.length > 0;
+      if (hasViewerTags) {
+        posts = posts.filter(p => {
+          if (!p.tags || p.tags.length === 0) return false;
+          return viewerSelectedTags.every(tag => p.tags.includes(tag));
+        });
+      }
+
 
       countEl.textContent = `${posts.length}件`;
 
@@ -2606,7 +2706,7 @@ Qバブ召喚
         }
 
         // ③ 検索結果0件（検索中）
-        if (isSearching) {
+        if (isSearching || hasViewerTags) {
           listEl.innerHTML = `
             <div class="glass-panel empty-state">
               <div class="empty-state-icon">🔍</div>
