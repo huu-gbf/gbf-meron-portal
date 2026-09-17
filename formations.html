@@ -918,6 +918,59 @@
       border-radius: 4px;
       font-size: 0.7rem;
     }
+
+    /* 検索ボックス */
+    .search-bar-wrap {
+      position: relative;
+      width: 100%;
+      margin-bottom: 14px;
+    }
+    .search-bar-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(51, 65, 85, 0.7);
+      border-radius: 10px;
+      color: #e2e8f0;
+      font-size: 0.85rem;
+      padding: 9px 36px 9px 38px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-bar-input::placeholder {
+      color: #475569;
+    }
+    .search-bar-input:focus {
+      border-color: rgba(139, 92, 246, 0.6);
+    }
+    .search-bar-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.9rem;
+      pointer-events: none;
+      user-select: none;
+      color: #475569;
+    }
+    .search-bar-clear {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #64748b;
+      font-size: 1rem;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      line-height: 1;
+      display: none;
+    }
+    .search-bar-clear:hover {
+      color: #94a3b8;
+    }
   </style>
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#080b14">
@@ -1290,6 +1343,28 @@ Qバブ召喚
             <span id="notifyLabel">通知設定を確認中…</span>
           </button>
         </div>
+      </div>
+
+      <!-- 検索バー -->
+      <div class="search-bar-wrap">
+        <span class="search-bar-icon" aria-hidden="true">🔍</span>
+        <input
+          type="search"
+          id="formationSearchInput"
+          class="search-bar-input"
+          placeholder="編成を検索… (投稿者名・コメント・タグ / スペース区切りでAND検索)"
+          autocomplete="off"
+          spellcheck="false"
+          oninput="handleSearchInput(this.value)"
+          aria-label="編成を検索"
+        >
+        <button
+          type="button"
+          id="searchClearBtn"
+          class="search-bar-clear"
+          onclick="clearSearch()"
+          aria-label="検索をクリア"
+        >×</button>
       </div>
 
       <div id="postList">
@@ -2028,6 +2103,7 @@ Qバブ召喚
     const FAVORITES_KEY = 'gbf_my_favorites';
 
     let currentFormationFilter = 'all'; // 'all' | 'favorites'
+    let currentSearchQuery = ''; // 現在の検索文字列（正規化前の生テキスト）
 
     function getMyFavorites() {
       try {
@@ -2082,6 +2158,50 @@ Qバブ召喚
 
     function setFormationFilter(filter) {
       currentFormationFilter = filter;
+      renderPosts();
+    }
+
+    // ==========================================================
+    //  文字検索
+    // ==========================================================
+    function normalizeForSearch(str) {
+      if (typeof str !== 'string') return '';
+      return str.normalize('NFKC').toLowerCase().trim();
+    }
+
+    function matchesSearch(post, keywords) {
+      // 検索対象: 投稿者名 + コメント + tagsを結合したテキスト
+      const tagsText = Array.isArray(post.tags) ? post.tags.join(' ') : '';
+      const target = normalizeForSearch(
+        (post.name || '') + ' ' + (post.comment || '') + ' ' + tagsText
+      );
+      // keywordsすべてがtargetに含まれること（AND検索）
+      return keywords.every(kw => target.includes(kw));
+    }
+
+    function getSearchKeywords(query) {
+      // 前後空白除去、連続空白を単一に正規化してからsplit
+      return normalizeForSearch(query)
+        .replace(/\s+/g, ' ')
+        .split(' ')
+        .filter(kw => kw.length > 0);
+    }
+
+    function handleSearchInput(value) {
+      currentSearchQuery = value;
+      const clearBtn = document.getElementById('searchClearBtn');
+      if (clearBtn) {
+        clearBtn.style.display = value.length > 0 ? 'block' : 'none';
+      }
+      renderPosts();
+    }
+
+    function clearSearch() {
+      currentSearchQuery = '';
+      const input = document.getElementById('formationSearchInput');
+      if (input) input.value = '';
+      const clearBtn = document.getElementById('searchClearBtn');
+      if (clearBtn) clearBtn.style.display = 'none';
       renderPosts();
     }
 
@@ -2438,14 +2558,22 @@ Qバブ召喚
         }
       }
 
-      // フィルター適用
-      const posts = currentFormationFilter === 'favorites'
+      // フィルター適用（お気に入り）
+      let posts = currentFormationFilter === 'favorites'
         ? allPosts.filter(p => favs.includes(p.id))
         : allPosts;
+
+      // 文字検索フィルター適用
+      const searchKeywords = getSearchKeywords(currentSearchQuery);
+      const isSearching = searchKeywords.length > 0;
+      if (isSearching) {
+        posts = posts.filter(p => matchesSearch(p, searchKeywords));
+      }
 
       countEl.textContent = `${posts.length}件`;
 
       if (posts.length === 0) {
+        // ① Firestore初回snapshot受信前
         if (!isInitialLoadDone && memoryPosts === null) {
           listEl.innerHTML = `
             <div class="glass-panel empty-state">
@@ -2457,6 +2585,7 @@ Qバブ召喚
           return;
         }
 
+        // ② Firestoreエラー
         if (formationLoadError && memoryPosts === null) {
           listEl.innerHTML = `
             <div class="glass-panel empty-state">
@@ -2468,6 +2597,19 @@ Qバブ召喚
           return;
         }
 
+        // ③ 検索結果0件（検索中）
+        if (isSearching) {
+          listEl.innerHTML = `
+            <div class="glass-panel empty-state">
+              <div class="empty-state-icon">🔍</div>
+              <p>条件に一致する編成がありません</p>
+              <p class="sub">別のキーワードで試してみてください。</p>
+            </div>
+          `;
+          return;
+        }
+
+        // ④ お気に入り0件
         if (currentFormationFilter === 'favorites') {
           listEl.innerHTML = `
             <div class="glass-panel empty-state" style="padding: 40px 20px; text-align: center;">
@@ -2480,6 +2622,7 @@ Qバブ召喚
             </div>
           `;
         } else {
+          // ⑤ 投稿自体0件
           listEl.innerHTML = `
             <div class="glass-panel empty-state">
               <div class="empty-state-icon">📭</div>
