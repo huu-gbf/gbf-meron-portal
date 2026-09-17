@@ -291,6 +291,7 @@ def test_create_writes_three_documents_and_no_secret_or_push(client, portal, cat
         "images": public["images"],
         "imageStoragePaths": public["imageStoragePaths"],
         "timestamp": body["timestamp"],
+        "tags": [],
     }
     assert len(public["images"]) == len(public["imageStoragePaths"]) == 1
     assert public["images"][0].startswith("https://firebasestorage.googleapis.com/")
@@ -585,9 +586,9 @@ def test_global_quota(client, portal):
 
 
 def test_payload_hash_is_canonical_and_includes_category():
-    first = main.build_formation_payload_hash("gw", "名前", "本文", [JPEG])
-    assert first == main.build_formation_payload_hash("gw", "名前", "本文", [JPEG])
-    assert first != main.build_formation_payload_hash("multi", "名前", "本文", [JPEG])
+    first = main.build_formation_payload_hash("gw", "名前", "本文", [JPEG], [])
+    assert first == main.build_formation_payload_hash("gw", "名前", "本文", [JPEG], [])
+    assert first != main.build_formation_payload_hash("multi", "名前", "本文", [JPEG], [])
 
 
 def test_outbox_can_be_claimed_and_initialized_by_b2(client, portal):

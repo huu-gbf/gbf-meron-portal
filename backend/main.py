@@ -7409,6 +7409,13 @@ def unsubscribe_notification(
     return disable_subscription_transaction(installation_hash)
 
 
+TAGS_ELEMENT = {"火", "水", "土", "風", "光", "闇"}
+TAGS_SUMMON = {"神石", "マグナ"}
+TAGS_PLAYSTYLE = {"フルオート", "手動", "1ターン", "奥義軸", "通常軸"}
+TAGS_GW = {"肉集め", "90HELL", "95HELL", "100HELL", "150HELL", "200HELL", "250HELL", "SWARM"}
+TAGS_MULTI = {"ソロモナスの賢者", "ヒヒ掘り"}
+
+
 class FormationCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID4
@@ -7416,6 +7423,7 @@ class FormationCreateRequest(BaseModel):
     name: StrictStr
     comment: StrictStr
     images: list[StrictStr] = Field(..., min_length=0, max_length=10)
+    tags: list[StrictStr] | None = None
 
     @field_validator("request_id", mode="before")
     @classmethod
@@ -7446,7 +7454,7 @@ def _has_disallowed_control(value: str, allowed: set[str] | None = None) -> bool
     return any(character not in allowed and unicodedata.category(character) == "Cc" for character in value)
 
 
-def validate_formation_payload(request: FormationCreateRequest) -> tuple[str, str, list[str]]:
+def validate_formation_payload(request: FormationCreateRequest, category: str) -> tuple[str, str, list[str], list[str]]:
     if _has_disallowed_control(request.name):
         raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
     name = request.name.strip()
@@ -7482,12 +7490,49 @@ def validate_formation_payload(request: FormationCreateRequest) -> tuple[str, st
         if len(decoded) < 5 or decoded[:3] != b"\xff\xd8\xff" or decoded[-2:] != b"\xff\xd9":
             raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
         images.append(image)
-    return name, comment, images
+
+    tags_in = request.tags or []
+    allowed_tags = TAGS_ELEMENT | TAGS_SUMMON | TAGS_PLAYSTYLE
+    if category == "gw":
+        allowed_tags |= TAGS_GW
+    elif category == "multi":
+        allowed_tags |= TAGS_MULTI
+
+    validated_tags = set()
+    element_count = 0
+    summon_count = 0
+
+    for tag in tags_in:
+        if tag not in allowed_tags:
+            raise PortalAPIError(422, "INVALID_INPUT", "不正なタグが含まれています。")
+        if tag in TAGS_ELEMENT and tag not in validated_tags:
+            element_count += 1
+        if tag in TAGS_SUMMON and tag not in validated_tags:
+            summon_count += 1
+        validated_tags.add(tag)
+
+    if element_count > 1:
+        raise PortalAPIError(422, "INVALID_INPUT", "属性は1つまでです。")
+    if summon_count > 1:
+        raise PortalAPIError(422, "INVALID_INPUT", "神石・マグナは1つまでです。")
+
+    def tag_sort_key(t):
+        if t in TAGS_ELEMENT: return (10, t)
+        if t in TAGS_SUMMON: return (20, t)
+        if t in TAGS_PLAYSTYLE: return (30, t)
+        return (40, t)
+
+    final_tags = sorted(list(validated_tags), key=tag_sort_key)
+
+    return name, comment, images, final_tags
 
 
-def build_formation_payload_hash(category: str, name: str, comment: str, images: list[str]) -> str:
+def build_formation_payload_hash(category: str, name: str, comment: str, images: list[str], tags: list[str]) -> str:
+    payload = {"category": category, "name": name, "comment": comment, "images": images}
+    if tags:
+        payload["tags"] = tags
     canonical = json.dumps(
-        {"category": category, "name": name, "comment": comment, "images": images},
+        payload,
         sort_keys=True,
         ensure_ascii=False,
         separators=(",", ":"),
@@ -7541,7 +7586,7 @@ def cleanup_formation_images(paths: list[str]) -> None:
 
 
 def existing_formation_result(category: str, post_id: str, secret_hash: str, payload_hash: str,
-                              name: str, comment: str) -> dict | None:
+                              name: str, comment: str, tags: list[str]) -> dict | None:
     portal = get_portal_db()
     private = portal.collection("formation_private").document(f"{category}_{post_id}").get()
     if not private.exists:
@@ -7564,6 +7609,7 @@ def existing_formation_result(category: str, post_id: str, secret_hash: str, pay
             or public_data.get("id") != post_id
             or public_data.get("name") != name
             or public_data.get("comment") != comment
+            or public_data.get("tags", []) != tags
             or public_data.get("timestamp") != data["timestamp"]
             or outbox_data.get("schema_version") != 1
             or outbox_data.get("category") != category
@@ -7580,6 +7626,7 @@ def create_formation_transaction(
     name: str,
     comment: str,
     images: list[str],
+    tags: list[str],
     now: datetime,
     image_storage_paths: list[str] | None = None,
 ) -> dict:
@@ -7604,6 +7651,7 @@ def create_formation_transaction(
                 "name": name,
                 "comment": comment,
                 "images": images,
+                "tags": tags,
                 "imageStoragePaths": image_storage_paths or [],
                 "timestamp": timestamp,
             })
@@ -7652,6 +7700,7 @@ def create_formation_transaction(
             or public_data.get("id") != post_id
             or public_data.get("name") != name
             or public_data.get("comment") != comment
+            or public_data.get("tags", []) != tags
             or public_data.get("timestamp") != original_timestamp
             or outbox_data.get("schema_version") != 1
             or outbox_data.get("category") != category
@@ -7677,12 +7726,12 @@ def create_formation(category: str, request: FormationCreateRequest, http_reques
     require_portal_writes_enabled()
     post_id = str(request.request_id).lower()
     secret_hash = hash_delete_secret(request.delete_secret)
-    name, comment, images = validate_formation_payload(request)
-    payload_hash = build_formation_payload_hash(category, name, comment, images)
+    name, comment, images, tags = validate_formation_payload(request, category)
+    payload_hash = build_formation_payload_hash(category, name, comment, images, tags)
     consume_portal_quota("formation_create", secret_hash, per_limit=3, global_limit=30)
     now = datetime.now(timezone.utc)
     try:
-        existing = existing_formation_result(category, post_id, secret_hash, payload_hash, name, comment)
+        existing = existing_formation_result(category, post_id, secret_hash, payload_hash, name, comment, tags)
     except PortalAPIError:
         raise
     except Exception:
@@ -7693,7 +7742,7 @@ def create_formation(category: str, request: FormationCreateRequest, http_reques
         urls, paths = upload_formation_images(post_id, images)
         try:
             result = create_formation_transaction(
-                category, post_id, secret_hash, payload_hash, name, comment, urls, now, paths,
+                category, post_id, secret_hash, payload_hash, name, comment, urls, tags, now, paths,
             )
         except Exception:
             # A timed-out transaction may already have committed. Never remove images
