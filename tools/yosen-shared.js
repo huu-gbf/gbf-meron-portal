@@ -4,7 +4,7 @@
   const ADMIN_UID = 'wJRZibao8FgMDqDDQ3csPdVuGkx1';
   const $ = id => document.getElementById(id);
   const days = {weekday:'平日', saturday:'土曜', sunday:'日曜', holiday:'祝日'};
-  let latest = null, ready = false, dirty = false, saving = false, admin = false;
+  let latest = null, ready = false, dirty = false, saving = false, admin = false, pendingPublish = null;
   let auth, db, ref;
   const safeScore = v => Number.isSafeInteger(v) && v >= 0;
   const safeEarlySpeed = v => Number.isSafeInteger(v) && v > 0;
@@ -27,6 +27,38 @@
     $('resetDraft').disabled=!ready||saving;
     for(const element of $('publishForm').elements) if(element.tagName!=='BUTTON') element.disabled=saving;
   }
+  function readDraft() {
+    const earlyInput=$('editEarlyAvgSpeed').value.trim();
+    const parsedEarly=earlyInput ? parseNumber(earlyInput) : null;
+    const earlyAvgSpeed=parsedEarly === null ? null : /[億万]/.test(earlyInput) ? parsedEarly/10000 : parsedEarly;
+    return {schemaVersion:1,eventDate:$('editDate').value,dayType:$('editDay').value,earlyAvgSpeed,
+      score12:parseNumber($('edit12').value),score18:$('edit18').value.trim()===''?null:parseNumber($('edit18').value),score20:$('edit20').value.trim()===''?null:parseNumber($('edit20').value),updatedAt:{toDate:()=>new Date()}};
+  }
+  function preview() {
+    if(!admin||!ready||saving)return;
+    dirty=true;
+    const d=readDraft();
+    els.dayType.value=d.dayType; $('sharedDay').textContent=days[d.dayType];
+    for(const hour of ['12','18','20']) {
+      const input=$('edit'+hour).value.trim();
+      els['score'+hour].value=input;
+      $('shared'+hour).textContent=input===''?'未入力':Number.isFinite(d['score'+hour])?formatOku(d['score'+hour]):'入力を確認してください';
+    }
+    globalThis.yosenEarlyAvgSpeed=safeEarlySpeed(d.earlyAvgSpeed)?d.earlyAvgSpeed:null;
+    $('sharedEarlyAvgSpeed').textContent=!$('editEarlyAvgSpeed').value.trim()?'未入力':safeEarlySpeed(d.earlyAvgSpeed)?(d.earlyAvgSpeed/10000).toFixed(2)+'億/h':'入力を確認してください';
+    calculate(); document.body.classList.add('shared-ready');
+    $('sharedMeta').textContent='未公開の入力値　対象日：'+(d.eventDate||'未入力');
+    $('sharedMeta').hidden=false;
+    $('sharedStatus').textContent=!safeScore(d.score12)||!safeEarlySpeed(d.earlyAvgSpeed)?'必要なデータを入力すると予測が表示されます。':'';
+    $('previewNotice').hidden=false;
+  }
+  function publishedMatches(d, submitted) {
+    return d && submitted && ['schemaVersion','eventDate','dayType','earlyAvgSpeed','score12','score18','score20'].every(key=>d[key]===submitted[key]);
+  }
+  function finishPublish() {
+    pendingPublish=null;fillDraft();render(latest);
+    $('adminStatus').textContent='公開データを更新しました。';
+  }
   function clearShared(message) {
     document.body.classList.remove('shared-ready'); $('sharedMeta').hidden=true;
     $('calcDetails').style.display='none'; $('calcExplanation').textContent='';
@@ -35,6 +67,7 @@
     $('sharedStatus').textContent=message;
   }
   function render(d) {
+    $('previewNotice').hidden=true;
     if(!d) {
       clearShared('現在、予選データはまだ登録されていません。');
       $('calcExplanation').textContent='当日のデータが登録されると表示されます。';
@@ -49,8 +82,9 @@
     $('sharedMeta').textContent='対象日：'+d.eventDate.replaceAll('-','/')+'　最終更新：'+new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d.updatedAt.toDate());
     $('sharedMeta').hidden=false; $('sharedStatus').textContent='';
   }
-  $('publishForm').addEventListener('input',()=>{dirty=true;});
-  $('resetDraft').onclick=()=>{fillDraft(); $('adminStatus').textContent='公開値を編集欄に読み込みました。';};
+  $('publishForm').addEventListener('input',preview);
+  $('publishForm').addEventListener('change',preview);
+  $('resetDraft').onclick=()=>{fillDraft(); render(latest); $('adminStatus').textContent='公開値を編集欄に読み込みました。';};
   $('loginToggle').onclick=()=>{$('loginForm').hidden=!$('loginForm').hidden;};
   $('loginForm').onsubmit=async e=>{
     e.preventDefault(); $('signIn').disabled=true; $('adminStatus').textContent='ログインしています…';
@@ -61,17 +95,14 @@
   $('signOut').onclick=async()=>{try{await auth.signOut();}catch(e){$('adminStatus').textContent='ログアウトに失敗しました。'+(e.code||'');}};
   $('publishForm').onsubmit=async e=>{
     e.preventDefault(); if(!admin||!ready||saving||auth.currentUser?.uid!==ADMIN_UID)return;
-    const earlyInput=$('editEarlyAvgSpeed').value.trim();
-    const parsedEarly=earlyInput ? parseNumber(earlyInput) : null;
-    const earlyAvgSpeed=parsedEarly === null ? null : /[億万]/.test(earlyInput) ? parsedEarly/10000 : parsedEarly;
-    const d={schemaVersion:1,eventDate:$('editDate').value,dayType:$('editDay').value,earlyAvgSpeed,
-      score12:parseNumber($('edit12').value),score18:$('edit18').value.trim()===''?null:parseNumber($('edit18').value),score20:$('edit20').value.trim()===''?null:parseNumber($('edit20').value),updatedAt:{toDate:()=>new Date()}};
+    const d=readDraft();
     if(!validData(d)){ $('adminStatus').textContent='対象日・開催条件・平均時速・累計を確認してください。12時累計は必須、18時・20時は順に大きい値を入力してください。';return; }
-    saving=true;buttons();$('adminStatus').textContent='保存しています…';
+    saving=true;pendingPublish={data:d,confirmed:false};buttons();$('adminStatus').textContent='保存しています…';
     try {
       await ref.set({...d,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-      dirty=false; $('adminStatus').textContent='公開データを更新しました。';
-    } catch(error) { $('adminStatus').textContent='保存に失敗しました。入力内容は残っています。'+(error.code||''); }
+      if(pendingPublish?.confirmed || publishedMatches(latest,d)) finishPublish();
+      else $('adminStatus').textContent='保存が完了しました。公開データの反映を確認しています…';
+    } catch(error) { pendingPublish=null; $('adminStatus').textContent='保存に失敗しました。入力内容は残っています。'+(error.code||''); }
     finally {saving=false;buttons();}
   };
   try {
@@ -82,7 +113,7 @@
       const wasAdmin=admin;admin=user?.uid===ADMIN_UID;
       $('signOut').hidden=!user; $('loginToggle').hidden=!!user; $('loginForm').hidden=true;
       $('adminStatus').textContent=user?(admin?'管理モードです。':'このアカウントには編集権限がありません。'):'';
-      if(!admin||!wasAdmin)fillDraft();buttons();
+      if(!admin||!wasAdmin) { fillDraft(); render(latest); } buttons();
     });
     ref.onSnapshot({includeMetadataChanges:true},snapshot=>{
       // Do not publish cached or unacknowledged local writes as shared data.
@@ -90,7 +121,12 @@
       if(snapshot.metadata.fromCache){ready=false;buttons();clearShared('最新データを読み込んでいます…');return;}
       const d=snapshot.exists?snapshot.data():null;
       if(d&&!validData(d)){ready=false;buttons();clearShared('公開データの形式を確認できませんでした。管理人へお知らせください。');return;}
-      latest=d;ready=true;render(d);if(!dirty&&!saving)fillDraft();buttons();
+      latest=d;ready=true;
+      if(pendingPublish && publishedMatches(d,pendingPublish.data)) {
+        pendingPublish.confirmed=true;
+        if(!saving)finishPublish();
+      } else if(!admin||!dirty) { render(d);if(!saving)fillDraft(); }
+      buttons();
     },error=>{ready=false;buttons();clearShared('最新データを取得できませんでした。時間をおいて再読み込みしてください。');});
   }catch(error){ready=false;buttons();clearShared('最新データを取得できませんでした。時間をおいて再読み込みしてください。');$('adminStatus').textContent='接続初期化に失敗しました。'+(error.code||error.message);}
 })();

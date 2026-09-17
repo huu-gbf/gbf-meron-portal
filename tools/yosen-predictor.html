@@ -120,6 +120,7 @@
     button { font:inherit; border:1px solid #64748b; background:#1e293b; color:#e2e8f0; border-radius:8px; padding:10px 14px; cursor:pointer; min-height:44px; }
     button:disabled { opacity:.5; cursor:default; }
     #sharedStatus, #adminStatus { overflow-wrap:anywhere; margin:12px 0; }
+    .preview-notice { margin:16px 0; padding:12px 14px; border:1px solid #38bdf8; border-radius:8px; background:#0c2740; color:#e0f2fe; }
   </style>
 </head>
 <body>
@@ -148,6 +149,7 @@
           <button id="resetDraft" type="button">公開値に戻す</button>
         </form>
       </section>
+      <p id="previewNotice" class="preview-notice" role="status" hidden>🧪 プレビュー中・まだ公開されていません。この計算結果は団員には表示されません。</p>
       <div class="form-group">
         <label>開催条件（曜日）</label>
         <select id="dayType">
