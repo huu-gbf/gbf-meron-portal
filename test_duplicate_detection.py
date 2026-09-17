@@ -576,6 +576,8 @@ def test_youtube_register_different_videos_same_summary_duplicate_409(setup_env_
             if name == "site_updates":
                 col_mock.document.return_value.get.return_value = mock_su_doc
             elif name == "knowledge":
+                # 登録対象の動画Bは未登録。既存動画Aは下のhash検索で返す。
+                col_mock.document.return_value.get.return_value.exists = False
                 mock_query = MagicMock()
                 mock_query.stream.return_value = [mock_existing_doc]
                 col_mock.where.return_value = mock_query

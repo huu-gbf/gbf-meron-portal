@@ -144,12 +144,15 @@ def test_correct_secret_deletes_public_tombstones_private_and_cancels_outbox(cli
     assert "next_attempt_at" not in portal.data[outbox_path]
 
 
-def test_storage_post_deletes_only_its_images_after_firestore_commit(client, portal, monkeypatch):
+@pytest.mark.parametrize("captions", [None, ["武器"]])
+def test_storage_post_deletes_only_its_images_after_firestore_commit(client, portal, monkeypatch, captions):
     public_path, _, _ = seed(portal, post_id="abcdefab-cdef-4abc-8def-abcdefabcdef")
     post_id = public_path[1]
     good = f"formations/{post_id}/01-0123456789abcdef0123456789abcdef.jpg"
     other = "formations/another/01-0123456789abcdef0123456789abcdef.jpg"
     portal.data[public_path]["imageStoragePaths"] = [good, other]
+    if captions is not None:
+        portal.data[public_path]["imageCaptions"] = captions
     cleaned = []
     monkeypatch.setattr(main, "cleanup_formation_images", lambda paths: cleaned.extend(paths))
     assert delete(client, post_id=post_id).status_code == 204
@@ -158,7 +161,8 @@ def test_storage_post_deletes_only_its_images_after_firestore_commit(client, por
 
 
 def test_legacy_post_has_no_storage_cleanup(client, portal, monkeypatch):
-    seed(portal)
+    public_path, _, _ = seed(portal)
+    portal.data[public_path]["images"] = ["data:image/jpeg;base64,/9j/2Q=="]
     cleaned = []
     monkeypatch.setattr(main, "cleanup_formation_images", lambda paths: cleaned.extend(paths))
     assert delete(client).status_code == 204

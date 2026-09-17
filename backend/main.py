@@ -9,7 +9,7 @@ import time
 import uuid
 import unicodedata
 from datetime import datetime, timezone, timedelta
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 from urllib.parse import urlparse, quote
 
 from dotenv import load_dotenv
@@ -37,6 +37,7 @@ from pydantic import (
     StrictBool,
     StrictInt,
     StrictStr,
+    StringConstraints,
     UUID4,
     field_validator,
 )
@@ -7424,6 +7425,14 @@ class FormationCreateRequest(BaseModel):
     comment: StrictStr
     images: list[StrictStr] = Field(..., min_length=0, max_length=10)
     tags: list[StrictStr] | None = None
+    imageCaptions: list[Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=20)]] = Field(default_factory=list, max_length=10)
+
+    @field_validator("imageCaptions")
+    @classmethod
+    def normalize_image_captions(cls, value, info):
+        if value and len(value) != len(info.data.get("images", [])):
+            raise ValueError("imageCaptions must match images length")
+        return value if any(value) else []
 
     @field_validator("request_id", mode="before")
     @classmethod
@@ -7527,10 +7536,13 @@ def validate_formation_payload(request: FormationCreateRequest, category: str) -
     return name, comment, images, final_tags
 
 
-def build_formation_payload_hash(category: str, name: str, comment: str, images: list[str], tags: list[str]) -> str:
+def build_formation_payload_hash(category: str, name: str, comment: str, images: list[str], tags: list[str],
+                                 image_captions: list[str] | None = None) -> str:
     payload = {"category": category, "name": name, "comment": comment, "images": images}
     if tags:
         payload["tags"] = tags
+    if image_captions and any(image_captions):
+        payload["imageCaptions"] = image_captions
     canonical = json.dumps(
         payload,
         sort_keys=True,
@@ -7586,7 +7598,8 @@ def cleanup_formation_images(paths: list[str]) -> None:
 
 
 def existing_formation_result(category: str, post_id: str, secret_hash: str, payload_hash: str,
-                              name: str, comment: str, tags: list[str]) -> dict | None:
+                              name: str, comment: str, tags: list[str],
+                              image_captions: list[str] | None = None) -> dict | None:
     portal = get_portal_db()
     private = portal.collection("formation_private").document(f"{category}_{post_id}").get()
     if not private.exists:
@@ -7610,6 +7623,7 @@ def existing_formation_result(category: str, post_id: str, secret_hash: str, pay
             or public_data.get("name") != name
             or public_data.get("comment") != comment
             or public_data.get("tags", []) != tags
+            or public_data.get("imageCaptions", []) != (image_captions or [])
             or public_data.get("timestamp") != data["timestamp"]
             or outbox_data.get("schema_version") != 1
             or outbox_data.get("category") != category
@@ -7629,6 +7643,7 @@ def create_formation_transaction(
     tags: list[str],
     now: datetime,
     image_storage_paths: list[str] | None = None,
+    image_captions: list[str] | None = None,
 ) -> dict:
     portal = get_portal_db()
     event_id = f"{category}_{post_id}"
@@ -7653,6 +7668,7 @@ def create_formation_transaction(
                 "images": images,
                 "tags": tags,
                 "imageStoragePaths": image_storage_paths or [],
+                **({"imageCaptions": image_captions} if image_captions else {}),
                 "timestamp": timestamp,
             })
             txn.create(private_ref, {
@@ -7701,6 +7717,7 @@ def create_formation_transaction(
             or public_data.get("name") != name
             or public_data.get("comment") != comment
             or public_data.get("tags", []) != tags
+            or public_data.get("imageCaptions", []) != (image_captions or [])
             or public_data.get("timestamp") != original_timestamp
             or outbox_data.get("schema_version") != 1
             or outbox_data.get("category") != category
@@ -7727,11 +7744,12 @@ def create_formation(category: str, request: FormationCreateRequest, http_reques
     post_id = str(request.request_id).lower()
     secret_hash = hash_delete_secret(request.delete_secret)
     name, comment, images, tags = validate_formation_payload(request, category)
-    payload_hash = build_formation_payload_hash(category, name, comment, images, tags)
+    image_captions = request.imageCaptions
+    payload_hash = build_formation_payload_hash(category, name, comment, images, tags, image_captions)
     consume_portal_quota("formation_create", secret_hash, per_limit=3, global_limit=30)
     now = datetime.now(timezone.utc)
     try:
-        existing = existing_formation_result(category, post_id, secret_hash, payload_hash, name, comment, tags)
+        existing = existing_formation_result(category, post_id, secret_hash, payload_hash, name, comment, tags, image_captions)
     except PortalAPIError:
         raise
     except Exception:
@@ -7742,7 +7760,7 @@ def create_formation(category: str, request: FormationCreateRequest, http_reques
         urls, paths = upload_formation_images(post_id, images)
         try:
             result = create_formation_transaction(
-                category, post_id, secret_hash, payload_hash, name, comment, urls, tags, now, paths,
+                category, post_id, secret_hash, payload_hash, name, comment, urls, tags, now, paths, image_captions,
             )
         except Exception:
             # A timed-out transaction may already have committed. Never remove images
