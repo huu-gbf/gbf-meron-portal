@@ -130,7 +130,7 @@
   <div class="container">
     <div class="glass-card">
       <h1>🏁 古戦場 予選24:00着地予想</h1>
-      <p class="desc">12時・18時の累計貢献度から、過去傾向と当日の実測ペースを参考に予選終了時の着地を予想します。</p>
+      <p class="desc">12時・18時・20時の累計貢献度と当日の速度から、予選終了時の着地を予想します。</p>
       <p class="tool-notice">非公式・ファン制作の予測ツールです。表示される数値は過去データ等をもとにした参考予測であり、実際の結果を保証するものではありません。</p>
       
       <p id="sharedStatus" role="status">最新データを読み込んでいます…</p>
@@ -140,8 +140,9 @@
         <form id="publishForm">
           <label for="editDate">対象日</label><input id="editDate" type="date" required>
           <label for="editDay">開催条件</label><select id="editDay"><option value="weekday">平日</option><option value="saturday">土曜</option><option value="sunday">日曜</option><option value="holiday">祝日</option></select>
+          <label for="editEarlyAvgSpeed">7〜12時 平均時速（万/h入力）</label><input id="editEarlyAvgSpeed" type="text" inputmode="text" placeholder="50000 → 5.00億/h">
           <label for="edit12">12時累計貢献度</label><input id="edit12" type="text" required placeholder="1000億">
-          <label for="edit18">18時累計貢献度</label><input id="edit18" type="text" required placeholder="1600億">
+          <label for="edit18">18時累計貢献度（任意）</label><input id="edit18" type="text" placeholder="未入力可">
           <label for="edit20">20時累計貢献度（任意）</label><input id="edit20" type="text" placeholder="未入力可">
           <button id="publishButton" type="submit" style="margin-top:16px">保存して公開</button>
           <button id="resetDraft" type="button">公開値に戻す</button>
@@ -157,6 +158,10 @@
         </select>
         <p id="sharedDay" class="shared-value"></p>
       </div>
+      <div class="form-group">
+        <label>7〜12時 平均時速</label>
+        <p id="sharedEarlyAvgSpeed" class="shared-value"></p>
+      </div>
       
       <div class="form-group">
         <label>① 12:00時点</label>
@@ -165,7 +170,12 @@
         <p id="shared12" class="shared-value"></p>
         <div id="parsed12" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err12" class="error"></div>
-        <div id="info12" class="info">18:00のデータを入力すると予想できます</div>
+        <div id="info12" style="font-size:.85rem;color:#94a3b8;margin-top:6px">7〜12時平均時速が未登録です</div>
+      </div>
+      <div id="result12" class="result-section">
+        <h2 style="font-size:1.2rem;margin-bottom:12px">12時時点 24時予測</h2>
+        <div class="metric-card"><div class="metric-label">12時時点の24時予測</div><div class="metric-value highlight" id="valPred12">-</div></div>
+        <p id="model12Note" style="font-size:.8rem;color:#94a3b8;text-align:center;margin-top:8px"></p>
       </div>
       
       <div class="form-group">
@@ -296,6 +306,11 @@
             <p>候補モデルの優位性はまだ確定していません。休日候補は正常6大会、walk-forward有効検証3大会です。20時モデルの比較・自動記録は行いません。</p>
             <div id="shadowComparison" aria-live="polite">有効な12時・18時の入力が揃うと表示します。</div>
           </details>
+          <details class="model-section" style="margin-top:16px;overflow-wrap:anywhere">
+            <summary style="cursor:pointer;color:#38bdf8">本戦型モデル比較</summary>
+            <p>検証中・本番予測には未採用。過去データの評価指標は「12〜24時増加量の予測誤差」です。</p>
+            <div id="honsenComparison" style="white-space:pre-line">7〜12時平均時速と当日の累計が揃うと表示します。</div>
+          </details>
           
           <section class="model-section" style="margin-top:24px;">
             <h3 style="font-size: 0.95rem;">18時モデル候補の比較・検証（未採用）</h3>
@@ -421,6 +436,26 @@
         { limit: 1.30, label: "想定より速い" }
       ]
     };
+
+    // 20分速度の各大会倍率を単純平均。計算には表示用の4桁丸め値を使わない。
+    const HONSEN_MULTIPLIERS = Object.freeze({
+      weekday: Object.freeze({ ratios: [1.333143718883656, 2.0197105156978408, 3.6894312740266897], rounds: '第81・82・83回', note: '予選95HELL解禁後の平日3大会を基準' }),
+      nonWeekday: Object.freeze({ ratios: [1.54182860102961, 1.8877288957249152, 2.953374428525904], rounds: '第74・78・80回', note: '土日祝モデルはデータ不足のため暫定' })
+    });
+
+    function honsenPrediction(dayType, earlyAvgSpeed, s12, s18 = NaN, s20 = NaN) {
+      if (!Number.isFinite(earlyAvgSpeed) || earlyAvgSpeed <= 0 || !Number.isFinite(s12)) return null;
+      const model = dayType === 'weekday' ? HONSEN_MULTIPLIERS.weekday : HONSEN_MULTIPLIERS.nonWeekday;
+      const [day, earlyNight, lateNight] = model.ratios;
+      const baseline = earlyAvgSpeed * 10000; // 入力は万/h、累計は生の貢献度
+      const pred12 = s12 + baseline * (day * 6 + earlyNight * 2 + lateNight * 4);
+      const clamp = value => Math.max(0.90, Math.min(1.10, value));
+      const correction18 = Number.isFinite(s18) && s18 > s12 ? clamp((s18 - s12) / (baseline * day * 6)) : NaN;
+      const pred18 = Number.isFinite(correction18) ? s18 + baseline * correction18 * (earlyNight * 2 + lateNight * 4) : NaN;
+      const correction20 = Number.isFinite(s20) && s20 > s12 ? clamp((s20 - s12) / (baseline * (day * 6 + earlyNight * 2))) : NaN;
+      const pred20 = Number.isFinite(correction20) ? s20 + baseline * correction20 * lateNight * 4 : NaN;
+      return { model, pred12, pred18, pred20, correction18, correction20 };
+    }
 
     /**
      * 履歴の新定義（億/h）：海外サイトの20分速度データをJSTへ+1時間補正して集計。
@@ -855,6 +890,7 @@
       const s18 = parseNumber(raw18);
       const s20 = parseNumber(raw20);
       const dayType = els.dayType.value;
+      const earlyAvgSpeed = globalThis.yosenEarlyAvgSpeed;
 
       const updateParsedDisplay = (id, raw, val) => {
         const el = document.getElementById(id);
@@ -876,9 +912,12 @@
       hideError(els.err18);
       hideError(els.err20);
       els.info12.style.display = 'block';
+      document.getElementById('result12').style.display = 'none';
       els.result18.style.display = 'none';
       els.result20.style.display = 'none';
       document.getElementById('calcDetails').style.display = 'none';
+      document.getElementById('honsenComparison').textContent = '7〜12時平均時速と当日の累計が揃うと表示します。';
+      document.getElementById('diffSection').style.display = 'none';
 
       let hasError = false;
 
@@ -901,28 +940,38 @@
         return;
       }
 
+      const honsen = honsenPrediction(dayType, earlyAvgSpeed, s12, s18, s20);
+      if (honsen) {
+        document.getElementById('valPred12').textContent = formatOku(honsen.pred12);
+        document.getElementById('model12Note').textContent = honsen.model.note + '。過去データを基にした参考値です。';
+        document.getElementById('result12').style.display = 'block';
+        els.info12.style.display = 'none';
+        document.getElementById('calcDetails').style.display = 'block';
+        document.getElementById('calcExplanation').textContent = `12時総累計 ${formatOku(s12)}\n7〜12時平均 ${((earlyAvgSpeed * 10000) / OKU).toFixed(2)}億/h\n倍率 ${honsen.model.ratios.map(x => '×' + x.toFixed(4)).join(' / ')}\n12〜24時予測増加 ${((honsen.pred12 - s12) / OKU).toFixed(2)}億\n24時予測 ${formatOku(honsen.pred12)}`;
+      } else if (Number.isFinite(s12)) {
+        els.info12.textContent = '7〜12時平均時速が未登録です';
+      }
+
       // Range validation
       if (!isNaN(s12) && !isNaN(s18)) {
         if (s18 <= s12) {
           showError(els.err18, '18時の値は12時より大きくしてください');
-          if (typeof updateProgressChart === 'function') updateProgressChart(s12, NaN, NaN, NaN, NaN);
+          if (typeof updateProgressChart === 'function') updateProgressChart(s12, NaN, NaN, NaN, NaN, honsen?.pred12 ?? NaN);
           return;
         }
       }
       if (!isNaN(s18) && !isNaN(s20)) {
         if (s20 <= s18) {
           showError(els.err20, '20時の値は18時より大きくしてください');
-          if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN);
+          if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN, honsen?.pred12 ?? NaN);
           return;
         }
       }
 
       if (isNaN(s12) || isNaN(s18)) {
-        if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN);
+        if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN, honsen?.pred12 ?? NaN);
         return;
       }
-      
-      els.info12.style.display = 'none';
       
       // ==========================================
       // 18:00 Prediction
@@ -947,6 +996,9 @@
         currentNightSpeedOku: predictedNightSpeedOku18, currentScore24: score24Normal });
 
       els.valPred18.textContent = formatOku(score24Normal);
+      if (honsen) {
+        document.getElementById('honsenComparison').textContent = `18時　現行回帰予測 ${formatOku(score24Normal)} ／ 本戦型補正予測 ${formatOku(honsen.pred18)} ／ 差額 ${formatOku(Math.abs(honsen.pred18 - score24Normal))}（${honsen.pred18 >= score24Normal ? '本戦型が上' : '本戦型が下'}）。検証中・本番予測には未採用。`;
+      }
       els.valRange18.textContent = `${formatOku(score24Low)} 〜 ${formatOku(score24High)}`;
       
       els.holidayWarn18.style.display = dayType === 'holiday' ? 'block' : 'none';
@@ -964,7 +1016,7 @@
       if (isNaN(s20)) {
         const diffSection = document.getElementById('diffSection');
         if (diffSection) diffSection.style.display = 'none';
-        updateProgressChart(s12, s18, NaN, score24Normal, NaN);
+        updateProgressChart(s12, s18, NaN, score24Normal, NaN, honsen?.pred12 ?? NaN);
         return;
       }
 
@@ -997,6 +1049,9 @@
       const score24High20 = s20 + remainingNormal20 * m20.range.upper;
 
       els.valPred20.textContent = formatOku(score24Updated);
+      if (honsen) {
+        document.getElementById('honsenComparison').textContent += `\n20時　現行回帰予測 ${formatOku(score24Updated)} ／ 本戦型補正予測 ${formatOku(honsen.pred20)} ／ 差額 ${formatOku(Math.abs(honsen.pred20 - score24Updated))}（${honsen.pred20 >= score24Updated ? '本戦型が上' : '本戦型が下'}）。`;
+      }
       els.valRange20.textContent = `${formatOku(score24Low20)} 〜 ${formatOku(score24High20)}`;
       
       els.holidayWarn20.style.display = (dayType !== 'weekday') ? 'block' : 'none';
@@ -1036,10 +1091,10 @@
         diffSection.style.display = 'block';
       }
 
-      updateProgressChart(s12, s18, s20, score24Normal, score24Updated);
+      updateProgressChart(s12, s18, s20, score24Normal, score24Updated, honsen?.pred12 ?? NaN);
     }
     
-    function updateProgressChart(s12, s18, s20, pred18, pred20) {
+    function updateProgressChart(s12, s18, s20, pred18, pred20, pred12 = NaN) {
       const section = document.getElementById('progressChartSection');
       const container = document.getElementById('progressChartContainer');
       const legend = document.getElementById('progressChartLegend');
@@ -1048,8 +1103,8 @@
       if (!section || !container) return;
       section.style.display = 'block';
 
-      if (isNaN(s12) || isNaN(s18)) {
-        container.innerHTML = '<div style="text-align:center; padding: 20px; color:#94a3b8;">12時・18時データを入力するとグラフが表示されます</div>';
+      if (isNaN(s12)) {
+        container.innerHTML = '<div style="text-align:center; padding: 20px; color:#94a3b8;">12時データを入力するとグラフが表示されます</div>';
         legend.innerHTML = '';
         note.textContent = '';
         return;
@@ -1057,6 +1112,7 @@
 
       const width = 600;
       const height = 300;
+      const compactLabels = innerWidth <= 600;
       const padding = { top: 40, right: 120, bottom: 30, left: 55 };
 
       const timeToX = (t) => {
@@ -1067,8 +1123,9 @@
 
       const pts = [];
       pts.push({ t: 12, val: s12 });
-      pts.push({ t: 18, val: s18 });
+      if (!isNaN(s18)) pts.push({ t: 18, val: s18 });
       if (!isNaN(s20)) pts.push({ t: 20, val: s20 });
+      if (!isNaN(pred12)) pts.push({ t: 24, val: pred12, type: 'pred12' });
       if (!isNaN(pred18)) pts.push({ t: 24, val: pred18, type: 'pred18' });
       if (!isNaN(pred20)) pts.push({ t: 24, val: pred20, type: 'pred20' });
 
@@ -1133,11 +1190,17 @@
         svg += `<text x="${padding.left - 10}" y="${y + 4}" fill="#94a3b8" font-size="12" text-anchor="end">${label}億</text>`;
       });
 
+      if (!isNaN(pred12)) {
+        const y24_12 = valToY(pred12 / OKU);
+        svg += `<line x1="${x12}" y1="${y12}" x2="${x24}" y2="${y24_12}" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4 5" />`;
+        svg += `<circle cx="${x24}" cy="${y24_12}" r="4" fill="#fbbf24" />`;
+        if (!compactLabels) svg += `<text x="${x24 + 8}" y="${padding.top + 14}" fill="#fbbf24" font-size="12">12時予測 ${(pred12/OKU).toFixed(1)}億</text>`;
+      }
       if (!isNaN(pred18)) {
         const y24_18 = valToY(pred18 / OKU);
         svg += `<line x1="${x18}" y1="${y18}" x2="${x24}" y2="${y24_18}" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 4" />`;
         svg += `<circle cx="${x24}" cy="${y24_18}" r="4" fill="#cbd5e1" />`;
-        svg += `<text x="${x24 + 8}" y="${y24_18 + 4}" fill="#cbd5e1" font-size="12">18時予測 ${(pred18/OKU).toFixed(1)}億</text>`;
+        if (!compactLabels) svg += `<text x="${x24 + 8}" y="${padding.top + (isNaN(pred12) ? 14 : 32)}" fill="#cbd5e1" font-size="12">18時予測 ${(pred18/OKU).toFixed(1)}億</text>`;
       }
 
       if (!isNaN(s20) && !isNaN(pred20)) {
@@ -1146,22 +1209,12 @@
         svg += `<line x1="${x20}" y1="${y20}" x2="${x24}" y2="${y24_20}" stroke="#a78bfa" stroke-width="2" stroke-dasharray="6 4" />`;
         svg += `<circle cx="${x24}" cy="${y24_20}" r="4" fill="#a78bfa" />`;
         
-        let labelY = y24_20;
-        if (!isNaN(pred18)) {
-            const y24_18 = valToY(pred18 / OKU);
-            if (Math.abs(y24_18 - y24_20) < 16) {
-               if (y24_20 < y24_18) labelY -= 8;
-               else labelY += 14;
-            } else {
-               labelY += 4;
-            }
-        } else {
-            labelY += 4;
-        }
-        svg += `<text x="${x24 + 8}" y="${labelY}" fill="#a78bfa" font-size="12">20時更新 ${(pred20/OKU).toFixed(1)}億</text>`;
+        const labelY = padding.top + (isNaN(pred12) ? 32 : 50);
+        if (!compactLabels) svg += `<text x="${x24 + 8}" y="${labelY}" fill="#a78bfa" font-size="12">20時更新 ${(pred20/OKU).toFixed(1)}億</text>`;
       }
 
-      let actualPath = `M ${x12} ${y12} L ${x18} ${y18}`;
+      let actualPath = `M ${x12} ${y12}`;
+      if (!isNaN(s18)) actualPath += ` L ${x18} ${y18}`;
       if (!isNaN(s20)) {
         const y20 = valToY(s20 / OKU);
         actualPath += ` L ${x20} ${y20}`;
@@ -1169,7 +1222,7 @@
       svg += `<path d="${actualPath}" fill="none" stroke="#38bdf8" stroke-width="3" />`;
 
       svg += `<circle cx="${x12}" cy="${y12}" r="5" fill="#38bdf8" />`;
-      svg += `<circle cx="${x18}" cy="${y18}" r="5" fill="#38bdf8" />`;
+      if (!isNaN(s18)) svg += `<circle cx="${x18}" cy="${y18}" r="5" fill="#38bdf8" />`;
       if (!isNaN(s20)) {
         const y20 = valToY(s20 / OKU);
         svg += `<circle cx="${x20}" cy="${y20}" r="5" fill="#38bdf8" />`;
@@ -1183,21 +1236,19 @@
           <div style="width:16px; height:3px; background:#38bdf8;"></div>
           <span style="color:#e2e8f0;">実績</span>
         </div>
-        <div style="display:flex; align-items:center; gap:4px;">
-          <div style="width:16px; height:0; border-top:2px dashed #cbd5e1;"></div>
-          <span style="color:#e2e8f0;">18時時点の24時予測</span>
-        </div>
       `;
+      if (!isNaN(pred12)) legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #fbbf24"></div><span style="color:#e2e8f0">12時時点の24時予測 ${formatOku(pred12)}</span></div>`;
+      if (!isNaN(pred18)) legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #cbd5e1"></div><span style="color:#e2e8f0">18時時点の24時予測 ${formatOku(pred18)}</span></div>`;
       if (!isNaN(s20)) {
         legendHtml += `
           <div style="display:flex; align-items:center; gap:4px;">
             <div style="width:16px; height:0; border-top:2px dashed #a78bfa;"></div>
-            <span style="color:#e2e8f0;">20時時点の24時更新予測</span>
+            <span style="color:#e2e8f0;">20時時点の24時更新予測 ${formatOku(pred20)}</span>
           </div>
         `;
         note.textContent = '';
       } else {
-        note.textContent = '20時データを入力すると更新予測も表示されます';
+        note.textContent = isNaN(s18) ? '18時データを入力すると正式予測が表示されます' : '20時データを入力すると更新予測も表示されます';
       }
       legend.innerHTML = legendHtml;
     }

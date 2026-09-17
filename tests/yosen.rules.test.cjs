@@ -8,6 +8,9 @@ test('Shared predictor permissions and data validation',async()=>{
  const admin=env.authenticatedContext('wJRZibao8FgMDqDDQ3csPdVuGkx1').firestore(),viewer=env.unauthenticatedContext().firestore(),member=env.authenticatedContext('member').firestore();
  const path='publicTools/yosenPredictor',valid=()=>({schemaVersion:1,eventDate:'2026-09-17',dayType:'weekday',score12:100000000000,score18:160000000000,score20:null,updatedAt:serverTimestamp()});
  await assertSucceeds(getDoc(doc(viewer,path)));await assertFails(setDoc(doc(viewer,path),valid()));await assertFails(setDoc(doc(member,path),valid()));await assertSucceeds(setDoc(doc(admin,path),valid()));await assertSucceeds(getDoc(doc(viewer,path)));await assertSucceeds(setDoc(doc(admin,path),{...valid(),score20:200000000000}));
+ await assertSucceeds(setDoc(doc(admin,path),{...valid(),earlyAvgSpeed:50000,score18:null}));
+ await assertSucceeds(setDoc(doc(admin,path),{...valid(),earlyAvgSpeed:50000,score18:160000000000}));
+ for(const change of [{earlyAvgSpeed:-1},{earlyAvgSpeed:0},{earlyAvgSpeed:1.5},{earlyAvgSpeed:'50000'},{score18:null,score20:200000000000}])await assertFails(setDoc(doc(admin,path),{...valid(),...change}));
  for(const change of [{extra:'no'},{schemaVersion:2},{dayType:'other'},{eventDate:'bad'},{score12:-1},{score12:1.5},{score12:9007199254740992},{score18:1},{score20:100},{updatedAt:new Date(0)},{score20:'2000億'}])await assertFails(setDoc(doc(admin,path),{...valid(),...change}));
  const missing=valid();delete missing.score20;await assertFails(setDoc(doc(admin,path),missing));
  await assertFails(deleteDoc(doc(admin,path)));await assertFails(setDoc(doc(admin,'publicTools/other'),valid()));await assertFails(getDocs(collection(viewer,'publicTools')));

@@ -7,12 +7,18 @@
   let latest = null, ready = false, dirty = false, saving = false, admin = false;
   let auth, db, ref;
   const safeScore = v => Number.isSafeInteger(v) && v >= 0;
+  const safeEarlySpeed = v => Number.isSafeInteger(v) && v > 0;
   const validDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v+'T00:00:00Z')) && new Date(v+'T00:00:00Z').toISOString().slice(0,10) === v;
   function validData(d) {
-    return d && d.schemaVersion === 1 && validDate(d.eventDate) && Object.hasOwn(days,d.dayType) && safeScore(d.score12) && safeScore(d.score18) && d.score18 > d.score12 && (d.score20 === null || (safeScore(d.score20) && d.score20 > d.score18)) && d.updatedAt && typeof d.updatedAt.toDate === 'function';
+    return d && d.schemaVersion === 1 && validDate(d.eventDate) && Object.hasOwn(days,d.dayType) && safeScore(d.score12)
+      && (d.earlyAvgSpeed == null || safeEarlySpeed(d.earlyAvgSpeed))
+      && (d.score18 === null || (safeScore(d.score18) && d.score18 > d.score12))
+      && (d.score20 === null || (d.score18 !== null && safeScore(d.score20) && d.score20 > d.score18))
+      && d.updatedAt && typeof d.updatedAt.toDate === 'function';
   }
   function fillDraft() {
     $('editDate').value=latest?.eventDate||''; $('editDay').value=latest?.dayType||'weekday';
+    $('editEarlyAvgSpeed').value=latest?.earlyAvgSpeed == null ? '' : String(latest.earlyAvgSpeed);
     for(const hour of ['12','18','20']) $('edit'+hour).value=latest?.['score'+hour] == null ? '' : String(latest['score'+hour]);
     dirty=false;
   }
@@ -25,6 +31,7 @@
     document.body.classList.remove('shared-ready'); $('sharedMeta').hidden=true;
     $('calcDetails').style.display='none'; $('calcExplanation').textContent='';
     for(const hour of ['12','18','20']) { els['score'+hour].value=''; $('shared'+hour).textContent=''; }
+    $('sharedEarlyAvgSpeed').textContent=''; globalThis.yosenEarlyAvgSpeed=null;
     $('sharedStatus').textContent=message;
   }
   function render(d) {
@@ -36,6 +43,8 @@
     }
     els.dayType.value=d.dayType; $('sharedDay').textContent=days[d.dayType];
     for(const hour of ['12','18','20']) { const value=d['score'+hour]; els['score'+hour].value=value===null?'':String(value); $('shared'+hour).textContent=value===null?'未登録':formatOku(value); }
+    globalThis.yosenEarlyAvgSpeed=d.earlyAvgSpeed ?? null;
+    $('sharedEarlyAvgSpeed').textContent=d.earlyAvgSpeed == null ? '未登録' : (d.earlyAvgSpeed/10000).toFixed(2)+'億/h';
     calculate(); document.body.classList.add('shared-ready');
     $('sharedMeta').textContent='対象日：'+d.eventDate.replaceAll('-','/')+'　最終更新：'+new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d.updatedAt.toDate());
     $('sharedMeta').hidden=false; $('sharedStatus').textContent='';
@@ -52,8 +61,12 @@
   $('signOut').onclick=async()=>{try{await auth.signOut();}catch(e){$('adminStatus').textContent='ログアウトに失敗しました。'+(e.code||'');}};
   $('publishForm').onsubmit=async e=>{
     e.preventDefault(); if(!admin||!ready||saving||auth.currentUser?.uid!==ADMIN_UID)return;
-    const d={schemaVersion:1,eventDate:$('editDate').value,dayType:$('editDay').value,score12:parseNumber($('edit12').value),score18:parseNumber($('edit18').value),score20:$('edit20').value.trim()===''?null:parseNumber($('edit20').value),updatedAt:{toDate:()=>new Date()}};
-    if(!validData(d)){ $('adminStatus').textContent='対象日・開催条件・累計を確認してください。12時・18時は必須で、18時は12時より、20時は18時より大きい値を入力してください。';return; }
+    const earlyInput=$('editEarlyAvgSpeed').value.trim();
+    const parsedEarly=earlyInput ? parseNumber(earlyInput) : null;
+    const earlyAvgSpeed=parsedEarly === null ? null : /[億万]/.test(earlyInput) ? parsedEarly/10000 : parsedEarly;
+    const d={schemaVersion:1,eventDate:$('editDate').value,dayType:$('editDay').value,earlyAvgSpeed,
+      score12:parseNumber($('edit12').value),score18:$('edit18').value.trim()===''?null:parseNumber($('edit18').value),score20:$('edit20').value.trim()===''?null:parseNumber($('edit20').value),updatedAt:{toDate:()=>new Date()}};
+    if(!validData(d)){ $('adminStatus').textContent='対象日・開催条件・平均時速・累計を確認してください。12時累計は必須、18時・20時は順に大きい値を入力してください。';return; }
     saving=true;buttons();$('adminStatus').textContent='保存しています…';
     try {
       await ref.set({...d,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
