@@ -859,6 +859,65 @@
       .header-inner { flex-wrap: wrap; height: auto; padding: 10px 0; gap: 6px; }
       .header-back { display: block; width: 100%; text-align: center; margin: 4px 0 0 0; padding: 8px 10px; }
     }
+
+    /* タグUI */
+    .tag-selection-area {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .tag-group {
+      margin-bottom: 12px;
+    }
+    .tag-group:last-child {
+      margin-bottom: 0;
+    }
+    .tag-group-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .tag-btn {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      color: #cbd5e1;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .tag-btn:hover {
+      background: rgba(51, 65, 85, 0.8);
+    }
+    .tag-btn.selected {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: rgba(139, 92, 246, 0.5);
+      color: #c4b5fd;
+    }
+    .post-card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .post-tag-badge {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      color: #cbd5e1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+    }
   </style>
   <link rel="manifest" href="./manifest.webmanifest">
   <meta name="theme-color" content="#080b14">
@@ -1164,6 +1223,17 @@ Qバブ召喚
             <div class="char-count"><span id="charCount">0</span> / 3000</div>
           </div>
 
+
+          <!-- タグ選択 -->
+          <div class="form-group">
+            <label class="form-label">
+              ④ タグ選択<span class="optional">（任意）</span>
+            </label>
+            <div class="tag-selection-area" id="tagSelectionContainer">
+              <!-- JSで生成 -->
+            </div>
+          </div>
+
           <!-- 送信ボタン -->
           <button type="submit" class="submit-btn" id="submitBtn">
             <span>📤</span>
@@ -1389,6 +1459,80 @@ Qバブ召喚
       console.warn('Service Worker 登録失敗:', err);
     });
 
+
+    // ==========================================================
+    //  タグ選択UI
+    // ==========================================================
+    let selectedTags = [];
+    const AVAILABLE_TAGS = {
+      attributes: ['火', '水', '土', '風', '光', '闇'],
+      types: ['神石', 'マグナ'],
+      styles: ['フルオート', '手動', '1ターン', '奥義軸', '通常軸'],
+      categories: {
+        'gw': ['肉集め', '90HELL', '95HELL', '100HELL', '150HELL', '200HELL', '250HELL', 'SWARM'],
+        'multi': ['ソロモナスの賢者', 'ヒヒ掘り'],
+        'high': []
+      }
+    };
+
+    function renderTagSelectionUI() {
+      const container = document.getElementById('tagSelectionContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const createGroup = (title, tags, isExclusive) => {
+        if (!tags || tags.length === 0) return;
+        const groupEl = document.createElement('div');
+        groupEl.className = 'tag-group';
+        const titleEl = document.createElement('div');
+        titleEl.className = 'tag-group-title';
+        titleEl.textContent = title;
+        const listEl = document.createElement('div');
+        listEl.className = 'tag-list';
+
+        tags.forEach(tag => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'tag-btn' + (selectedTags.includes(tag) ? ' selected' : '');
+          btn.textContent = tag;
+          btn.onclick = () => toggleTag(tag, isExclusive, btn);
+          listEl.appendChild(btn);
+        });
+
+        groupEl.appendChild(titleEl);
+        groupEl.appendChild(listEl);
+        container.appendChild(groupEl);
+      };
+
+      createGroup('属性 (最大1つ)', AVAILABLE_TAGS.attributes, true);
+      createGroup('編成タイプ (最大1つ)', AVAILABLE_TAGS.types, true);
+      createGroup('戦い方 (複数可)', AVAILABLE_TAGS.styles, false);
+      createGroup('用途 (複数可)', AVAILABLE_TAGS.categories[category] || [], false);
+    }
+
+    function toggleTag(tag, isExclusive, btnEl) {
+      if (selectedTags.includes(tag)) {
+        selectedTags = selectedTags.filter(t => t !== tag);
+        btnEl.classList.remove('selected');
+      } else {
+        if (isExclusive) {
+          const groupTags = AVAILABLE_TAGS.attributes.includes(tag) ? AVAILABLE_TAGS.attributes : AVAILABLE_TAGS.types;
+          selectedTags = selectedTags.filter(t => !groupTags.includes(t));
+          selectedTags.push(tag);
+          renderTagSelectionUI();
+        } else {
+          selectedTags.push(tag);
+          btnEl.classList.add('selected');
+        }
+      }
+    }
+
+    function clearAllTags() {
+      selectedTags = [];
+      renderTagSelectionUI();
+    }
+
+    // ==========================================================
     // ==========================================================
     //  初期化
     // ==========================================================
@@ -1406,6 +1550,7 @@ Qバブ召喚
       renderPosts();
       setupDragAndDrop();
       setupCharCounter();
+      renderTagSelectionUI();
     });
 
     // ==========================================================
@@ -2001,12 +2146,13 @@ Qバブ召喚
       return {
         name: document.getElementById('playerName').value.trim(),
         comment: document.getElementById('comment').value.trim(),
-        images: [...selectedImages]
+        images: [...selectedImages],
+        tags: [...selectedTags]
       };
     }
 
     function sameContent(a, b) {
-      return a.name === b.name && a.comment === b.comment && JSON.stringify(a.images) === JSON.stringify(b.images);
+      return a.name === b.name && a.comment === b.comment && JSON.stringify(a.images) === JSON.stringify(b.images) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
     }
 
     function validateSubmission(content) {
@@ -2117,6 +2263,7 @@ Qバブ召喚
         if (!changed) {
           document.getElementById('comment').value = '';
           clearAllImages();
+          clearAllTags();
           document.getElementById('charCount').textContent = '0';
         }
         showSubmissionStatus(changed
@@ -2209,7 +2356,8 @@ Qバブ召喚
         name: typeof data.name === 'string' && data.name ? data.name : '名前不明',
         comment: typeof data.comment === 'string' ? data.comment : '',
         timestamp: typeof data.timestamp === 'string' && Number.isFinite(Date.parse(data.timestamp)) ? data.timestamp : '',
-        images: images.slice(0, MAX_IMAGES).map(validateFormationImageUrl)
+        images: images.slice(0, MAX_IMAGES).map(validateFormationImageUrl),
+        tags: Array.isArray(data.tags) ? data.tags.filter(t => typeof t === 'string').slice(0, 20) : []
       };
     }
 
@@ -2353,6 +2501,15 @@ Qバブ召喚
         const hasComment = !!p.comment;
         const textOnlyClass = !hasImages ? ' post-card-text-only' : '';
 
+
+        let tagsHtml = '';
+        if (p.tags && p.tags.length > 0) {
+          tagsHtml = `
+            <div class="post-card-tags">
+              ${p.tags.map(t => `<span class="post-tag-badge">${esc(t)}</span>`).join('')}
+            </div>
+          `;
+        }
         let imagesHtml = '';
         if (hasImages) {
           if (images.length === 1) {
@@ -2425,6 +2582,7 @@ Qバブ召喚
               </div>
             </div>
             ${imagesHtml}
+            ${tagsHtml}
             ${commentHtml}
           </div>
         `;
