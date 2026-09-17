@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Firestore Rules test for gbf-crew-portal",
   "scripts": {
-    "test": "firebase emulators:exec --project demo-gbf-meron-portal-rules --only firestore \"node tests/firestore.rules.test.js\""
+    "test": "firebase emulators:exec --project demo-gbf-meron-portal-rules --only firestore,storage \"node tests/firestore.rules.test.js && node tests/storage.rules.test.cjs\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.4",

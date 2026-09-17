@@ -693,6 +693,11 @@
       grid-template-columns: repeat(2, 1fr);
       gap: 8px;
     }
+    .img-grid-many {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
     .grid-img-item {
       position: relative;
       border-radius: 10px;
@@ -883,7 +888,7 @@
           <div class="form-header-icon">✏️</div>
           <div class="form-header-text">
             <h2>編成を投稿する</h2>
-            <p>名前とコメントだけでもOK！画像は最大4枚まで添付できます</p>
+            <p>名前とコメントだけでもOK！画像は最大<span data-max-images></span>枚まで添付できます</p>
             <div style="margin-top: 10px; padding: 10px 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; font-size: 0.75rem; color: #cbd5e1; line-height: 1.6;">
               <p style="margin: 0; font-weight: 500;">📱 iPhoneからだとリアルタイムポップアップ通知が非対応ブラウザになっている可能性があります</p>
               <p style="margin: 4px 0 0 0; color: #94a3b8;">その際はアドレスバー右の四角に矢印が上に飛び出したマーク(共有ボタン)を押す→表示を増やすもしくはそのままホーム画面に追加→ウェブアプリを開くでポップアップ通知オンに出来ます</p>
@@ -943,9 +948,9 @@
           <div class="form-group">
             <div class="form-label-row">
               <label class="form-label">
-                ② 編成スクリーンショット<span class="optional">（任意・最大4枚）</span>
+                ② 編成スクリーンショット<span class="optional">（任意・最大<span data-max-images></span>枚）</span>
               </label>
-              <span class="img-count-badge" id="imgCountBadge" style="display:none;">0/4枚</span>
+              <span class="img-count-badge" id="imgCountBadge" style="display:none;"></span>
             </div>
             <div
               class="dropzone"
@@ -962,7 +967,7 @@
               <div id="dropPlaceholder">
                 <div class="dropzone-icon">🖼️</div>
                 <p class="dropzone-text">クリックまたはドラッグ&ドロップで画像を選択</p>
-                <p class="dropzone-hint">複数選択可・最大4枚（PNG / JPG / WEBP）</p>
+                <p class="dropzone-hint">複数選択可・最大<span data-max-images></span>枚（PNG / JPG / WEBP）</p>
               </div>
               <div class="preview-container" id="previewContainer">
                 <div class="preview-grid" id="previewGrid"></div>
@@ -1274,8 +1279,14 @@ Qバブ召喚
       }
     });
 
-    const MAX_IMAGES = 4;
-    let selectedImages = []; // Array of base64 strings
+    const MAX_IMAGES = 10;
+    const MAX_IMAGE_DATA_LENGTH = 200000;
+    const MAX_SUBMISSION_BYTES = MAX_IMAGES * MAX_IMAGE_DATA_LENGTH + 50000;
+    document.querySelectorAll('[data-max-images]').forEach(node => { node.textContent = MAX_IMAGES; });
+    let imageProcessingQueue = Promise.resolve();
+    let imageProcessingCount = 0;
+    let imageSelectionVersion = 0;
+    let selectedImages = []; // 圧縮JPEG。プレビューとAPI送信専用（Firestoreには保存しない）
     let db = null;
     let messaging = null;
     let isInitialLoadDone = false;
@@ -1484,7 +1495,7 @@ Qバブ召喚
     }
 
     // ==========================================================
-    //  画像選択・処理（Firestore 1MB上限対策: 750px/0.72品質）
+    //  画像選択・処理（既存の750px/0.72品質を維持）
     // ==========================================================
     function handleFileSelect(e) {
       const files = Array.from(e.target.files);
@@ -1494,56 +1505,72 @@ Qバブ召喚
       e.target.value = '';
     }
 
-    function processFiles(files) {
-      const remaining = MAX_IMAGES - selectedImages.length;
-      if (remaining <= 0) {
-        alert(`画像は最大${MAX_IMAGES}枚までです。`);
-        return;
-      }
-
-      const filesToProcess = files.slice(0, remaining);
-      if (files.length > remaining) {
-        alert(`画像は最大${MAX_IMAGES}枚までのため、最初の${remaining}枚のみ追加されます。`);
-      }
-
-      let processed = 0;
-      filesToProcess.forEach(file => {
-        if (file.size > 10 * 1024 * 1024) {
-          alert(`「${file.name}」のサイズが10MBを超えているためスキップしました。`);
-          processed++;
-          if (processed === filesToProcess.length) updatePreviewUI();
-          return;
-        }
-
+    function compressImage(file) {
+      return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onerror = () => reject(new Error('画像を読み込めませんでした。'));
+        reader.onload = () => {
           const img = new Image();
+          img.onerror = () => reject(new Error('画像を読み込めませんでした。'));
           img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_W = 750; // Firestoreの1MB上限に余裕を持って収める
-            let w = img.width, h = img.height;
-            if (w > MAX_W) {
-              h = Math.round(h * MAX_W / w);
-              w = MAX_W;
-            }
-            canvas.width = w;
-            canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            const base64 = canvas.toDataURL('image/jpeg', 0.72); // 1枚あたり約40〜80KB
-
-            if (selectedImages.length < MAX_IMAGES) {
-              selectedImages.push(base64);
-            }
-
-            processed++;
-            if (processed === filesToProcess.length) {
-              updatePreviewUI();
-            }
+            try {
+              const canvas = document.createElement('canvas');
+              const MAX_W = 750;
+              let w = img.width, h = img.height;
+              if (w > MAX_W) {
+                h = Math.round(h * MAX_W / w);
+                w = MAX_W;
+              }
+              canvas.width = w;
+              canvas.height = h;
+              canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+              resolve(canvas.toDataURL('image/jpeg', 0.72));
+            } catch (error) { reject(error); }
           };
-          img.src = e.target.result;
+          img.src = reader.result;
         };
         reader.readAsDataURL(file);
       });
+    }
+
+    function processFiles(files) {
+      // 複数回の選択・ドロップも直列化し、読み込み速度による順序の入れ替わりを防ぐ。
+      const version = imageSelectionVersion;
+      imageProcessingCount++;
+      document.getElementById('submitBtn').disabled = true;
+      imageProcessingQueue = imageProcessingQueue.then(async () => {
+        if (version !== imageSelectionVersion) return;
+        const remaining = MAX_IMAGES - selectedImages.length;
+        if (files.length > remaining) {
+          alert(remaining > 0
+            ? `画像は最大${MAX_IMAGES}枚までのため、最初の${remaining}枚のみ追加されます。`
+            : `画像は最大${MAX_IMAGES}枚までです。`);
+        }
+        for (const file of files.slice(0, Math.max(0, remaining))) {
+          if (version !== imageSelectionVersion) break;
+          if (file.size > 10 * 1024 * 1024) {
+            alert(`「${file.name}」のサイズが10MBを超えているためスキップしました。`);
+            continue;
+          }
+          try {
+            const image = await compressImage(file);
+            if (version !== imageSelectionVersion) break;
+            if (!validateImageDataUrl(image) || image.length > MAX_IMAGE_DATA_LENGTH) {
+              alert(`「${file.name}」は圧縮後の画像が大きすぎるか読み込めないためスキップしました。`);
+              continue;
+            }
+            if (selectedImages.length < MAX_IMAGES) selectedImages.push(image);
+            updatePreviewUI();
+          } catch (error) {
+            console.warn('画像の圧縮に失敗しました:', error);
+            alert(`「${file.name}」を読み込めませんでした。別の画像を選択してください。`);
+          }
+        }
+      }).finally(() => {
+        imageProcessingCount--;
+        document.getElementById('submitBtn').disabled = submissionInFlight || imageProcessingCount > 0;
+      });
+      return imageProcessingQueue;
     }
 
     function updatePreviewUI() {
@@ -1600,6 +1627,7 @@ Qバブ召喚
 
     function clearAllImages(e) {
       if (e) e.stopPropagation();
+      imageSelectionVersion++;
       selectedImages = [];
       document.getElementById('fileInput').value = '';
       updatePreviewUI();
@@ -1985,13 +2013,13 @@ Qバブ召喚
         throw new Error('コメントは3000文字以内で、改行とタブ以外の制御文字を含めないでください。');
       }
       let total = 0;
-      if (content.images.length > MAX_IMAGES) throw new Error('画像を4枚以内に減らしてください。');
+      if (content.images.length > MAX_IMAGES) throw new Error(`画像は最大${MAX_IMAGES}枚までです。`);
       for (const src of content.images) {
-        if (typeof src !== 'string' || /[^\x00-\x7f]/.test(src) || src.length > 200000) throw new Error('画像が大きすぎます。画像を減らしてください。');
+        if (typeof src !== 'string' || /[^\x00-\x7f]/.test(src) || src.length > MAX_IMAGE_DATA_LENGTH) throw new Error('画像が大きすぎます。画像を減らしてください。');
         if (!src.startsWith('data:image/jpeg;base64,') || !validateImageDataUrl(src)) throw new Error('JPEG画像を選び直してください。');
         total += src.length;
       }
-      if (total > 800000) throw new Error('画像が大きすぎます。画像を減らしてください。');
+      if (total > MAX_IMAGES * MAX_IMAGE_DATA_LENGTH) throw new Error('画像が大きすぎます。画像を減らしてください。');
     }
 
     function formationApiUrl(id) {
@@ -2023,7 +2051,7 @@ Qバブ召喚
     async function handleSubmit(e) {
       e.preventDefault();
 
-      if (submissionInFlight) return;
+      if (submissionInFlight || imageProcessingCount > 0) return;
       const submitBtn = document.getElementById('submitBtn');
       const originalText = submitBtn.innerHTML;
       submissionInFlight = true;
@@ -2046,19 +2074,23 @@ Qバブ召喚
         }
         const { category: ignoredCategory, ...payload } = pending;
         const body = JSON.stringify(payload);
-        if (new TextEncoder().encode(body).length > 850000) {
+        if (new TextEncoder().encode(body).length > MAX_SUBMISSION_BYTES) {
           showSubmissionStatus('画像が大きすぎます。画像を減らしてください。');
           pendingSubmission = null; // fetch前なので、このpayloadは未送信
           return;
         }
         showSubmissionStatus(sameContent(current, pending) ? '投稿結果を確認中…' : '前の投稿結果が未確認です。前の内容を先に確認しています。');
-        submitBtn.textContent = '送信中…';
+        submitBtn.textContent = pending.images.length ? '画像をアップロード中…' : '送信中…';
         let response;
         let result;
         try {
           response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'omit' });
           if (response.status !== 200 && response.status !== 201) {
-            showSubmissionStatus(requestErrorMessage(response.status));
+            let failure;
+            try { failure = await response.json(); } catch { /* ステータスに応じた案内を使用 */ }
+            showSubmissionStatus(response.status === 503 && failure?.error?.code === 'STORAGE_UNAVAILABLE'
+              ? '画像のアップロードに失敗しました。投稿は保存されていません。入力内容を保持していますので、再試行してください。'
+              : requestErrorMessage(response.status));
             if ([413, 422, 409, 410].includes(response.status)) {
               pendingSubmission = null;
             }
@@ -2088,7 +2120,7 @@ Qバブ召喚
         showSubmissionStatus('投稿の準備ができません。名前・コメント・画像の制限とブラウザのサイトデータ設定を確認してください。');
       } finally {
         submissionInFlight = false;
-        submitBtn.disabled = false;
+        submitBtn.disabled = imageProcessingCount > 0;
         submitBtn.innerHTML = originalText;
       }
     }
@@ -2146,6 +2178,23 @@ Qバブ召喚
       } catch { return null; }
     }
 
+    function validateFormationImageUrl(src) {
+      if (typeof src !== 'string') return null;
+      if (src.startsWith('data:')) return validateImageDataUrl(src);
+      if (src.length > 2048 || /\s/.test(src)) return null;
+      try {
+        const url = new URL(src);
+        const prefix = '/v0/b/gbf-meron-portal.firebasestorage.app/o/';
+        if (url.protocol !== 'https:' || url.hostname !== 'firebasestorage.googleapis.com'
+            || url.port || url.username || url.password || url.hash || !url.pathname.startsWith(prefix)
+            || url.searchParams.get('alt') !== 'media') return null;
+        const path = decodeURIComponent(url.pathname.slice(prefix.length));
+        if (!/^formations\/[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]+\.jpg$/.test(path)) return null;
+        if ([...url.searchParams.keys()].some(key => !['alt', 'token'].includes(key))) return null;
+        return url.href;
+      } catch { return null; }
+    }
+
     function normalizeFormation(id, data) {
       if (!isSafePostId(id) || !data || typeof data !== 'object' || Array.isArray(data)) return null;
       const images = Array.isArray(data.images) ? data.images : typeof data.image === 'string' ? [data.image] : [];
@@ -2154,7 +2203,7 @@ Qバブ召喚
         name: typeof data.name === 'string' && data.name ? data.name : '名前不明',
         comment: typeof data.comment === 'string' ? data.comment : '',
         timestamp: typeof data.timestamp === 'string' && Number.isFinite(Date.parse(data.timestamp)) ? data.timestamp : '',
-        images: images.slice(0, MAX_IMAGES).map(validateImageDataUrl)
+        images: images.slice(0, MAX_IMAGES).map(validateFormationImageUrl)
       };
     }
 
@@ -2179,7 +2228,7 @@ Qバブ召喚
       });
       list.querySelectorAll('[data-image-slot]').forEach(slot => {
         const post = getPosts().find(item => item.id === slot.dataset.postId);
-        const src = validateImageDataUrl(post?.images[Number(slot.dataset.imageSlot)]);
+        const src = validateFormationImageUrl(post?.images[Number(slot.dataset.imageSlot)]);
         if (!src) {
           slot.textContent = '画像を表示できません';
           slot.setAttribute('role', 'img');
@@ -2284,7 +2333,7 @@ Qバブ召喚
               </div>
             `;
           } else {
-            const gridClass = `img-grid-${images.length}`;
+            const gridClass = images.length <= 4 ? `img-grid-${images.length}` : 'img-grid-many';
             imagesHtml = `
               <div class="post-card-images ${gridClass}">
                 ${images.map((src, i) => `
@@ -2359,7 +2408,7 @@ Qバブ召喚
     //  モーダル
     // ==========================================================
     function openModal(src) {
-      src = validateImageDataUrl(src);
+      src = validateFormationImageUrl(src);
       if (!src) return;
       document.getElementById('modalImg').src = src;
       document.getElementById('imageModal').classList.add('visible');

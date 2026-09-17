@@ -10,7 +10,7 @@ import uuid
 import unicodedata
 from datetime import datetime, timezone, timedelta
 from typing import Any, Literal, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 from dotenv import load_dotenv
 
@@ -44,7 +44,7 @@ from pydantic import (
 from google import genai
 from google.genai import types
 
-from google.cloud import firestore
+from google.cloud import firestore, storage as cloud_storage
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport.requests import Request as GoogleAuthRequest
 
@@ -6874,9 +6874,10 @@ def get_fcm_app():
 
 PORTAL_PROJECT_ID = "gbf-meron-portal"
 PORTAL_NOTIFICATION_BODY_LIMIT = 8192
-PORTAL_FORMATION_BODY_LIMIT = 850000
+PORTAL_FORMATION_BODY_LIMIT = 2050000
 PORTAL_FORMATION_IMAGE_LIMIT = 200000
-PORTAL_FORMATION_IMAGES_LIMIT = 800000
+PORTAL_FORMATION_IMAGES_LIMIT = 2000000
+FORMATION_STORAGE_BUCKET = "gbf-meron-portal.firebasestorage.app"
 PORTAL_NOTIFICATION_CAPACITY = 500
 PORTAL_NOTIFICATION_RATE_LIMIT = 10
 PORTAL_NOTIFICATION_GLOBAL_LIMIT = 100
@@ -7414,7 +7415,7 @@ class FormationCreateRequest(BaseModel):
     delete_secret: StrictStr
     name: StrictStr
     comment: StrictStr
-    images: list[StrictStr] = Field(..., min_length=0, max_length=4)
+    images: list[StrictStr] = Field(..., min_length=0, max_length=10)
 
     @field_validator("request_id", mode="before")
     @classmethod
@@ -7498,6 +7499,79 @@ def _formation_store_inconsistent():
     raise PortalAPIError(503, "STORE_INCONSISTENT", "投稿データを確認できません。")
 
 
+def formation_storage_bucket():
+    return cloud_storage.Client(project="gbf-meron-portal").bucket(FORMATION_STORAGE_BUCKET)
+
+
+def upload_formation_images(post_id: str, images: list[str]) -> tuple[list[str], list[str]]:
+    if not images:
+        return [], []
+    urls, paths = [], []
+    try:
+        bucket = formation_storage_bucket()
+        for index, image in enumerate(images, 1):
+            path = f"formations/{post_id}/{index:02d}-{uuid.uuid4().hex}.jpg"
+            token = str(uuid.uuid4())
+            blob = bucket.blob(path)
+            blob.metadata = {"firebaseStorageDownloadTokens": token}
+            paths.append(path)
+            blob.upload_from_string(base64.b64decode(image.split(",", 1)[1]), content_type="image/jpeg", if_generation_match=0)
+            urls.append(
+                f"https://firebasestorage.googleapis.com/v0/b/{FORMATION_STORAGE_BUCKET}"
+                f"/o/{quote(path, safe='')}?alt=media&token={token}"
+            )
+    except Exception:
+        cleanup_formation_images(paths)
+        raise PortalAPIError(503, "STORAGE_UNAVAILABLE", "画像のアップロードに失敗しました。投稿は保存されていません。") from None
+    return urls, paths
+
+
+def cleanup_formation_images(paths: list[str]) -> None:
+    if not paths:
+        return
+    try:
+        bucket = formation_storage_bucket()
+        for path in paths:
+            try:
+                bucket.blob(path).delete()
+            except Exception as error:
+                print(f"Formation Storage cleanup failed for {path}: {type(error).__name__}")
+    except Exception as error:
+        print(f"Formation Storage cleanup unavailable: {type(error).__name__}")
+
+
+def existing_formation_result(category: str, post_id: str, secret_hash: str, payload_hash: str,
+                              name: str, comment: str) -> dict | None:
+    portal = get_portal_db()
+    private = portal.collection("formation_private").document(f"{category}_{post_id}").get()
+    if not private.exists:
+        return None
+    data = _snapshot_data(private)
+    if data.get("deleted_at") is not None:
+        raise PortalAPIError(410, "POST_DELETED", "削除済みの投稿です。")
+    if not (data.get("schema_version") == 1
+            and isinstance(data.get("delete_secret_hash"), str)
+            and isinstance(data.get("payload_hash"), str)
+            and hmac.compare_digest(data["delete_secret_hash"], secret_hash)
+            and hmac.compare_digest(data["payload_hash"], payload_hash)):
+        raise PortalAPIError(409, "REQUEST_ID_CONFLICT", "同じrequest_idが別の投稿に使用されています。")
+    public = portal.collection(PUSH_FORMATIONS[category]).document(post_id).get()
+    outbox = portal.collection(PUSH_OUTBOX_COLLECTION).document(f"{category}_{post_id}").get()
+    public_data = _snapshot_data(public)
+    outbox_data = _snapshot_data(outbox)
+    if (not public.exists or not outbox.exists or not isinstance(data.get("timestamp"), str)
+            or public_data.get("schema_version") not in {2, 3}
+            or public_data.get("id") != post_id
+            or public_data.get("name") != name
+            or public_data.get("comment") != comment
+            or public_data.get("timestamp") != data["timestamp"]
+            or outbox_data.get("schema_version") != 1
+            or outbox_data.get("category") != category
+            or outbox_data.get("post_id") != post_id):
+        _formation_store_inconsistent()
+    return {"timestamp": data["timestamp"], "replayed": True}
+
+
 def create_formation_transaction(
     category: str,
     post_id: str,
@@ -7507,6 +7581,7 @@ def create_formation_transaction(
     comment: str,
     images: list[str],
     now: datetime,
+    image_storage_paths: list[str] | None = None,
 ) -> dict:
     portal = get_portal_db()
     event_id = f"{category}_{post_id}"
@@ -7529,6 +7604,7 @@ def create_formation_transaction(
                 "name": name,
                 "comment": comment,
                 "images": images,
+                "imageStoragePaths": image_storage_paths or [],
                 "timestamp": timestamp,
             })
             txn.create(private_ref, {
@@ -7576,7 +7652,6 @@ def create_formation_transaction(
             or public_data.get("id") != post_id
             or public_data.get("name") != name
             or public_data.get("comment") != comment
-            or public_data.get("images") != images
             or public_data.get("timestamp") != original_timestamp
             or outbox_data.get("schema_version") != 1
             or outbox_data.get("category") != category
@@ -7606,9 +7681,32 @@ def create_formation(category: str, request: FormationCreateRequest, http_reques
     payload_hash = build_formation_payload_hash(category, name, comment, images)
     consume_portal_quota("formation_create", secret_hash, per_limit=3, global_limit=30)
     now = datetime.now(timezone.utc)
-    result = create_formation_transaction(
-        category, post_id, secret_hash, payload_hash, name, comment, images, now,
-    )
+    try:
+        existing = existing_formation_result(category, post_id, secret_hash, payload_hash, name, comment)
+    except PortalAPIError:
+        raise
+    except Exception:
+        raise PortalAPIError(503, "STORE_UNAVAILABLE", "投稿結果を確認できません。しばらく待って再試行してください。") from None
+    if existing:
+        result = existing
+    else:
+        urls, paths = upload_formation_images(post_id, images)
+        try:
+            result = create_formation_transaction(
+                category, post_id, secret_hash, payload_hash, name, comment, urls, now, paths,
+            )
+        except Exception:
+            # A timed-out transaction may already have committed. Never remove images
+            # referenced by the public document in that case.
+            try:
+                public = get_portal_db().collection(PUSH_FORMATIONS[category]).document(post_id).get()
+                retained = set((_snapshot_data(public).get("imageStoragePaths") or []) if public.exists else [])
+            except Exception:
+                retained = set(paths)
+            cleanup_formation_images([path for path in paths if path not in retained])
+            raise
+        if result["replayed"]:
+            cleanup_formation_images(paths)
     return JSONResponse(
         status_code=200 if result["replayed"] else 201,
         content={"id": post_id, "category": category, **result},
@@ -7664,6 +7762,12 @@ def delete_formation_transaction(
 
         public_snapshot = public_ref.get(transaction=txn)
         outbox_snapshot = outbox_ref.get(transaction=txn)
+        public_data = _snapshot_data(public_snapshot)
+        storage_paths = public_data.get("imageStoragePaths", [])
+        if not isinstance(storage_paths, list):
+            storage_paths = []
+        storage_paths = [path for path in storage_paths if isinstance(path, str)
+                         and re.fullmatch(rf"formations/{re.escape(post_id)}/[0-9]{{2}}-[0-9a-f]{{32}}\.jpg", path)]
         if public_snapshot.exists:
             txn.delete(public_ref)
         if private_data.get("deleted_at") is None:
@@ -7683,9 +7787,10 @@ def delete_formation_transaction(
                 changes = _push_terminal("canceled", "POST_DELETED")
                 changes["round_attempted"] = firestore.DELETE_FIELD
                 txn.set(outbox_ref, changes, merge=True)
+        return storage_paths
 
     try:
-        delete(portal.transaction())
+        return delete(portal.transaction())
     except PortalAPIError:
         raise
     except Exception:
@@ -7705,7 +7810,8 @@ def delete_formation(category: str, post_id: str, http_request: Request):
     post_id = validate_delete_post_id(post_id)
     delete_secret_hash = get_delete_secret_hash(http_request)
     consume_portal_quota("formation_delete", delete_secret_hash, per_limit=10, global_limit=100)
-    delete_formation_transaction(category, post_id, delete_secret_hash, datetime.now(timezone.utc))
+    storage_paths = delete_formation_transaction(category, post_id, delete_secret_hash, datetime.now(timezone.utc))
+    cleanup_formation_images(storage_paths)
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 

@@ -1,6 +1,7 @@
 import base64
 import copy
 import hashlib
+import json
 import os
 import sys
 import threading
@@ -37,6 +38,43 @@ POST_ID = REQUEST_ID.lower()
 SECRET_BYTES = bytes(range(32))
 DELETE_SECRET = base64.urlsafe_b64encode(SECRET_BYTES).rstrip(b"=").decode("ascii")
 JPEG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xffbody\xff\xd9").decode("ascii")
+
+
+class FakeBlob:
+    def __init__(self, bucket, path):
+        self.bucket = bucket
+        self.path = path
+        self.metadata = {}
+
+    def upload_from_string(self, data, content_type, if_generation_match):
+        self.bucket.upload_calls += 1
+        if self.bucket.upload_calls == self.bucket.fail_upload_number and not self.bucket.fail_after_upload:
+            raise RuntimeError("simulated-upload-failure")
+        assert content_type == "image/jpeg"
+        assert if_generation_match == 0
+        assert self.path not in self.bucket.objects
+        self.bucket.objects[self.path] = {"data": data, "metadata": self.metadata}
+        if self.bucket.upload_calls == self.bucket.fail_upload_number and self.bucket.fail_after_upload:
+            raise RuntimeError("simulated-timeout-after-upload")
+
+    def delete(self):
+        self.bucket.deleted.append(self.path)
+        if self.bucket.fail_delete:
+            raise RuntimeError("simulated-delete-failure")
+        self.bucket.objects.pop(self.path, None)
+
+
+class FakeBucket:
+    def __init__(self):
+        self.objects = {}
+        self.deleted = []
+        self.upload_calls = 0
+        self.fail_upload_number = None
+        self.fail_after_upload = False
+        self.fail_delete = False
+
+    def blob(self, path):
+        return FakeBlob(self, path)
 
 
 class FakeSnapshot:
@@ -171,6 +209,8 @@ def fake_transactional(function):
 @pytest.fixture
 def portal(monkeypatch):
     database = FakeFirestore()
+    database.bucket = FakeBucket()
+    monkeypatch.setattr(main, "formation_storage_bucket", lambda: database.bucket)
     forbidden = MagicMock(side_effect=AssertionError("push path must not be called"))
     forbidden_ai_db = MagicMock(side_effect=AssertionError("AI database must not be called"))
     monkeypatch.setattr(main, "_portal_db", database)
@@ -248,9 +288,14 @@ def test_create_writes_three_documents_and_no_secret_or_push(client, portal, cat
         "id": POST_ID,
         "name": "団員A",
         "comment": "コメント\n二行目",
-        "images": [JPEG],
+        "images": public["images"],
+        "imageStoragePaths": public["imageStoragePaths"],
         "timestamp": body["timestamp"],
     }
+    assert len(public["images"]) == len(public["imageStoragePaths"]) == 1
+    assert public["images"][0].startswith("https://firebasestorage.googleapis.com/")
+    assert public["imageStoragePaths"][0] in database.bucket.objects
+    assert JPEG not in repr(public)
     assert private["schema_version"] == 1
     assert private["delete_secret_hash"] == hashlib.sha256(SECRET_BYTES).hexdigest()
     assert private["deleted_at"] is None
@@ -348,7 +393,7 @@ def test_image_format_is_strict(client, portal, image):
 
 
 def test_image_count_and_size_limits(client, portal):
-    too_many = post(client, value=payload(images=[JPEG] * 5))
+    too_many = post(client, value=payload(images=[JPEG] * 11))
     assert too_many.status_code == 422
     oversized = "data:image/jpeg;base64," + "A" * 199978
     too_large = post(client, value=payload(images=[oversized]))
@@ -356,18 +401,22 @@ def test_image_count_and_size_limits(client, portal):
     assert too_large.json()["error"]["code"] == "BODY_TOO_LARGE"
 
 
-@pytest.mark.parametrize("images", [[], [JPEG] * 4])
+@pytest.mark.parametrize("images", [[], [JPEG], [JPEG] * 4, [JPEG] * 5, [JPEG] * 8, [JPEG] * 10])
 def test_image_count_boundaries_are_accepted(client, portal, images):
     response = post(client, value=payload(images=images))
     assert response.status_code == 201
-    assert portal[0].data[paths()[0]]["images"] == images
+    public = portal[0].data[paths()[0]]
+    assert len(public["images"]) == len(public["imageStoragePaths"]) == len(images)
+    assert len(portal[0].bucket.objects) == len(images)
+    assert "data:image" not in json.dumps(public)
+    assert len(json.dumps(public).encode("utf-8")) < 6000
 
 
 def test_body_content_type_json_and_json_syntax_guards(client, portal):
     large = client.post(
         "/api/formations/gw",
         content=b"{}",
-        headers={**HEADERS, "Content-Type": "application/json", "Content-Length": "850001"},
+        headers={**HEADERS, "Content-Type": "application/json", "Content-Length": "2050001"},
     )
     assert large.status_code == 413
     text = client.post("/api/formations/gw", content="{}", headers={**HEADERS, "Content-Type": "text/plain"})
@@ -384,7 +433,7 @@ def test_body_content_type_json_and_json_syntax_guards(client, portal):
 def test_actual_body_bytes_are_checked_even_with_small_content_length(client, portal):
     response = client.post(
         "/api/formations/gw",
-        content=b"{" + b" " * 850000,
+        content=b"{" + b" " * 2050000,
         headers={**HEADERS, "Content-Type": "application/json", "Content-Length": "2"},
     )
     assert response.status_code == 413
@@ -498,6 +547,7 @@ def test_three_document_create_is_atomic(client, portal, write_number):
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "STORE_UNAVAILABLE"
     assert all(path not in database.data for path in paths())
+    assert database.bucket.objects == {}
 
 
 def test_store_failure_does_not_leak_exception(client, portal, capsys):
@@ -551,3 +601,52 @@ def test_outbox_can_be_claimed_and_initialized_by_b2(client, portal):
     initialized = main.initialize_push_recipients(reference, lease_id, now)
     assert initialized["recipients"] == []
     assert database.data[outbox_path]["status"] == "processing"
+
+
+@pytest.mark.parametrize("failure_number", [1, 6, 10])
+def test_partial_storage_upload_rolls_back_without_firestore_post(client, portal, failure_number):
+    database, _ = portal
+    database.bucket.fail_upload_number = failure_number
+    response = post(client, value=payload(images=[JPEG] * 10))
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "STORAGE_UNAVAILABLE"
+    assert all(path not in database.data for path in paths())
+    assert database.bucket.objects == {}
+    assert len(database.bucket.deleted) == failure_number
+
+
+def test_storage_rollback_failure_is_logged_and_post_fails(client, portal, capsys):
+    database, _ = portal
+    database.bucket.fail_upload_number = 6
+    database.bucket.fail_delete = True
+    response = post(client, value=payload(images=[JPEG] * 10))
+    assert response.status_code == 503
+    assert all(path not in database.data for path in paths())
+    assert len(database.bucket.deleted) == 6
+    assert "Storage cleanup failed" in capsys.readouterr().out
+
+
+def test_upload_timeout_after_object_creation_removes_uncertain_object(client, portal):
+    database, _ = portal
+    database.bucket.fail_upload_number = 6
+    database.bucket.fail_after_upload = True
+    response = post(client, value=payload(images=[JPEG] * 10))
+    assert response.status_code == 503
+    assert database.bucket.objects == {}
+    assert len(database.bucket.deleted) == 6
+    assert all(path not in database.data for path in paths())
+
+
+def test_upload_order_and_replay_do_not_duplicate_storage(client, portal):
+    database, _ = portal
+    images = ["data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xff" + bytes([index]) + b"\xff\xd9").decode("ascii") for index in range(10)]
+    first = post(client, value=payload(images=images))
+    assert first.status_code == 201
+    public = database.data[paths()[0]]
+    for index, path in enumerate(public["imageStoragePaths"]):
+        assert path.startswith(f"formations/{POST_ID}/{index + 1:02d}-")
+        assert database.bucket.objects[path]["data"] == base64.b64decode(images[index].split(",", 1)[1])
+    second = post(client, value=payload(images=images))
+    assert second.status_code == 200
+    assert database.bucket.upload_calls == 10
+    assert len(database.bucket.objects) == 10
