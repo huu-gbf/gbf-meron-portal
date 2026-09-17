@@ -7,7 +7,7 @@ const begin = source.indexOf('const HONSEN_MULTIPLIERS =');
 const end = source.indexOf('const HISTORY_DATA =', begin);
 assert(begin > 0 && end > begin, '本戦型モデルが見つかりません');
 const context = {};
-vm.runInNewContext(source.slice(begin, end) + '\nglobalThis.predict = honsenPrediction; globalThis.models = HONSEN_MULTIPLIERS;', context);
+vm.runInNewContext(source.slice(begin, end) + '\nglobalThis.predict = honsenPrediction; globalThis.models = HONSEN_MULTIPLIERS; globalThis.noonRange = noonReferenceRange;', context);
 
 test('12時累計と万/hの朝速度から24時を予測し、後続の実測は不要', () => {
   const s12 = 10_000_000_000;
@@ -40,4 +40,14 @@ test('実測補正を0.90〜1.10に制限する', () => {
   assert.equal(context.predict('weekday', 50_000, s12, s12 + standard18 * 1.5).correction18, 1.10);
   assert.equal(context.predict('weekday', 50_000, s12, NaN, s12 + standard20 * 0.5).correction20, 0.90);
   assert.equal(context.predict('weekday', 50_000, s12, NaN, s12 + standard20 * 1.5).correction20, 1.10);
+});
+
+test('12時の参考幅は確定済み累計を固定し、残り増加量だけに適用する', () => {
+  const s12 = 10_000_000_000;
+  const center = context.predict('weekday', 50_000, s12).pred12;
+  const range = context.noonRange(s12, center);
+  assert([range.low, range.center, range.high].every(Number.isFinite));
+  assert(range.low < center && center < range.high);
+  assert.equal(range.low, s12 + (center - s12) * 0.9339);
+  assert.equal(range.high, s12 + (center - s12) * 1.0661);
 });

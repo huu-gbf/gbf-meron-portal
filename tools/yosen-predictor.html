@@ -175,6 +175,7 @@
       <div id="result12" class="result-section">
         <h2 style="font-size:1.2rem;margin-bottom:12px">12時時点 24時予測</h2>
         <div class="metric-card"><div class="metric-label">12時時点の24時予測</div><div class="metric-value highlight" id="valPred12">-</div></div>
+        <p id="valRange12" style="font-size:.85rem;color:#cbd5e1;text-align:center;margin-top:8px"></p>
         <p id="model12Note" style="font-size:.8rem;color:#94a3b8;text-align:center;margin-top:8px"></p>
       </div>
       
@@ -271,19 +272,19 @@
         </div>
 
         <div style="margin-top: 24px;">
-          <h3 style="font-size: 1rem; color: #fff; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 4px;">📊 過去古戦場の実測傾向</h3>
-          <p style="font-size:0.8rem;color:#94a3b8">昼平均：12〜18時相当／夜平均：18〜24時相当。夜の伸び倍率 = 夜平均 ÷ 昼平均。</p>
+          <h3 style="font-size: 1rem; color: #fff; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 4px;">📊 過去古戦場の夜の伸び傾向</h3>
+          <p style="font-size:0.8rem;color:#94a3b8">12〜18時の平均速度に対して、18〜24時の平均速度が何倍になったかを示しています。12時予測で使う7〜12時基準の倍率とは別の参考情報です。</p>
           <div id="historyStats" style="font-size: 0.9rem; color: #cbd5e1; display: grid; grid-template-columns: 1fr; gap: 8px;">
             <!-- Generated via JS -->
           </div>
           
           <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 12px;">
             土日は昼から速度が高くなりやすい一方、平日は昼から夜にかけて速度が大きく伸びる傾向があります。祝日の平均は特殊開催も含む履歴の参考値です。<br><br>
-            近年は貢献度速度そのものが大きく上昇しているため、単純な過去平均だけでは現在の着地予測には使えません。本ツールでは当日の実測速度と過去データから作成した回帰モデルを使って24:00の速度を推定しています。
+            近年は貢献度速度そのものが大きく上昇しています。この欄の夜の伸び倍率は過去傾向の参考値であり、12時予測に使う倍率ではありません。
           </p>
           <div style="font-size: 0.75rem; color: #64748b; margin-top: 12px; padding-top: 8px; border-top: 1px dashed #334155;">
             <span id="historyCoverage"></span><br>
-            ※ 表示されている曜日別平均は単純平均です。古い大会を含むため、現在の速度水準そのものを表す値ではありません。近年ほど絶対速度が上昇しているため、古い大会を含む単純平均は参考値です。
+            ※ 表示されている曜日別の伸び倍率は、過去大会の倍率の単純平均です。
           </div>
         </div>
 
@@ -457,6 +458,15 @@
       return { model, pred12, pred18, pred20, correction18, correction20 };
     }
 
+    // 第80〜83回のwalk-forwardにおける12〜24時増加量の平均絶対誤差。信頼区間ではない。
+    const NOON_REFERENCE_ERROR = 0.0661;
+    function noonReferenceRange(s12, pred12) {
+      const remaining = pred12 - s12;
+      return { hour: 12, start: s12, center: pred12,
+        low: s12 + remaining * (1 - NOON_REFERENCE_ERROR),
+        high: s12 + remaining * (1 + NOON_REFERENCE_ERROR) };
+    }
+
     /**
      * 履歴の新定義（億/h）：海外サイトの20分速度データをJSTへ+1時間補正して集計。
      * dayAvg: サイト11:20〜17:00 ≒ JST 12:20〜18:00（12〜18時相当）。
@@ -521,8 +531,6 @@
         // 浮動小数点加算の微小な誤差（例: 1.94 + 1.91 = 3.8499999999999996）を吸収するため
         // Number.EPSILON ではなく、十分な大きさの微小値（0.00001）を足してから四捨五入する
         const calcAvg = val => (Math.round((val / s.count) * 100 + 0.00001) / 100).toFixed(2);
-        const avgDay = calcAvg(s.sumDay);
-        const avgNight = calcAvg(s.sumNight);
         const avgRatio = calcAvg(s.sumRatio);
         
         const isSelected = (key === currentDayType);
@@ -533,11 +541,7 @@
         const html = `
           <div style="padding: 8px; border-radius: 4px; background: ${bg}; color: ${color};">
             <div style="font-weight: bold; margin-bottom: 4px;">${prefix}${s.name} <span style="font-size:0.75rem; color:#64748b; font-weight:normal;">(${s.count}大会)</span></div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; font-size: 0.85rem; padding-left: 16px;">
-              <div>昼平均 ${avgDay}億/h</div>
-              <div>夜平均 ${avgNight}億/h</div>
-              <div>夜の伸び ×${avgRatio}</div>
-            </div>
+            <div style="font-size: 0.85rem; padding-left: 16px;">18〜24時の伸び ×${avgRatio}</div>
           </div>
         `;
         container.innerHTML += html;
@@ -941,8 +945,10 @@
       }
 
       const honsen = honsenPrediction(dayType, earlyAvgSpeed, s12, s18, s20);
+      const range12 = honsen ? noonReferenceRange(s12, honsen.pred12) : null;
       if (honsen) {
         document.getElementById('valPred12').textContent = formatOku(honsen.pred12);
+        document.getElementById('valRange12').textContent = `参考下振れ ${formatOku(range12.low)} 〜 参考上振れ ${formatOku(range12.high)}`;
         document.getElementById('model12Note').textContent = honsen.model.note + '。過去データを基にした参考値です。';
         document.getElementById('result12').style.display = 'block';
         els.info12.style.display = 'none';
@@ -956,20 +962,20 @@
       if (!isNaN(s12) && !isNaN(s18)) {
         if (s18 <= s12) {
           showError(els.err18, '18時の値は12時より大きくしてください');
-          if (typeof updateProgressChart === 'function') updateProgressChart(s12, NaN, NaN, NaN, NaN, honsen?.pred12 ?? NaN);
+          if (typeof updateProgressChart === 'function') updateProgressChart(s12, NaN, NaN, NaN, NaN, honsen?.pred12 ?? NaN, range12);
           return;
         }
       }
       if (!isNaN(s18) && !isNaN(s20)) {
         if (s20 <= s18) {
           showError(els.err20, '20時の値は18時より大きくしてください');
-          if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN, honsen?.pred12 ?? NaN);
+          if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN, honsen?.pred12 ?? NaN, range12);
           return;
         }
       }
 
       if (isNaN(s12) || isNaN(s18)) {
-        if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN, honsen?.pred12 ?? NaN);
+        if (typeof updateProgressChart === 'function') updateProgressChart(s12, s18, NaN, NaN, NaN, honsen?.pred12 ?? NaN, range12);
         return;
       }
       
@@ -1016,7 +1022,8 @@
       if (isNaN(s20)) {
         const diffSection = document.getElementById('diffSection');
         if (diffSection) diffSection.style.display = 'none';
-        updateProgressChart(s12, s18, NaN, score24Normal, NaN, honsen?.pred12 ?? NaN);
+        updateProgressChart(s12, s18, NaN, score24Normal, NaN, honsen?.pred12 ?? NaN,
+          { hour: 18, start: s18, center: score24Normal, low: score24Low, high: score24High });
         return;
       }
 
@@ -1091,10 +1098,11 @@
         diffSection.style.display = 'block';
       }
 
-      updateProgressChart(s12, s18, s20, score24Normal, score24Updated, honsen?.pred12 ?? NaN);
+      updateProgressChart(s12, s18, s20, score24Normal, score24Updated, honsen?.pred12 ?? NaN,
+        { hour: 20, start: s20, center: score24Updated, low: score24Low20, high: score24High20 });
     }
     
-    function updateProgressChart(s12, s18, s20, pred18, pred20, pred12 = NaN) {
+    function updateProgressChart(s12, s18, s20, pred18, pred20, pred12 = NaN, latestRange = null) {
       const section = document.getElementById('progressChartSection');
       const container = document.getElementById('progressChartContainer');
       const legend = document.getElementById('progressChartLegend');
@@ -1122,12 +1130,14 @@
       };
 
       const pts = [];
+      const activeRange = latestRange && [latestRange.start, latestRange.center, latestRange.low, latestRange.high].every(Number.isFinite) ? latestRange : null;
       pts.push({ t: 12, val: s12 });
       if (!isNaN(s18)) pts.push({ t: 18, val: s18 });
       if (!isNaN(s20)) pts.push({ t: 20, val: s20 });
       if (!isNaN(pred12)) pts.push({ t: 24, val: pred12, type: 'pred12' });
       if (!isNaN(pred18)) pts.push({ t: 24, val: pred18, type: 'pred18' });
       if (!isNaN(pred20)) pts.push({ t: 24, val: pred20, type: 'pred20' });
+      if (activeRange) pts.push({ t: 24, val: activeRange.low }, { t: 24, val: activeRange.high });
 
       const values = pts.map(p => p.val / OKU);
       const dataMax = Math.max(...values);
@@ -1190,15 +1200,26 @@
         svg += `<text x="${padding.left - 10}" y="${y + 4}" fill="#94a3b8" font-size="12" text-anchor="end">${label}億</text>`;
       });
 
+      // 確定済みの累計を起点に、最新の正式予測の未確定部分だけの幅を示す。
+      if (activeRange) {
+        const fromX = timeToX(activeRange.hour);
+        const fromY = valToY(activeRange.start / OKU);
+        for (const [value, color] of [[activeRange.low, '#fb7185'], [activeRange.high, '#34d399']]) {
+          const toY = valToY(value / OKU);
+          svg += `<line x1="${fromX}" y1="${fromY}" x2="${x24}" y2="${toY}" stroke="${color}" stroke-width="2" stroke-dasharray="3 5" />`;
+          svg += `<circle cx="${x24}" cy="${toY}" r="3" fill="${color}" />`;
+        }
+      }
+
       if (!isNaN(pred12)) {
         const y24_12 = valToY(pred12 / OKU);
-        svg += `<line x1="${x12}" y1="${y12}" x2="${x24}" y2="${y24_12}" stroke="#fbbf24" stroke-width="2" stroke-dasharray="4 5" />`;
+        svg += `<line x1="${x12}" y1="${y12}" x2="${x24}" y2="${y24_12}" stroke="#fbbf24" stroke-width="${activeRange?.hour === 12 ? 3 : 2}" stroke-dasharray="4 5" opacity="${activeRange?.hour === 12 ? 1 : 0.5}" />`;
         svg += `<circle cx="${x24}" cy="${y24_12}" r="4" fill="#fbbf24" />`;
         if (!compactLabels) svg += `<text x="${x24 + 8}" y="${padding.top + 14}" fill="#fbbf24" font-size="12">12時予測 ${(pred12/OKU).toFixed(1)}億</text>`;
       }
       if (!isNaN(pred18)) {
         const y24_18 = valToY(pred18 / OKU);
-        svg += `<line x1="${x18}" y1="${y18}" x2="${x24}" y2="${y24_18}" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="6 4" />`;
+        svg += `<line x1="${x18}" y1="${y18}" x2="${x24}" y2="${y24_18}" stroke="#cbd5e1" stroke-width="${activeRange?.hour === 18 ? 3 : 2}" stroke-dasharray="6 4" opacity="${activeRange?.hour === 18 ? 1 : 0.5}" />`;
         svg += `<circle cx="${x24}" cy="${y24_18}" r="4" fill="#cbd5e1" />`;
         if (!compactLabels) svg += `<text x="${x24 + 8}" y="${padding.top + (isNaN(pred12) ? 14 : 32)}" fill="#cbd5e1" font-size="12">18時予測 ${(pred18/OKU).toFixed(1)}億</text>`;
       }
@@ -1206,7 +1227,7 @@
       if (!isNaN(s20) && !isNaN(pred20)) {
         const y20 = valToY(s20 / OKU);
         const y24_20 = valToY(pred20 / OKU);
-        svg += `<line x1="${x20}" y1="${y20}" x2="${x24}" y2="${y24_20}" stroke="#a78bfa" stroke-width="2" stroke-dasharray="6 4" />`;
+        svg += `<line x1="${x20}" y1="${y20}" x2="${x24}" y2="${y24_20}" stroke="#a78bfa" stroke-width="${activeRange?.hour === 20 ? 3 : 2}" stroke-dasharray="6 4" opacity="${activeRange?.hour === 20 ? 1 : 0.5}" />`;
         svg += `<circle cx="${x24}" cy="${y24_20}" r="4" fill="#a78bfa" />`;
         
         const labelY = padding.top + (isNaN(pred12) ? 32 : 50);
@@ -1237,19 +1258,24 @@
           <span style="color:#e2e8f0;">実績</span>
         </div>
       `;
-      if (!isNaN(pred12)) legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #fbbf24"></div><span style="color:#e2e8f0">12時時点の24時予測 ${formatOku(pred12)}</span></div>`;
-      if (!isNaN(pred18)) legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #cbd5e1"></div><span style="color:#e2e8f0">18時時点の24時予測 ${formatOku(pred18)}</span></div>`;
+      if (!isNaN(pred12)) legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #fbbf24"></div><span style="color:#e2e8f0">12時時点の24時予測${activeRange?.hour === 12 ? '（中央）' : ''} ${formatOku(pred12)}</span></div>`;
+      if (!isNaN(pred18)) legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #cbd5e1"></div><span style="color:#e2e8f0">18時時点の24時予測${activeRange?.hour === 18 ? '（中央）' : ''} ${formatOku(pred18)}</span></div>`;
       if (!isNaN(s20)) {
         legendHtml += `
           <div style="display:flex; align-items:center; gap:4px;">
             <div style="width:16px; height:0; border-top:2px dashed #a78bfa;"></div>
-            <span style="color:#e2e8f0;">20時時点の24時更新予測 ${formatOku(pred20)}</span>
+            <span style="color:#e2e8f0;">20時時点の24時更新予測${activeRange?.hour === 20 ? '（中央）' : ''} ${formatOku(pred20)}</span>
           </div>
         `;
-        note.textContent = '';
-      } else {
-        note.textContent = isNaN(s18) ? '18時データを入力すると正式予測が表示されます' : '20時データを入力すると更新予測も表示されます';
       }
+      if (activeRange) {
+        legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #fb7185"></div><span style="color:#e2e8f0">参考下振れ ${formatOku(activeRange.low)}</span></div>`;
+        legendHtml += `<div style="display:flex;align-items:center;gap:4px"><div style="width:16px;border-top:2px dashed #34d399"></div><span style="color:#e2e8f0">参考上振れ ${formatOku(activeRange.high)}</span></div>`;
+      }
+      note.textContent = activeRange?.hour === 12
+        ? '参考幅は過去4大会の12〜24時増加量の平均絶対誤差6.61%を使用しています。'
+        : activeRange ? '参考上振れ・下振れは最新の正式予測の既存レンジです。'
+          : isNaN(s18) ? '18時データを入力すると正式予測が表示されます' : '20時データを入力すると更新予測も表示されます';
       legend.innerHTML = legendHtml;
     }
 
