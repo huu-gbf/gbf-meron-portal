@@ -2049,6 +2049,10 @@ Qバブ召喚
     // ==========================================================
     //  Firestore リアルタイム同期 (onSnapshot)
     // ==========================================================
+    function isUnconfirmedEmptyCacheSnapshot(snapshot) {
+      return snapshot.empty === true && snapshot.metadata?.fromCache === true;
+    }
+
     function listenToFirestoreFormations() {
       if (!db) return;
 
@@ -2057,7 +2061,11 @@ Qバブ召喚
       }
 
       unsubscribeFirestore = db.collection(firestoreCollection)
-        .onSnapshot((snapshot) => {
+        .onSnapshot({ includeMetadataChanges: true }, (snapshot) => {
+          // Firestore のローカル cache が空でも、サーバー確認前には既存表示を消さない。
+          // includeMetadataChanges により、同じ空集合でも server 確認後の snapshot を受け取る。
+          if (isUnconfirmedEmptyCacheSnapshot(snapshot)) return;
+
           const remoteFormations = [];
           snapshot.forEach((doc) => {
             const post = normalizeRemoteFormation(doc);
