@@ -1290,6 +1290,7 @@ Qバブ召喚
     let db = null;
     let messaging = null;
     let isInitialLoadDone = false;
+    let formationLoadError = null;
     let unsubscribeFirestore = null;
     let memoryPosts = null;
     let snapshotIds = new Set();
@@ -1855,11 +1856,16 @@ Qバブ召喚
             showSubmissionStatus('投稿済み・一覧に反映されました。');
           }
 
+          formationLoadError = null;
           isInitialLoadDone = true;
           savePosts(remoteFormations);
           renderPosts();
         }, (error) => {
           console.error('Firestore同期エラー:', error);
+          formationLoadError = error;
+          isInitialLoadDone = true;
+          renderPosts();
+
           const statusBadge = document.getElementById('syncStatusBadge');
           const statusText = document.getElementById('syncStatusText');
           if (statusBadge && statusText) {
@@ -2292,6 +2298,28 @@ Qバブ召喚
       countEl.textContent = `${posts.length}件`;
 
       if (posts.length === 0) {
+        if (!isInitialLoadDone && memoryPosts === null) {
+          listEl.innerHTML = `
+            <div class="glass-panel empty-state">
+              <div class="empty-state-icon">⏳</div>
+              <p>編成を読み込んでいます…</p>
+              <p class="sub">データを受信しています。しばらくお待ちください。</p>
+            </div>
+          `;
+          return;
+        }
+
+        if (formationLoadError && memoryPosts === null) {
+          listEl.innerHTML = `
+            <div class="glass-panel empty-state">
+              <div class="empty-state-icon">❌</div>
+              <p>編成の読み込みに失敗しました。</p>
+              <p class="sub">通信状態を確認して再読み込みしてください。</p>
+            </div>
+          `;
+          return;
+        }
+
         if (currentFormationFilter === 'favorites') {
           listEl.innerHTML = `
             <div class="glass-panel empty-state" style="padding: 40px 20px; text-align: center;">
