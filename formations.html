@@ -838,19 +838,17 @@
     }
     .modal-content {
       position: relative;
-      max-width: 900px;
-      max-height: 90vh;
-      width: 100%;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
     }
     .modal-content img {
-      max-width: 100%;
+      width: 1200px;
+      height: auto;
+      max-width: 90vw;
       max-height: 85vh;
       border-radius: 12px;
       box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-      object-fit: contain;
     }
     .modal-close {
       position: absolute;
@@ -2000,6 +1998,8 @@ Qバブ召喚
           thumbWrap.className = 'preview-thumb-wrap';
           thumbWrap.addEventListener('click', (event) => {
             event.stopPropagation();
+            const caption = selectedImageCaptions[idx] || '';
+            openModal(src, caption);
           });
 
           const img = document.createElement('img');
