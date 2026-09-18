@@ -390,6 +390,11 @@
       margin-bottom: 12px;
     }
     .preview-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .preview-thumb-wrap {
       position: relative;
       border-radius: 10px;
       overflow: hidden;
@@ -397,11 +402,33 @@
       border: 1px solid rgba(51, 65, 85, 0.8);
       aspect-ratio: 4 / 3;
     }
-    .preview-item img {
+    .preview-item img,
+    .preview-thumb-wrap img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
+    }
+    .preview-caption-input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      border-radius: 6px;
+      padding: 4px 6px;
+      font-size: 0.72rem;
+      color: #f1f5f9;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .preview-caption-input:focus {
+      border-color: #8b5cf6;
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25);
+      background: rgba(15, 23, 42, 0.95);
+    }
+    .preview-caption-input::placeholder {
+      color: #64748b;
+      font-size: 0.68rem;
     }
     .preview-item-badge {
       position: absolute;
@@ -730,6 +757,38 @@
       border-radius: 4px;
       pointer-events: none;
     }
+    .grid-img-caption {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      max-width: calc(100% - 48px);
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(4px);
+      color: #f1f5f9;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 2;
+    }
+    .img-single-caption {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      border-radius: 6px;
+      padding: 3px 10px;
+      max-width: 100%;
+      word-break: break-word;
+    }
 
     /* カードコメント */
     .post-card-comment {
@@ -814,6 +873,27 @@
     .modal-close:hover {
       background: rgba(51, 65, 85, 0.9);
       transform: scale(1.05);
+    }
+    .modal-caption {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      color: #f1f5f9;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 6px 18px;
+      border-radius: 999px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      max-width: 90%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      z-index: 10;
     }
 
     /* ===== フッター ===== */
@@ -1394,6 +1474,7 @@ Qバブ召喚
   <div class="image-modal" id="imageModal" onclick="closeModal()">
     <div class="modal-content" onclick="event.stopPropagation()">
       <img id="modalImg" alt="拡大画像" />
+      <div id="modalCaption" class="modal-caption" style="display:none;"></div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
   </div>
@@ -1440,6 +1521,7 @@ Qバブ召喚
     let imageProcessingCount = 0;
     let imageSelectionVersion = 0;
     let selectedImages = []; // 圧縮JPEG。プレビューとAPI送信専用（Firestoreには保存しない）
+    let selectedImageCaptions = []; // 画像ごとの説明文（最大20文字）
     let db = null;
     let messaging = null;
     let isInitialLoadDone = false;
@@ -1869,7 +1951,10 @@ Qバブ召喚
               alert(`「${file.name}」は圧縮後の画像が大きすぎるか読み込めないためスキップしました。`);
               continue;
             }
-            if (selectedImages.length < MAX_IMAGES) selectedImages.push(image);
+            if (selectedImages.length < MAX_IMAGES) {
+              selectedImages.push(image);
+              selectedImageCaptions.push('');
+            }
             updatePreviewUI();
           } catch (error) {
             console.warn('画像の圧縮に失敗しました:', error);
@@ -1910,20 +1995,46 @@ Qバブ召喚
         selectedImages.forEach((src, idx) => {
           const item = document.createElement('div');
           item.className = 'preview-item';
+
+          const thumbWrap = document.createElement('div');
+          thumbWrap.className = 'preview-thumb-wrap';
+          thumbWrap.addEventListener('click', (event) => {
+            event.stopPropagation();
+          });
+
           const img = document.createElement('img');
           img.alt = `プレビュー #${idx + 1}`;
           const valid = validateImageDataUrl(src);
           if (valid) img.src = valid;
+
           const label = document.createElement('span');
           label.className = 'preview-item-badge';
           label.textContent = `#${idx + 1}`;
+
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'preview-item-del';
           button.title = '削除';
           button.textContent = '✕';
           button.addEventListener('click', event => removeImageAt(idx, event));
-          item.append(img, label, button);
+
+          thumbWrap.append(img, label, button);
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'preview-caption-input';
+          input.placeholder = '説明（任意/20字）';
+          input.maxLength = 20;
+          input.value = selectedImageCaptions[idx] || '';
+          input.setAttribute('aria-label', `画像 #${idx + 1} の説明`);
+          input.addEventListener('click', (event) => {
+            event.stopPropagation();
+          });
+          input.addEventListener('input', (event) => {
+            selectedImageCaptions[idx] = event.target.value;
+          });
+
+          item.append(thumbWrap, input);
           grid.appendChild(item);
         });
       }
@@ -1932,6 +2043,7 @@ Qバブ召喚
     function removeImageAt(idx, e) {
       if (e) e.stopPropagation();
       selectedImages.splice(idx, 1);
+      selectedImageCaptions.splice(idx, 1);
       updatePreviewUI();
     }
 
@@ -1939,6 +2051,7 @@ Qバブ召喚
       if (e) e.stopPropagation();
       imageSelectionVersion++;
       selectedImages = [];
+      selectedImageCaptions = [];
       document.getElementById('fileInput').value = '';
       updatePreviewUI();
     }
@@ -2267,10 +2380,11 @@ Qバブ召喚
     }
 
     function matchesSearch(post, keywords) {
-      // 検索対象: 投稿者名 + コメント + tagsを結合したテキスト
+      // 検索対象: 投稿者名 + コメント + tags + imageCaptionsを結合したテキスト
       const tagsText = Array.isArray(post.tags) ? post.tags.join(' ') : '';
+      const captionsText = Array.isArray(post.imageCaptions) ? post.imageCaptions.join(' ') : '';
       const target = normalizeForSearch(
-        (post.name || '') + ' ' + (post.comment || '') + ' ' + tagsText
+        (post.name || '') + ' ' + (post.comment || '') + ' ' + tagsText + ' ' + captionsText
       );
       // keywordsすべてがtargetに含まれること（AND検索）
       return keywords.every(kw => target.includes(kw));
@@ -2351,11 +2465,30 @@ Qバブ召喚
       return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
     }
 
+    function canonicalizeImageCaptions(captions, imageCount) {
+      if (!Array.isArray(captions)) return [];
+      const count = typeof imageCount === 'number' ? Math.max(0, imageCount) : captions.length;
+      if (count === 0) return [];
+      const normalized = [];
+      for (let i = 0; i < count; i++) {
+        const raw = typeof captions[i] === 'string' ? captions[i] : '';
+        normalized.push(raw.trim());
+      }
+      return normalized.some(c => c.length > 0) ? normalized : [];
+    }
+
     function getOrCreatePendingSubmission(content) {
       if (pendingSubmission) return pendingSubmission;
       const request_id = createRequestId();
       const delete_secret = encodeBase64url(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
-      pendingSubmission = { category, request_id, delete_secret, ...content, images: [...content.images] };
+      pendingSubmission = {
+        category,
+        request_id,
+        delete_secret,
+        ...content,
+        images: [...content.images],
+        imageCaptions: [...(content.imageCaptions || [])]
+      };
       return pendingSubmission;
     }
 
@@ -2364,12 +2497,19 @@ Qバブ召喚
         name: document.getElementById('playerName').value.trim(),
         comment: document.getElementById('comment').value.trim(),
         images: [...selectedImages],
+        imageCaptions: canonicalizeImageCaptions(selectedImageCaptions, selectedImages.length),
         tags: [...selectedTags]
       };
     }
 
     function sameContent(a, b) {
-      return a.name === b.name && a.comment === b.comment && JSON.stringify(a.images) === JSON.stringify(b.images) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
+      const capsA = canonicalizeImageCaptions(a.imageCaptions, a.images ? a.images.length : undefined);
+      const capsB = canonicalizeImageCaptions(b.imageCaptions, b.images ? b.images.length : undefined);
+      return a.name === b.name
+        && a.comment === b.comment
+        && JSON.stringify(a.images) === JSON.stringify(b.images)
+        && JSON.stringify(capsA) === JSON.stringify(capsB)
+        && JSON.stringify(a.tags) === JSON.stringify(b.tags);
     }
 
     function validateSubmission(content) {
@@ -2389,6 +2529,18 @@ Qバブ召喚
         total += src.length;
       }
       if (total > MAX_IMAGES * MAX_IMAGE_DATA_LENGTH) throw new Error('画像が大きすぎます。画像を減らしてください。');
+      if (content.imageCaptions) {
+        if (!Array.isArray(content.imageCaptions)) throw new Error('画像の説明文が正しくありません。');
+        if (content.imageCaptions.length > MAX_IMAGES) throw new Error(`画像の説明は最大${MAX_IMAGES}件までです。`);
+        if (content.imageCaptions.length > 0 && content.imageCaptions.length !== content.images.length) {
+          throw new Error('画像の説明の件数が画像数と一致していません。');
+        }
+        for (const caption of content.imageCaptions) {
+          if (typeof caption !== 'string') throw new Error('画像の説明文が正しくありません。');
+          if (Array.from(caption).length > 20) throw new Error('各画像の説明は20文字以内で入力してください。');
+          if (/[\u0000-\u001f\u007f-\u009f]/.test(caption)) throw new Error('画像の説明に改行や制御文字を含めないでください。');
+        }
+      }
     }
 
     function formationApiUrl(id) {
@@ -2568,12 +2720,16 @@ Qバブ召喚
     function normalizeFormation(id, data) {
       if (!isSafePostId(id) || !data || typeof data !== 'object' || Array.isArray(data)) return null;
       const images = Array.isArray(data.images) ? data.images : typeof data.image === 'string' ? [data.image] : [];
+      const imageCaptions = Array.isArray(data.imageCaptions)
+        ? data.imageCaptions.map(c => typeof c === 'string' ? c.trim() : '').slice(0, MAX_IMAGES)
+        : [];
       return {
         id,
         name: typeof data.name === 'string' && data.name ? data.name : '名前不明',
         comment: typeof data.comment === 'string' ? data.comment : '',
         timestamp: typeof data.timestamp === 'string' && Number.isFinite(Date.parse(data.timestamp)) ? data.timestamp : '',
         images: images.slice(0, MAX_IMAGES).map(validateFormationImageUrl),
+        imageCaptions,
         tags: Array.isArray(data.tags) ? data.tags.filter(t => typeof t === 'string').slice(0, 20) : []
       };
     }
@@ -2599,20 +2755,24 @@ Qバブ召喚
       });
       list.querySelectorAll('[data-image-slot]').forEach(slot => {
         const post = getPosts().find(item => item.id === slot.dataset.postId);
-        const src = validateFormationImageUrl(post?.images[Number(slot.dataset.imageSlot)]);
+        const slotIdx = Number(slot.dataset.imageSlot);
+        const src = validateFormationImageUrl(post?.images[slotIdx]);
         if (!src) {
           slot.textContent = '画像を表示できません';
           slot.setAttribute('role', 'img');
           slot.setAttribute('aria-label', '破損した画像');
           return;
         }
+        const caption = Array.isArray(post?.imageCaptions) && typeof post.imageCaptions[slotIdx] === 'string'
+          ? post.imageCaptions[slotIdx].trim()
+          : '';
         const img = document.createElement('img');
         img.alt = `${post.name}の編成`;
         img.src = src;
         img.tabIndex = 0;
-        img.addEventListener('click', () => openModal(src));
+        img.addEventListener('click', () => openModal(src, caption));
         img.addEventListener('keydown', event => {
-          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModal(src); }
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModal(src, caption); }
         });
         img.addEventListener('error', () => { slot.textContent = '画像を表示できません'; }, { once: true });
         slot.prepend(img);
@@ -2763,20 +2923,27 @@ Qバブ召喚
         }
         let imagesHtml = '';
         if (hasImages) {
+          const captions = Array.isArray(p.imageCaptions) ? p.imageCaptions : [];
           if (images.length === 1) {
+            const cap = typeof captions[0] === 'string' ? captions[0].trim() : '';
             imagesHtml = `
               <div class="post-card-images img-grid-1" data-image-slot="0" data-post-id="${p.id}">
+                ${cap ? `<div class="img-single-caption">${esc(cap)}</div>` : ''}
               </div>
             `;
           } else {
             const gridClass = images.length <= 4 ? `img-grid-${images.length}` : 'img-grid-many';
             imagesHtml = `
               <div class="post-card-images ${gridClass}">
-                ${images.map((src, i) => `
-                  <div class="grid-img-item" data-image-slot="${i}" data-post-id="${p.id}">
-                    <span class="grid-img-counter">${i+1}/${images.length}</span>
-                  </div>
-                `).join('')}
+                ${images.map((src, i) => {
+                  const cap = typeof captions[i] === 'string' ? captions[i].trim() : '';
+                  return `
+                    <div class="grid-img-item" data-image-slot="${i}" data-post-id="${p.id}">
+                      ${cap ? `<span class="grid-img-caption">${esc(cap)}</span>` : ''}
+                      <span class="grid-img-counter">${i+1}/${images.length}</span>
+                    </div>
+                  `;
+                }).join('')}
               </div>
             `;
           }
@@ -2844,10 +3011,21 @@ Qバブ召喚
     // ==========================================================
     //  モーダル
     // ==========================================================
-    function openModal(src) {
+    function openModal(src, caption) {
       src = validateFormationImageUrl(src);
       if (!src) return;
       document.getElementById('modalImg').src = src;
+      const captionEl = document.getElementById('modalCaption');
+      if (captionEl) {
+        const cleanCaption = typeof caption === 'string' ? caption.trim() : '';
+        if (cleanCaption) {
+          captionEl.textContent = cleanCaption;
+          captionEl.style.display = 'block';
+        } else {
+          captionEl.textContent = '';
+          captionEl.style.display = 'none';
+        }
+      }
       document.getElementById('imageModal').classList.add('visible');
       document.body.style.overflow = 'hidden';
     }
@@ -2855,6 +3033,12 @@ Qバブ召喚
     function closeModal() {
       document.getElementById('imageModal').classList.remove('visible');
       document.body.style.overflow = '';
+      document.getElementById('modalImg').src = '';
+      const captionEl = document.getElementById('modalCaption');
+      if (captionEl) {
+        captionEl.textContent = '';
+        captionEl.style.display = 'none';
+      }
     }
 
     document.addEventListener('keydown', (e) => {
@@ -2875,6 +3059,7 @@ Qバブ召喚
     function pad(n) {
       return String(n).padStart(2, '0');
     }
+
   </script>
 </body>
 </html>
