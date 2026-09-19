@@ -77,6 +77,10 @@ def test_tags_common_multiple(client, mock_db):
     response = client.post("/api/formations/gw", headers=HEADERS, json=make_payload(["火", "神石", "フルオート"]))
     assert response.status_code == 201
 
+def test_tags_playstyle_semi_auto(client, mock_db):
+    response = client.post("/api/formations/gw", headers=HEADERS, json=make_payload(["火", "神石", "半フルオート"]))
+    assert response.status_code == 201
+
 def test_tags_gw_specific(client, mock_db):
     response = client.post("/api/formations/gw", headers=HEADERS, json=make_payload(["火", "神石", "フルオート", "250HELL"]))
     assert response.status_code == 201

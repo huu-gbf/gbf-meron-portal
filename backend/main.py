@@ -7412,7 +7412,7 @@ def unsubscribe_notification(
 
 TAGS_ELEMENT = {"火", "水", "土", "風", "光", "闇"}
 TAGS_SUMMON = {"神石", "マグナ"}
-TAGS_PLAYSTYLE = {"フルオート", "手動", "1ターン", "奥義軸", "通常軸"}
+TAGS_PLAYSTYLE = {"フルオート", "半フルオート", "手動", "1ターン", "奥義軸", "通常軸"}
 TAGS_GW = {"肉集め", "90HELL", "95HELL", "100HELL", "150HELL", "200HELL", "250HELL", "SWARM"}
 TAGS_MULTI = {"ソロモナスの賢者", "ヒヒ掘り"}
 
