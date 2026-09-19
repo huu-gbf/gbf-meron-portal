@@ -6977,15 +6977,22 @@ async def guard_notification_requests(
     call_next,
 ):
     is_notification = http_request.url.path.startswith("/api/notifications/")
+    # 追記 API は POST だが /addenda で終わる。先にチェックして create と区別する。
+    is_formation_addendum = (
+        http_request.method == "POST"
+        and http_request.url.path.startswith("/api/formations/")
+        and http_request.url.path.endswith("/addenda")
+    )
     is_formation_create = (
         http_request.method == "POST"
         and http_request.url.path.startswith("/api/formations/")
+        and not is_formation_addendum
     )
     is_formation_delete = (
         http_request.method == "DELETE"
         and http_request.url.path.startswith("/api/formations/")
     )
-    if not is_notification and not is_formation_create and not is_formation_delete:
+    if not is_notification and not is_formation_create and not is_formation_addendum and not is_formation_delete:
         return await call_next(http_request)
 
     # CORS middlewareにpreflight応答を任せる。OPTIONSにはJSON本文を要求しない。
@@ -7033,11 +7040,12 @@ async def guard_notification_requests(
             "Content-Typeはapplication/jsonを指定してください。",
         )
 
-    body_limit = (
-        PORTAL_FORMATION_BODY_LIMIT
-        if is_formation_create
-        else PORTAL_NOTIFICATION_BODY_LIMIT
-    )
+    if is_formation_create:
+        body_limit = PORTAL_FORMATION_BODY_LIMIT
+    elif is_formation_addendum:
+        body_limit = 4096  # 追記は画像なし・小さいペイロードのみ
+    else:
+        body_limit = PORTAL_NOTIFICATION_BODY_LIMIT
     content_length = http_request.headers.get("content-length")
     if content_length:
         try:
@@ -7062,7 +7070,7 @@ async def guard_notification_requests(
             "リクエスト本文が大きすぎます。",
         )
 
-    if is_formation_create and not portal_writes_enabled():
+    if (is_formation_create or is_formation_addendum) and not portal_writes_enabled():
         return guard_error_response(
             503,
             "PORTAL_NOT_READY",
@@ -7880,6 +7888,177 @@ def delete_formation(category: str, post_id: str, http_request: Request):
     storage_paths = delete_formation_transaction(category, post_id, delete_secret_hash, datetime.now(timezone.utc))
     cleanup_formation_images(storage_paths)
     return Response(status_code=204, headers={"Cache-Control": "no-store"})
+
+
+# ==========================================================================
+#  Formation Addendum API
+# ==========================================================================
+
+FORMATION_ADDENDUM_MAX_TEXT_LENGTH = 300
+FORMATION_ADDENDUM_MAX_COUNT = 20
+
+
+class FormationAddendumRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID4
+    text: StrictStr
+
+    @field_validator("request_id", mode="before")
+    @classmethod
+    def validate_request_id_format(cls, value):
+        if not isinstance(value, str) or not re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}",
+            value,
+        ):
+            raise ValueError("request_id must be a canonical UUIDv4")
+        return value
+
+
+def validate_addendum_text(text: str) -> str:
+    """text バリデーション。trim済み本文を返す。"""
+    if _has_disallowed_control(text, {"\n", "\t"}):
+        raise PortalAPIError(422, "INVALID_INPUT", "追記内容を確認してください。")
+    trimmed = text.strip()
+    if len(trimmed) == 0:
+        raise PortalAPIError(422, "INVALID_INPUT", "追記内容を確認してください。")
+    # 文字数は Unicode コードポイント単位で制限する
+    if len(trimmed) > FORMATION_ADDENDUM_MAX_TEXT_LENGTH:
+        raise PortalAPIError(422, "INVALID_INPUT", "追記は300文字以内で入力してください。")
+    return trimmed
+
+
+def get_addendum_secret_hash(http_request: Request) -> str:
+    """X-Delete-Secret ヘッダを受け取り secret_hash を返す。
+    ヘッダ欠落・不正形式の場合は 401 を返す。
+    削除APIと同じ認証方式を再利用するが、rate limit カウンタは追記用グループで別管理する。
+    """
+    delete_secret = http_request.headers.get("x-delete-secret")
+    if not delete_secret:
+        consume_portal_quota("formation_addendum", None, global_limit=60)
+        raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "追記権限を確認してください。")
+    try:
+        return hash_delete_secret(delete_secret)
+    except PortalAPIError:
+        consume_portal_quota("formation_addendum", None, global_limit=60)
+        raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "追記権限を確認してください。") from None
+
+
+def add_formation_addendum_transaction(
+    category: str,
+    post_id: str,
+    secret_hash: str,
+    addendum_id: str,
+    text: str,
+    now: datetime,
+) -> dict:
+    """Firestore Transaction で追記を公開 document の addenda 配列に追加する。
+    同一 addendum_id が既に存在する場合は冪等な応答を返す。
+    """
+    portal = get_portal_db()
+    event_id = f"{category}_{post_id}"
+    public_ref = portal.collection(PUSH_FORMATIONS[category]).document(post_id)
+    private_ref = portal.collection("formation_private").document(event_id)
+
+    @firestore.transactional
+    def add(txn):
+        # --- 所有者認証 ---
+        private_snapshot = private_ref.get(transaction=txn)
+        if not private_snapshot.exists:
+            raise PortalAPIError(403, "ADDENDUM_NOT_AUTHORIZED", "この投稿に追記できません。")
+        private_data = _snapshot_data(private_snapshot)
+
+        if private_data.get("schema_version") != 1:
+            _formation_store_inconsistent()
+
+        stored_hash = private_data.get("delete_secret_hash")
+        if not isinstance(stored_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", stored_hash):
+            _formation_store_inconsistent()
+        if not hmac.compare_digest(stored_hash, secret_hash):
+            raise PortalAPIError(403, "ADDENDUM_NOT_AUTHORIZED", "この投稿に追記できません。")
+
+        if private_data.get("deleted_at") is not None:
+            raise PortalAPIError(410, "POST_DELETED", "削除済みの投稿には追記できません。")
+
+        # --- 公開 document の存在確認 ---
+        public_snapshot = public_ref.get(transaction=txn)
+        if not public_snapshot.exists:
+            raise PortalAPIError(404, "POST_NOT_FOUND", "指定された投稿が見つかりません。")
+
+        public_data = _snapshot_data(public_snapshot)
+        existing_addenda = public_data.get("addenda")
+        if not isinstance(existing_addenda, list):
+            existing_addenda = []
+
+        # --- 冪等チェック ---
+        for entry in existing_addenda:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("id") == addendum_id:
+                # 同じ request_id で同じ text なら再送として成功扱い
+                if entry.get("text") == text:
+                    existing_created_at = entry.get("createdAt")
+                    if isinstance(existing_created_at, datetime):
+                        existing_created_at_str = existing_created_at.isoformat().replace("+00:00", "Z")
+                    elif isinstance(existing_created_at, str):
+                        existing_created_at_str = existing_created_at
+                    elif hasattr(existing_created_at, "isoformat"):
+                        existing_created_at_str = existing_created_at.isoformat().replace("+00:00", "Z")
+                    else:
+                        existing_created_at_str = now.isoformat().replace("+00:00", "Z")
+                    return {"replayed": True, "created_at": existing_created_at_str}
+                # 同じ request_id だが異なる text は衝突
+                raise PortalAPIError(409, "REQUEST_ID_CONFLICT", "同じrequest_idが別の追記に使用されています。")
+
+        # --- 件数上限チェック ---
+        if len(existing_addenda) >= FORMATION_ADDENDUM_MAX_COUNT:
+            raise PortalAPIError(422, "ADDENDA_LIMIT_EXCEEDED", "追記の上限件数に達しています。")
+
+        # --- 追記を追加 ---
+        created_at_str = now.isoformat().replace("+00:00", "Z")
+        new_entry = {
+            "id": addendum_id,
+            "text": text,
+            "createdAt": now,
+        }
+        updated_addenda = existing_addenda + [new_entry]
+        txn.set(public_ref, {"addenda": updated_addenda}, merge=True)
+        return {"replayed": False, "created_at": created_at_str}
+
+    try:
+        return add(portal.transaction())
+    except PortalAPIError:
+        raise
+    except Exception:
+        print("Portal formation addendum store error")
+        raise PortalAPIError(
+            503,
+            "STORE_UNAVAILABLE",
+            "追記を保存できません。しばらく待って再試行してください。",
+        ) from None
+
+
+@app.post("/api/formations/{category}/{post_id}/addenda")
+def add_formation_addendum(
+    category: str,
+    post_id: str,
+    request: FormationAddendumRequest,
+    http_request: Request,
+):
+    if category not in PUSH_FORMATIONS:
+        raise PortalAPIError(404, "CATEGORY_NOT_FOUND", "指定された投稿カテゴリはありません。")
+    require_portal_writes_enabled()
+    post_id = validate_delete_post_id(post_id)
+    text = validate_addendum_text(request.text)
+    secret_hash = get_addendum_secret_hash(http_request)
+    consume_portal_quota("formation_addendum", secret_hash, per_limit=10, global_limit=60)
+    addendum_id = str(request.request_id).lower()
+    now = datetime.now(timezone.utc)
+    result = add_formation_addendum_transaction(category, post_id, secret_hash, addendum_id, text, now)
+    return JSONResponse(
+        status_code=200 if result["replayed"] else 201,
+        content={"addendum_id": addendum_id, "created_at": result["created_at"], "replayed": result["replayed"]},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def disable_token_if_unchanged(
