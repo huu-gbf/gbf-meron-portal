@@ -2553,6 +2553,12 @@ Qバブ召喚
           try { failure = await response.json(); } catch {}
           let errMsg = '通信エラーが発生しました。';
           if (response.status === 401 || response.status === 403) errMsg = 'この投稿への追記権限を確認できませんでした。';
+          else if (response.status === 404) {
+            const errCode = failure && failure.error && failure.error.code;
+            if (errCode === 'POST_NOT_FOUND') errMsg = 'この投稿が見つかりませんでした。再読み込みしてご確認ください。';
+            else if (errCode === 'CATEGORY_NOT_FOUND') errMsg = '投稿カテゴリを確認できませんでした。ページを再読み込みしてください。';
+            else errMsg = '対象の投稿を確認できませんでした。ページを再読み込みしてください。';
+          }
           else if (response.status === 429) errMsg = '短時間に操作が集中しています。少し待ってから再度お試しください。';
           else if (response.status === 409) errMsg = '別の追記リクエストが競合しました。再試行してください。';
           else if (response.status === 410) errMsg = 'この投稿は削除済みです。';
