@@ -10,7 +10,7 @@ import uuid
 import unicodedata
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any, Literal, Optional
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote, parse_qs
 
 from dotenv import load_dotenv
 
@@ -40,6 +40,7 @@ from pydantic import (
     StringConstraints,
     UUID4,
     field_validator,
+    model_validator,
 )
 
 from google import genai
@@ -7782,6 +7783,277 @@ def create_formation(category: str, request: FormationCreateRequest, http_reques
             raise
         if result["replayed"]:
             cleanup_formation_images(paths)
+    return JSONResponse(
+        status_code=200 if result["replayed"] else 201,
+        content={"id": post_id, "category": category, **result},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+class FormationDuplicateImageItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["source", "upload"]
+    index: StrictInt | None = None
+    data: StrictStr | None = None
+
+    @model_validator(mode="after")
+    def validate_kind_fields(self):
+        if self.kind == "source":
+            if self.index is None or self.index < 0 or self.data is not None:
+                raise ValueError("source image requires a non-negative index only")
+        elif self.data is None or self.index is not None:
+            raise ValueError("upload image requires data only")
+        return self
+
+
+class FormationDuplicateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID4
+    delete_secret: StrictStr
+    name: StrictStr
+    comment: StrictStr
+    tags: list[StrictStr] | None = None
+    imageCaptions: list[Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=20)]] = Field(default_factory=list, max_length=10)
+    imageItems: list[FormationDuplicateImageItem] = Field(..., max_length=10)
+
+    @field_validator("request_id", mode="before")
+    @classmethod
+    def validate_request_id_format(cls, value):
+        if not isinstance(value, str) or not re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}",
+            value,
+        ):
+            raise ValueError("request_id must be a canonical UUIDv4")
+        return value
+
+    @model_validator(mode="after")
+    def validate_captions(self):
+        if self.imageCaptions and len(self.imageCaptions) != len(self.imageItems):
+            raise ValueError("imageCaptions must match imageItems length")
+        self.imageCaptions = self.imageCaptions if any(self.imageCaptions) else []
+        return self
+
+
+def validate_duplicate_uploads(request: FormationDuplicateRequest, category: str):
+    """Use the normal create validator for name, comment, tags and JPEG uploads."""
+    uploads = [item.data for item in request.imageItems if item.kind == "upload"]
+    normal = FormationCreateRequest(
+        request_id=str(request.request_id),
+        delete_secret=request.delete_secret,
+        name=request.name,
+        comment=request.comment,
+        images=uploads,
+        tags=request.tags,
+    )
+    name, comment, images, tags = validate_formation_payload(normal, category)
+    return name, comment, iter(images), tags
+
+
+def duplicate_payload_hash(
+    category: str, source_post_id: str, name: str, comment: str,
+    tags: list[str], captions: list[str], items: list[FormationDuplicateImageItem],
+) -> str:
+    canonical = json.dumps(
+        {
+            "category": category,
+            "source_post_id": source_post_id,
+            "name": name,
+            "comment": comment,
+            "tags": tags,
+            "imageCaptions": captions,
+            "imageItems": [item.model_dump(exclude_none=True) for item in items],
+        },
+        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def decode_legacy_formation_image(value: str) -> tuple[bytes, str]:
+    """Legacy public documents may contain JPEG, PNG, WEBP or GIF Data URLs."""
+    if not isinstance(value, str) or len(value) > 1_500_000:
+        raise PortalAPIError(422, "INVALID_INPUT", "複製元画像を確認できません。")
+    match = re.fullmatch(
+        r"data:image/(jpeg|png|webp|gif);base64,([A-Za-z0-9+/]+={0,2})",
+        value,
+    )
+    if not match:
+        raise PortalAPIError(422, "INVALID_INPUT", "複製元画像を確認できません。")
+    try:
+        data = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, binascii.Error):
+        raise PortalAPIError(422, "INVALID_INPUT", "複製元画像を確認できません。") from None
+    if len(data) > 1_125_000 or len(data) < 5:
+        raise PortalAPIError(422, "INVALID_INPUT", "複製元画像を確認できません。")
+    mime = match.group(1)
+    valid = {
+        "jpeg": data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9"),
+        "png": data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "gif": data.startswith((b"GIF87a", b"GIF89a")),
+        "webp": data.startswith(b"RIFF") and data[8:12] == b"WEBP",
+    }
+    if not valid[mime]:
+        raise PortalAPIError(422, "INVALID_INPUT", "複製元画像を確認できません。")
+    return data, f"image/{mime}"
+
+
+def duplicate_source_storage_path(
+    source_post_id: str, index: int, image_url: str, paths: list,
+) -> str:
+    if index >= len(paths) or not isinstance(paths[index], str):
+        raise PortalAPIError(503, "SOURCE_IMAGE_UNAVAILABLE", "複製元画像を取得できません。")
+    path = paths[index]
+    if not re.fullmatch(
+        rf"formations/{re.escape(source_post_id)}/{index + 1:02d}-[0-9a-f]{{32}}\.jpg",
+        path,
+    ):
+        raise PortalAPIError(503, "SOURCE_IMAGE_UNAVAILABLE", "複製元画像を取得できません。")
+    try:
+        parsed = urlparse(image_url)
+        query = parse_qs(parsed.query, strict_parsing=True)
+        valid = (
+            parsed.scheme == "https"
+            and parsed.hostname == "firebasestorage.googleapis.com"
+            and not parsed.port and not parsed.username and not parsed.password
+            and not parsed.fragment
+            and parsed.path == f"/v0/b/{FORMATION_STORAGE_BUCKET}/o/{quote(path, safe='')}"
+            and set(query) == {"alt", "token"}
+            and query["alt"] == ["media"]
+            and len(query["token"]) == 1 and bool(query["token"][0])
+        )
+    except (ValueError, KeyError, TypeError):
+        valid = False
+    if not valid:
+        raise PortalAPIError(503, "SOURCE_IMAGE_UNAVAILABLE", "複製元画像を取得できません。")
+    return path
+
+
+def create_duplicate_images(
+    post_id: str, source_post_id: str, source_data: dict,
+    items: list[FormationDuplicateImageItem], uploads,
+) -> tuple[list[str], list[str]]:
+    source_images = source_data.get("images", [])
+    source_paths = source_data.get("imageStoragePaths", [])
+    if not isinstance(source_images, list) or not isinstance(source_paths, list):
+        raise PortalAPIError(503, "SOURCE_IMAGE_UNAVAILABLE", "複製元画像を取得できません。")
+    if not items:
+        return [], []
+    urls, paths = [], []
+    failure_code = "STORAGE_UNAVAILABLE"
+    try:
+        bucket = formation_storage_bucket()
+        for position, item in enumerate(items, 1):
+            raw = None
+            source_path = None
+            if item.kind == "source":
+                if item.index >= len(source_images):
+                    raise PortalAPIError(422, "INVALID_INPUT", "複製元画像の番号を確認してください。")
+                value = source_images[item.index]
+                if not isinstance(value, str):
+                    raise PortalAPIError(503, "SOURCE_IMAGE_UNAVAILABLE", "複製元画像を取得できません。")
+                if value.startswith("data:"):
+                    raw, content_type = decode_legacy_formation_image(value)
+                else:
+                    source_path = duplicate_source_storage_path(
+                        source_post_id, item.index, value, source_paths,
+                    )
+            else:
+                raw = base64.b64decode(next(uploads).split(",", 1)[1], validate=True)
+                content_type = "image/jpeg"
+
+            # Keep the .jpg suffix for the existing URL validator and deletion path
+            # validator. Legacy bytes retain their real Content-Type, without re-encoding.
+            path = f"formations/{post_id}/{position:02d}-{uuid.uuid4().hex}.jpg"
+            token = str(uuid.uuid4())
+            paths.append(path)
+            if source_path is not None:
+                failure_code = "SOURCE_IMAGE_UNAVAILABLE"
+                source_blob = bucket.get_blob(source_path)
+                if source_blob is None:
+                    raise PortalAPIError(503, failure_code, "複製元画像を取得できません。")
+                copied = bucket.copy_blob(
+                    source_blob, bucket, path, source_generation=source_blob.generation,
+                    if_source_generation_match=source_blob.generation,
+                    if_generation_match=0,
+                )
+                copied.metadata = {"firebaseStorageDownloadTokens": token}
+                copied.patch(if_generation_match=copied.generation)
+            else:
+                failure_code = "STORAGE_UNAVAILABLE"
+                blob = bucket.blob(path)
+                blob.metadata = {"firebaseStorageDownloadTokens": token}
+                blob.upload_from_string(raw, content_type=content_type, if_generation_match=0)
+            urls.append(
+                f"https://firebasestorage.googleapis.com/v0/b/{FORMATION_STORAGE_BUCKET}"
+                f"/o/{quote(path, safe='')}?alt=media&token={token}"
+            )
+    except PortalAPIError:
+        cleanup_formation_images(paths)
+        raise
+    except Exception:
+        cleanup_formation_images(paths)
+        raise PortalAPIError(503, failure_code, "画像を複製できません。投稿は保存されていません。") from None
+    return urls, paths
+
+
+@app.post("/api/formations/{category}/{source_post_id}/duplicate")
+def duplicate_formation(
+    category: str, source_post_id: str,
+    request: FormationDuplicateRequest, http_request: Request,
+):
+    if category not in PUSH_FORMATIONS:
+        raise PortalAPIError(404, "CATEGORY_NOT_FOUND", "指定された投稿カテゴリはありません。")
+    require_portal_writes_enabled()
+    source_post_id = validate_delete_post_id(source_post_id)
+    post_id = str(request.request_id).lower()
+    if source_post_id == post_id:
+        raise PortalAPIError(422, "INVALID_INPUT", "複製元と新しい投稿IDは同じにできません。")
+    secret_hash = hash_delete_secret(request.delete_secret)
+    name, comment, uploads, tags = validate_duplicate_uploads(request, category)
+    captions = request.imageCaptions
+    payload_hash = duplicate_payload_hash(
+        category, source_post_id, name, comment, tags, captions, request.imageItems,
+    )
+    consume_portal_quota("formation_create", secret_hash, per_limit=3, global_limit=30)
+    now = datetime.now(timezone.utc)
+    try:
+        existing = existing_formation_result(
+            category, post_id, secret_hash, payload_hash, name, comment, tags, captions,
+        )
+    except PortalAPIError:
+        raise
+    except Exception:
+        raise PortalAPIError(503, "STORE_UNAVAILABLE", "投稿結果を確認できません。") from None
+    if existing:
+        return JSONResponse(
+            status_code=200,
+            content={"id": post_id, "category": category, **existing},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    try:
+        source = get_portal_db().collection(PUSH_FORMATIONS[category]).document(source_post_id).get()
+    except Exception:
+        raise PortalAPIError(503, "STORE_UNAVAILABLE", "複製元を確認できません。") from None
+    if not source.exists:
+        raise PortalAPIError(404, "SOURCE_POST_NOT_FOUND", "複製元の投稿が見つかりません。")
+    urls, paths = create_duplicate_images(
+        post_id, source_post_id, _snapshot_data(source), request.imageItems, uploads,
+    )
+    try:
+        result = create_formation_transaction(
+            category, post_id, secret_hash, payload_hash,
+            name, comment, urls, tags, now, paths, captions,
+        )
+    except Exception:
+        try:
+            public = get_portal_db().collection(PUSH_FORMATIONS[category]).document(post_id).get()
+            retained = set((_snapshot_data(public).get("imageStoragePaths") or []) if public.exists else [])
+        except Exception:
+            retained = set(paths)
+        cleanup_formation_images([path for path in paths if path not in retained])
+        raise
+    if result["replayed"]:
+        cleanup_formation_images(paths)
     return JSONResponse(
         status_code=200 if result["replayed"] else 201,
         content={"id": post_id, "category": category, **result},
