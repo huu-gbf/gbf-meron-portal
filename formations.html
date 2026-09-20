@@ -3256,10 +3256,48 @@ Qバブ召喚
     // ==========================================================
     //  モーダル
     // ==========================================================
+    function updateModalImageSize() {
+      const img = document.getElementById('modalImg');
+      if (!img || !img.src) return;
+
+      // スマホでは既存のCSS(max-width/max-height等)に任せるためインラインスタイルを消去
+      if (window.innerWidth <= 768) {
+        img.style.width = '';
+        return;
+      }
+
+      const nw = img.naturalWidth;
+      const nh = img.naturalHeight;
+      if (!nw || !nh) return;
+
+      // 目標の最大サイズ領域
+      const maxW = window.innerWidth * 0.90;
+      const maxH = window.innerHeight * 0.80;
+
+      // 倍率を計算（縦横比を維持して安全な範囲に収める）
+      let scale = Math.min(maxW / nw, maxH / nh);
+      // 極端なぼやけを防止するため最大倍率を制限
+      if (scale > 2.5) scale = 2.5;
+
+      img.style.width = Math.floor(nw * scale) + 'px';
+    }
+
     function openModal(src, caption) {
       src = validateFormationImageUrl(src);
       if (!src) return;
-      document.getElementById('modalImg').src = src;
+
+      const img = document.getElementById('modalImg');
+      // 画像切り替え時に前回のサイズが残らないようリセット
+      img.style.width = '';
+
+      img.onload = () => {
+        updateModalImageSize();
+      };
+      img.src = src;
+      if (img.complete && img.naturalWidth) {
+        updateModalImageSize();
+      }
+
       const captionEl = document.getElementById('modalCaption');
       if (captionEl) {
         const cleanCaption = typeof caption === 'string' ? caption.trim() : '';
@@ -3278,13 +3316,24 @@ Qバブ召喚
     function closeModal() {
       document.getElementById('imageModal').classList.remove('visible');
       document.body.style.overflow = '';
-      document.getElementById('modalImg').src = '';
+      const img = document.getElementById('modalImg');
+      img.onload = null;
+      img.src = '';
+      img.style.width = '';
       const captionEl = document.getElementById('modalCaption');
       if (captionEl) {
         captionEl.textContent = '';
         captionEl.style.display = 'none';
       }
     }
+
+    // モーダル表示中のブラウザサイズ変更に対応
+    window.addEventListener('resize', () => {
+      const modal = document.getElementById('imageModal');
+      if (modal && modal.classList.contains('visible')) {
+        updateModalImageSize();
+      }
+    });
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
