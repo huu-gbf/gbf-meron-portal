@@ -658,6 +658,8 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
     .post-img-badge {
       font-size: 0.7rem;
@@ -2380,11 +2382,12 @@ Qバブ召喚
     }
 
     function matchesSearch(post, keywords) {
-      // 検索対象: 投稿者名 + コメント + tags + imageCaptionsを結合したテキスト
+      // 検索対象: 投稿者名 + コメント + tags + imageCaptions + addenda.text を結合したテキスト
       const tagsText = Array.isArray(post.tags) ? post.tags.join(' ') : '';
       const captionsText = Array.isArray(post.imageCaptions) ? post.imageCaptions.join(' ') : '';
+      const addendaText = Array.isArray(post.addenda) ? post.addenda.map(a => a.text).join(' ') : '';
       const target = normalizeForSearch(
-        (post.name || '') + ' ' + (post.comment || '') + ' ' + tagsText + ' ' + captionsText
+        (post.name || '') + ' ' + (post.comment || '') + ' ' + tagsText + ' ' + captionsText + ' ' + addendaText
       );
       // keywordsすべてがtargetに含まれること（AND検索）
       return keywords.every(kw => target.includes(kw));
@@ -2414,6 +2417,161 @@ Qバブ召喚
       const clearBtn = document.getElementById('searchClearBtn');
       if (clearBtn) clearBtn.style.display = 'none';
       renderPosts();
+    }
+
+    // ==========================================================
+    //  追記処理用状態管理
+    // ==========================================================
+    const pendingAddenda = new Map();
+
+    function toggleAddendumUI(postId) {
+      const ui = document.getElementById('addendum-ui-' + postId);
+      if (ui) {
+        const isOpening = ui.style.display === 'none';
+        ui.style.display = isOpening ? 'block' : 'none';
+        // isOpenフラグのみ更新。request_idは送信開始時まで生成しない
+        let pending = pendingAddenda.get(postId);
+        if (!pending) {
+          pendingAddenda.set(postId, { request_id: null, text: '', lastSentText: null, inFlight: false, isOpen: isOpening });
+        } else {
+          pending.isOpen = isOpening;
+        }
+      }
+    }
+
+    function cancelAddendum(postId) {
+      const ui = document.getElementById('addendum-ui-' + postId);
+      if (ui) ui.style.display = 'none';
+      let pending = pendingAddenda.get(postId);
+      if (pending) {
+        pending.isOpen = false;
+        // キャンセル時はpendingから除去してrequest_idをリセット
+        pendingAddenda.delete(postId);
+      }
+    }
+
+    function updateAddendumCharCount(postId) {
+      const textEl = document.getElementById('addendum-text-' + postId);
+      const countEl = document.getElementById('addendum-count-' + postId);
+      if (textEl) {
+        const text = textEl.value;
+        if (countEl) countEl.textContent = Array.from(text).length;
+        // textの追跡はするが、request_idは変更しない。
+        // submitAddendum内で「lastSentText ≠ text」時に新規生成する。
+        let pending = pendingAddenda.get(postId);
+        if (pending && !pending.inFlight) {
+          pending.text = text;
+          pending.isOpen = true;
+        }
+      }
+    }
+
+    async function submitAddendum(postId) {
+      const pending = pendingAddenda.get(postId);
+      if (pending && pending.inFlight) return;
+
+      const textEl = document.getElementById('addendum-text-' + postId);
+      const msgEl = document.getElementById('addendum-msg-' + postId);
+      const submitBtn = document.getElementById('addendum-submit-' + postId);
+      if (!textEl || !msgEl || !submitBtn) return;
+
+      const text = textEl.value.trim();
+      if (!text) {
+        msgEl.textContent = '追記内容を入力してください。';
+        msgEl.style.color = 'var(--rose-400)';
+        msgEl.style.display = 'block';
+        return;
+      }
+      if (Array.from(text).length > 300) {
+        msgEl.textContent = '追記は300文字以内で入力してください。';
+        msgEl.style.color = 'var(--rose-400)';
+        msgEl.style.display = 'block';
+        return;
+      }
+
+      let request_id;
+      if (pending && pending.lastSentText === text) {
+        // 前回送信した本文と同じ → 同じrequest_idでretry（冪等性保証）
+        request_id = pending.request_id;
+      } else {
+        // 本文変更 or 初回送信 → 新規request_id生成
+        request_id = createRequestId();
+        if (!pending) {
+          pendingAddenda.set(postId, { request_id, text, lastSentText: null, inFlight: false, isOpen: true });
+        } else {
+          pending.request_id = request_id;
+        }
+      }
+      // この送信で使用するtextをlastSentTextとして記録する
+      const pSend = pendingAddenda.get(postId);
+      pSend.lastSentText = text;
+
+      const secret = readDeleteSecret(category, postId);
+      if (!secret) {
+        msgEl.textContent = '追記権限を確認できませんでした。';
+        msgEl.style.color = 'var(--rose-400)';
+        msgEl.style.display = 'block';
+        return;
+      }
+
+      let url;
+      try {
+        const base = typeof globalThis.API_BASE_URL === 'string' ? globalThis.API_BASE_URL.replace(/\/+$/, '') : '';
+        if (!base) throw new Error();
+        url = `${base}/api/formations/${category}/${encodeURIComponent(postId)}/addenda`;
+      } catch {
+        msgEl.textContent = '接続先設定エラーのため投稿できません。';
+        msgEl.style.color = 'var(--rose-400)';
+        msgEl.style.display = 'block';
+        return;
+      }
+
+      const pInfo = pendingAddenda.get(postId);
+      pInfo.inFlight = true;
+      submitBtn.disabled = true;
+      submitBtn.textContent = '送信中…';
+      msgEl.style.display = 'none';
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Delete-Secret': secret
+          },
+          body: JSON.stringify({ request_id, text }),
+          credentials: 'omit'
+        });
+
+        if (response.status === 201 || response.status === 200) {
+          pendingAddenda.delete(postId);
+          textEl.value = '';
+          updateAddendumCharCount(postId);
+          cancelAddendum(postId);
+        } else {
+          let failure;
+          try { failure = await response.json(); } catch {}
+          let errMsg = '通信エラーが発生しました。';
+          if (response.status === 401 || response.status === 403) errMsg = 'この投稿への追記権限を確認できませんでした。';
+          else if (response.status === 429) errMsg = '短時間に操作が集中しています。少し待ってから再度お試しください。';
+          else if (response.status === 409) errMsg = '別の追記リクエストが競合しました。再試行してください。';
+          else if (response.status === 410) errMsg = 'この投稿は削除済みです。';
+          else if (response.status === 422) errMsg = '入力内容を確認してください。上限件数の可能性もあります。';
+          else if (response.status === 503) errMsg = 'サービスを利用できません。しばらく待って再試行してください。';
+          msgEl.textContent = errMsg;
+          msgEl.style.color = 'var(--rose-400)';
+          msgEl.style.display = 'block';
+        }
+      } catch (err) {
+        msgEl.textContent = '通信結果を確認できませんでした。再送をお試しください。';
+        msgEl.style.color = 'var(--rose-400)';
+        msgEl.style.display = 'block';
+      } finally {
+        const pAfter = pendingAddenda.get(postId);
+        if (pAfter) pAfter.inFlight = false;
+        submitBtn.disabled = false;
+        submitBtn.textContent = '追記する';
+      }
     }
 
     function isSafePostId(id) {
@@ -2723,6 +2881,21 @@ Qバブ召喚
       const imageCaptions = Array.isArray(data.imageCaptions)
         ? data.imageCaptions.map(c => typeof c === 'string' ? c.trim() : '').slice(0, MAX_IMAGES)
         : [];
+      const addenda = Array.isArray(data.addenda) ? data.addenda.map(a => {
+        if (!a || typeof a !== 'object') return null;
+        const text = typeof a.text === 'string' ? a.text : '';
+        let createdAtStr = '';
+        if (a.createdAt && typeof a.createdAt.toDate === 'function') {
+          createdAtStr = a.createdAt.toDate().toISOString();
+        } else if (typeof a.createdAt === 'string') {
+          createdAtStr = a.createdAt;
+        }
+        return {
+          id: typeof a.id === 'string' ? a.id : '',
+          text,
+          createdAt: createdAtStr
+        };
+      }).filter(a => a && a.id && a.text && a.createdAt).slice(0, 20) : [];
       return {
         id,
         name: typeof data.name === 'string' && data.name ? data.name : '名前不明',
@@ -2730,7 +2903,8 @@ Qバブ召喚
         timestamp: typeof data.timestamp === 'string' && Number.isFinite(Date.parse(data.timestamp)) ? data.timestamp : '',
         images: images.slice(0, MAX_IMAGES).map(validateFormationImageUrl),
         imageCaptions,
-        tags: Array.isArray(data.tags) ? data.tags.filter(t => typeof t === 'string').slice(0, 20) : []
+        tags: Array.isArray(data.tags) ? data.tags.filter(t => typeof t === 'string').slice(0, 20) : [],
+        addenda
       };
     }
 
@@ -2748,6 +2922,7 @@ Qバブ召喚
         const id = button.dataset.postId;
         if (!isSafePostId(id)) return;
         if (button.dataset.action === 'favorite') button.addEventListener('click', () => toggleFavorite(id, button));
+        if (button.dataset.action === 'addendum') button.addEventListener('click', () => toggleAddendumUI(id));
         if (button.dataset.action === 'delete') {
           button.disabled = deletingPostIds.has(id);
           button.addEventListener('click', () => deletePost(id, button));
@@ -2776,6 +2951,14 @@ Qバブ召喚
         });
         img.addEventListener('error', () => { slot.textContent = '画像を表示できません'; }, { once: true });
         slot.prepend(img);
+      });
+      // 追記textarea値の安全な復元（innerHTML経由ではなく.valueで設定）
+      pendingAddenda.forEach((pending, postId) => {
+        if (!pending.isOpen || !pending.text) return;
+        const textEl = document.getElementById('addendum-text-' + postId);
+        if (textEl && textEl.value === '') {
+          textEl.value = pending.text;
+        }
       });
     }
 
@@ -2967,6 +3150,55 @@ Qバブ召喚
         const isMine = isMyPost(p);
         const isFav = isFavorite(p.id);
 
+        let addendaHtml = '';
+        if (p.addenda && p.addenda.length > 0) {
+          addendaHtml = `
+            <div class="post-card-addenda" style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(148, 163, 184, 0.2);">
+              ${p.addenda.map(a => {
+                const ad = new Date(a.createdAt);
+                const aDateStr = Number.isFinite(ad.getTime()) ? `${ad.getFullYear()}/${pad(ad.getMonth()+1)}/${pad(ad.getDate())} ${pad(ad.getHours())}:${pad(ad.getMinutes())}` : '日時不明';
+                return `
+                  <div class="post-card-addendum" style="margin-bottom: 8px; font-size: 0.85rem;">
+                    <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 2px;">✍️ 追記 ${aDateStr}</div>
+                    <div style="white-space: pre-wrap; word-break: break-word; color: #e2e8f0;">${esc(a.text)}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }
+
+        let addendumInputHtml = '';
+        if (isMine) {
+          const isFull = p.addenda && p.addenda.length >= 20;
+          const pending = pendingAddenda.get(p.id);
+          const rawCurrentText = (pending && pending.text) ? pending.text : '';
+          const currentCount = Array.from(rawCurrentText).length;
+          const displayStyle = (pending && pending.isOpen) ? 'block' : 'none';
+
+          addendumInputHtml = `
+            <div id="addendum-ui-${p.id}" style="display: ${displayStyle}; margin-top: 12px; padding: 12px; background: rgba(30, 41, 59, 0.5); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.1);">
+              ${isFull ? `
+                <div style="color: var(--rose-400); font-size: 0.8rem; text-align: center;">追記上限に達しています</div>
+                <div style="text-align: right; margin-top: 8px;">
+                  <button type="button" onclick="cancelAddendum('${p.id}')" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; background: transparent; border: 1px solid rgba(148, 163, 184, 0.5); color: var(--text-muted); cursor: pointer;">閉じる</button>
+                </div>
+              ` : `
+                <div style="font-size: 0.8rem; margin-bottom: 6px; color: var(--text-muted);">補足情報を追記 (最大300文字)</div>
+                <textarea id="addendum-text-${p.id}" rows="3" maxlength="300" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(148, 163, 184, 0.2); color: #f1f5f9; resize: vertical; box-sizing: border-box;" oninput="updateAddendumCharCount('${p.id}')"></textarea>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                  <div style="font-size: 0.75rem; color: var(--text-muted);"><span id="addendum-count-${p.id}">${currentCount}</span> / 300</div>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" onclick="cancelAddendum('${p.id}')" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; background: transparent; border: 1px solid rgba(148, 163, 184, 0.5); color: var(--text-muted); cursor: pointer;">キャンセル</button>
+                    <button type="button" id="addendum-submit-${p.id}" onclick="submitAddendum('${p.id}')" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; background: var(--violet-600, #7c3aed); border: none; color: #fff; font-weight: bold; cursor: pointer;">追記する</button>
+                  </div>
+                </div>
+                <div id="addendum-msg-${p.id}" style="display: none; margin-top: 8px; font-size: 0.75rem; padding: 6px; border-radius: 6px;"></div>
+              `}
+            </div>
+          `;
+        }
+
         return `
           <div class="post-card${textOnlyClass}">
             <div class="post-card-header">
@@ -2992,6 +3224,10 @@ Qバブ召喚
                 </button>
 
                 ${isMine ? `
+                  <button type="button" class="post-addendum-btn" data-action="addendum" data-post-id="${p.id}" title="補足情報を追記" style="background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); color: var(--violet-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                    <span>✍️</span>
+                    <span>追記</span>
+                  </button>
                   <button type="button" class="post-delete-btn" data-action="delete" data-post-id="${p.id}" title="自分の投稿を削除" style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: var(--rose-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px; cursor: pointer;">
                     <span>🗑️</span>
                     <span>削除</span>
@@ -3002,6 +3238,8 @@ Qバブ召喚
             ${imagesHtml}
             ${tagsHtml}
             ${commentHtml}
+            ${addendaHtml}
+            ${addendumInputHtml}
           </div>
         `;
       }).join('');
