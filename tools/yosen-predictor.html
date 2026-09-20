@@ -86,6 +86,7 @@
     
     details summary::-webkit-details-marker { display: none; }
     .calc-details summary { list-style: none; }
+    details.calc-details { display: block !important; }
     
     .note { font-size: 0.75rem; color: #64748b; margin-top: 20px; text-align: center; }
     .model-section { margin-top:24px; font-size:.85rem; color:#cbd5e1; }
@@ -101,19 +102,34 @@
     .special-note { color:#fbbf24; }
     #historyChart [role="button"] { cursor:pointer; outline:none; }
     #historyChart [role="button"]:focus { stroke:white; stroke-width:2; }
-    .tool-notice { font-size:0.85rem; line-height:1.8; color:#cbd5e1; margin:12px 0; overflow-wrap:anywhere; }
     .tool-disclaimer { margin-top:24px; padding-top:16px; border-top:1px solid #334155; font-size:0.85rem; line-height:1.8; color:#cbd5e1; overflow-wrap:anywhere; }
-    .tool-disclaimer h2 { font-size:1rem; margin-bottom:12px; }
-    .tool-disclaimer p + p { margin-top:12px; }
+    .noon-error-chart { margin-top:12px; font-size:.75rem; color:#cbd5e1; }
+    .noon-error-plot { position:relative; height:160px; margin-left:40px; }
+    .noon-error-axis { position:absolute; top:0; left:-40px; width:36px; height:160px; }
+    .noon-error-axis span { position:absolute; right:3px; transform:translateY(-50%); }
+    .noon-error-guide { position:absolute; left:0; right:0; border-top:1px dashed #64748b; }
+    .noon-error-guide.zero { border-top:2px solid #cbd5e1; }
+    .noon-error-columns,.noon-error-rounds { display:grid; grid-template-columns:repeat(13,minmax(0,1fr)); gap:2px; }
+    .noon-error-columns { position:relative; height:160px; }
+    .noon-error-column { position:relative; min-width:0; }
+    .noon-error-bar { position:absolute; left:18%; width:64%; min-height:1px; background:#38bdf8; border-radius:2px; }
+    .noon-error-bar.negative { background:#fbbf24; }
+    .noon-error-rounds { margin:5px 0 0 40px; text-align:center; font-size:clamp(9px,2.4vw,11px); }
+    .noon-error-values { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:3px 8px; list-style:none; margin-top:12px; }
+    .noon-error-values li { min-width:0; overflow-wrap:anywhere; }
+    .error-context { margin-top:16px; padding-top:12px; border-top:1px solid #334155; font-size:.8rem; color:#94a3b8; }
+    .error-context h4 { font-size:.85rem; color:#cbd5e1; }
+    .error-context ul { margin:8px 0; padding-left:1.25em; }
+    .error-context li { margin-bottom:6px; }
+    @media (max-width:480px) { .noon-error-values { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       .portal-nav { max-width:600px; margin:0 auto 12px; }
     .portal-nav a { display:inline-flex; align-items:center; min-height:44px; padding:10px 14px; color:#cbd5e1; background:#0f172a; border:1px solid #334155; border-radius:8px; text-decoration:none; }
     .portal-nav a:hover { color:#fcd34d; border-color:#f59e0b; }
     .portal-nav a:focus-visible { outline:2px solid #38bdf8; outline-offset:3px; }
 
     [hidden] { display:none !important; }
-    .form-group input, .form-group select, .form-group .info, .form-group .error, .form-group [id^="parsed"] { display:none !important; }
-    .shared-value { font-size:1.15rem; padding:12px; background:#0f172a; border-radius:8px; overflow-wrap:anywhere; }
-    body:not(.shared-ready) .form-group, body:not(.shared-ready) .result-section { display:none !important; }
+    .form-group [id^="parsed"] { display:none !important; }
+    .shared-value { display:none; }
     .admin-panel { margin:20px 0; padding:16px; border:1px solid #475569; border-radius:10px; }
     .admin-panel label { font-size:.9rem; margin-top:12px; }
     .admin-panel input { width:100%; box-sizing:border-box; }
@@ -131,8 +147,7 @@
   <div class="container">
     <div class="glass-card">
       <h1>🏁 古戦場 予選24:00着地予想</h1>
-      <p class="desc">12時・18時・20時の累計貢献度と当日の速度から、予選終了時の着地を予想します。</p>
-      <p class="tool-notice">非公式・ファン制作の予測ツールです。表示される数値は過去データ等をもとにした参考予測であり、実際の結果を保証するものではありません。</p>
+      <p class="desc">7時・12時の300位累計貢献度から、予選終了時の着地を概算します。</p>
       
       <p id="sharedStatus" role="status">最新データを読み込んでいます…</p>
       <p id="sharedMeta" hidden></p>
@@ -161,26 +176,29 @@
         <p id="sharedDay" class="shared-value"></p>
       </div>
       <div class="form-group">
-        <label>7〜12時 平均時速</label>
-        <p id="sharedEarlyAvgSpeed" class="shared-value"></p>
+        <label>7時の300位累計貢献度</label>
+        <input type="text" id="score7" inputmode="text">
+        <p id="shared7" class="shared-value"></p>
+        <div id="err7" class="error"></div>
       </div>
+      <p id="sharedEarlyAvgSpeed" hidden></p>
       
       <div class="form-group">
-        <label>① 12:00時点</label>
-        <span class="sub-label">累計貢献度</span>
+        <label>12時の300位累計貢献度</label>
         <input type="text" id="score12" placeholder="例: 1000億 / 100,000,000,000" inputmode="text">
         <p id="shared12" class="shared-value"></p>
         <div id="parsed12" style="font-size: 0.85rem; color: #cbd5e1; margin-top: 4px; display: none;"></div>
         <div id="err12" class="error"></div>
-        <div id="info12" style="font-size:.85rem;color:#94a3b8;margin-top:6px">7〜12時平均時速が未登録です</div>
+        <div id="info12" style="font-size:.85rem;color:#94a3b8;margin-top:6px">7時と12時の累計貢献度を入力してください</div>
       </div>
       <div id="result12" class="result-section">
-        <h2 style="font-size:1.2rem;margin-bottom:12px">12時時点 24時予測</h2>
-        <div class="metric-card"><div class="metric-label">12時時点の24時予測</div><div class="metric-value highlight" id="valPred12">-</div></div>
-        <p id="valRange12" style="font-size:.85rem;color:#cbd5e1;text-align:center;margin-top:8px"></p>
+        <h2 style="font-size:1.2rem;margin-bottom:12px">12時時点の24時概算着地</h2>
+        <div class="metric-card"><div class="metric-label">24時の概算着地</div><div class="metric-value highlight" id="valPred12">-</div></div>
+        <p id="valRange12" hidden></p>
         <p id="model12Note" style="font-size:.8rem;color:#94a3b8;text-align:center;margin-top:8px"></p>
       </div>
       
+      <div hidden>
       <div class="form-group">
         <label>② 18:00時点</label>
         <span class="sub-label">累計貢献度</span>
@@ -264,16 +282,41 @@
         <div id="progressChartLegend" style="display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; font-size:0.8rem; justify-content:center;"></div>
         <p id="progressChartNote" style="font-size:0.75rem; color:#94a3b8; text-align:center; margin-top:8px;"></p>
       </div>
+      </div>
       
-      <details class="calc-details" id="calcDetails" style="display: none; margin-top: 24px; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 8px;">
+      <details class="calc-details" id="calcDetails" style="margin-top: 24px; padding: 12px; background: rgba(15, 23, 42, 0.6); border: 1px solid #334155; border-radius: 8px;">
         <summary style="cursor: pointer; font-weight: bold; color: #38bdf8; outline: none; margin-bottom: 8px;">📐 予測の計算・過去データを見る</summary>
         
-        <div style="margin-top: 16px;">
+        <div id="calcExplanationBlock" style="display: none; margin-top: 16px;">
           <h3 style="font-size: 1rem; color: #fff; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 4px;">📐 今回の計算</h3>
           <div id="calcExplanation" style="font-size: 0.9rem; color: #cbd5e1; background: rgba(0, 0, 0, 0.2); padding: 12px; border-radius: 6px; white-space: pre-wrap; font-family: monospace;"></div>
         </div>
 
-        <div style="margin-top: 24px;">
+        <section class="model-section">
+          <h3>なぜ12時時点の予測のみ？</h3>
+          <p>予選2日目の夜は、翌日の曜日や参加者の追い込みなど、人の行動による影響が強くなります。そのため、夜の直近速度を使っても必ずしも予測精度が上がるとは限りません。本ツールでは、比較的安定していた7〜12時の実測ペースから12時時点で大まかな24時着地を予測し、夜は実際の順位や速度を確認する使い方を想定しています。</p>
+        </section>
+
+        <section class="model-section" aria-labelledby="noon-error-title">
+          <h3 id="noon-error-title">過去の12時予測の誤差</h3>
+          <p>＋：実際より高く予測　−：実際より低く予測（300位以内を守る用途では注意）。破線は±10%の目安です。</p>
+          <div id="noonErrorChart" class="noon-error-chart"></div>
+          <p>検証13開催中、10開催が±10%以内。過去の検証対象では実際より10%以上低く予測したケースはありませんでした。今後の結果を保証するものではありません。</p>
+          <p style="font-size:.75rem;color:#94a3b8">過去データが不足・異常だった開催は検証対象外です。</p>
+          <div class="error-context">
+            <h4>誤差が目立った開催の参考要因</h4>
+            <ul>
+              <li>第70回（−7.52%）：翌日が祝日。予選2日目夜の参加状況に影響した可能性。</li>
+              <li>第72回（+10.87%）：極星器追加・10周年後夜祭期間。</li>
+              <li>第74回（+16.17%）：古戦場の大規模仕様変更・極星器追加。</li>
+              <li>第75回（+15.23%）：極星器追加・肉ドロップ量調整。</li>
+            </ul>
+            <p>※上記は誤差の原因を断定するものではなく、当時の環境変化としての参考情報です。</p>
+            <p style="font-size:.75rem;color:#94a3b8">第80回以降はHELLが早期解禁されましたが、その影響は7〜12時の実測速度に反映されるため、12時予測への影響は比較的小さかった可能性があります。</p>
+          </div>
+        </section>
+
+        <div style="margin-top: 24px;" hidden>
           <h3 style="font-size: 1rem; color: #fff; margin-bottom: 8px; border-bottom: 1px solid #334155; padding-bottom: 4px;">📊 過去古戦場の夜の伸び傾向</h3>
           <p style="font-size:0.8rem;color:#94a3b8">12〜18時の平均速度に対して、18〜24時の平均速度が何倍になったかを示しています。12時予測で使う7〜12時基準の倍率とは別の参考情報です。</p>
           <div id="historyStats" style="font-size: 0.9rem; color: #cbd5e1; display: grid; grid-template-columns: 1fr; gap: 8px;">
@@ -290,7 +333,7 @@
           </div>
         </div>
 
-        <details style="margin-top: 24px; padding-top: 12px; border-top: 1px dashed #334155;">
+        <details hidden style="margin-top: 24px; padding-top: 12px; border-top: 1px dashed #334155;">
           <summary style="cursor: pointer; color: #94a3b8; font-weight: bold;">🛠️ モデル開発・検証データ（高度な情報）</summary>
         <section class="model-section" style="margin-top:24px;">
           <h3 style="font-size: 1rem; color: #fff; border-bottom: 1px solid #334155; padding-bottom: 4px;">📈 過去20大会 夜の伸び倍率</h3>
@@ -322,27 +365,16 @@
             <p>以下は学習に使った履歴での誤差です。将来の予測精度の改善を保証する検証ではありません。現行の学習数はCONFIG記載値、新候補の学習数は履歴から算出しています。休日の現行評価は大会ごとの曜日に対応する本番係数を使います（土日と祝日で係数が異なります）。</p>
             <div id="modelComparison"></div>
             <details style="margin-top:16px">
-              <summary style="cursor:pointer;color:#38bdf8">🧪 過去大会で未来予測テスト</summary>
-              <p>対象大会より前の通常開催だけで、毎回モデルを作り直します。最低学習数は3大会。昼平均の最大値−最小値が0.10億/h未満なら、回帰が不安定なため検証を見送ります。平日は平日、休日は土曜・日曜・祝日を統合して学習します。現行CONFIGの係数は使いません。</p>
-              <p>重み = 減衰率 ^ age。ageは学習対象内の最新大会番号との差（欠測大会も経過数に含む）です。最新学習大会の重みは1。第65回は学習・評価ともに除外します。</p>
+              <summary style="cursor:pointer">walk-forward検証（時系列評価）</summary>
               <p>予測夜平均 = intercept + slope × 昼平均。誤差率 = |予測 − 実測| ÷ 実測 × 100。直近3・5件は各分類の検証対象から選び、必要件数に満たない場合は「算出不可」と表示します。</p>
               <div id="walkForwardResults"></div>
-              <p>少数の履歴による比較です。結果を見て減衰率を選ぶと過剰適合する可能性があります。本番採用は行いません。将来の精度を保証する結果ではありません。</p>
             </details>
-            <p class="special-note" style="margin-top:12px;">20時モデル再計算には元データ不足：18〜20時・20〜24時実測値がありません。現行20時CONFIGを維持しています。</p>
           </section>
         </details>
       </details>
 
-      <p class="note">本ツールの結果は過去大会と当日の実測ペースをもとにした参考予測です。<br>古戦場の環境・ボス・編成・参加状況などにより実際の結果は変動します。</p>
       <section class="tool-disclaimer" aria-labelledby="tool-disclaimer-title">
-        <h2 id="tool-disclaimer-title">本ツールについて・免責事項</h2>
-        <p>本ツールは『グランブルーファンタジー』の古戦場に関する過去の記録等を参考に、独自に集計・分析して作成した非公式の予測ツールです。</p>
-        <p>本ツールは株式会社Cygamesおよび『グランブルーファンタジー』の運営・関係各社とは関係ありません。ゲーム名、サービス名、商標その他の権利は、それぞれの権利者に帰属します。</p>
-        <p>表示される予測値・分析結果は、過去の傾向および入力された当日のデータをもとに算出した参考情報です。実際の順位、貢献度、終了時の結果等を保証するものではありません。</p>
-        <p>本ツールの分析では第三者が公開した過去の情報を参考にしている場合があります。本ツールは、それら第三者情報の正確性、完全性、継続的な提供、または取得方法等を保証するものではありません。</p>
-        <p>第三者サイトの記事、文章、表、デザイン等をそのまま転載することを目的としたものではなく、本ツールでは主に独自に集計・分析した数値および予測結果を利用しています。</p>
-        <p>本ツールの利用および表示された予測結果に基づく判断は、利用者自身の責任で行ってください。</p>
+        <p id="tool-disclaimer-title">※本ツールは非公式のファン制作物であり、株式会社Cygamesおよび運営・関係各社とは関係ありません。ゲーム名・商標等の権利は各権利者に帰属します。予測値は過去データをもとにした参考値であり、実際の結果を保証するものではありません。</p>
       </section>
       <section class="admin-panel">
         <button id="loginToggle" type="button">管理者ログイン</button><button id="signOut" type="button" hidden>ログアウト</button>
@@ -377,6 +409,51 @@
      * - model20 nonWeekday: 7 samples
      */
     const OKU = 100000000;
+
+    // 7〜12時平均速度に対する12〜24時平均速度の中央値倍率。
+    // 各大会の7時・12時・24時累計の元データは現在のリポジトリにないため、検証済みの提供値を採用。
+    const NOON_MEDIAN_MULTIPLIERS = Object.freeze({ weekday: 2.325, nonWeekday: 2.189 });
+
+    function predictFromNoon(dayType, score7, score12) {
+      if (!['weekday', 'saturday', 'sunday', 'holiday'].includes(dayType)
+          || !Number.isSafeInteger(score7) || score7 < 0
+          || !Number.isSafeInteger(score12) || score12 <= score7) return null;
+      const morningSpeed = (score12 - score7) / 5;
+      const multiplier = dayType === 'weekday' ? NOON_MEDIAN_MULTIPLIERS.weekday : NOON_MEDIAN_MULTIPLIERS.nonWeekday;
+      const predictedRemainingSpeed = morningSpeed * multiplier;
+      const predictedFinalScore = score12 + predictedRemainingSpeed * 12;
+      return Number.isFinite(predictedFinalScore)
+        ? { morningSpeed, multiplier, predictedRemainingSpeed, predictedFinalScore } : null;
+    }
+
+    // 12時中央値倍率式の過去検証結果。表示専用で、予測計算には使用しない。
+    const NOON_BACKTEST_ERRORS = Object.freeze([
+      [66, 3.46], [67, -0.26], [69, 5.12], [70, -7.52], [72, 10.87],
+      [74, 16.17], [75, 15.23], [77, 9.95], [78, 9.26], [80, -2.96],
+      [81, 9.57], [82, 4.62], [83, -4.77]
+    ]);
+
+    function renderNoonErrorChart() {
+      const signed = value => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+      const plot = NOON_BACKTEST_ERRORS.map(([round, error]) => {
+        const top = 80 - Math.max(error, 0) * 4;
+        const height = Math.abs(error) * 4;
+        return `<div class="noon-error-column"><div class="noon-error-bar${error < 0 ? ' negative' : ''}" style="top:${top}px;height:${height}px" title="第${round}回 ${signed(error)}"></div></div>`;
+      }).join('');
+      const rounds = NOON_BACKTEST_ERRORS.map(([round]) => `<span>${round}</span>`).join('');
+      const values = NOON_BACKTEST_ERRORS.map(([round, error]) => `<li>第${round}回 ${signed(error)}</li>`).join('');
+      document.getElementById('noonErrorChart').innerHTML = `
+        <div class="noon-error-plot" role="img" aria-label="第66回から第83回までの検証対象13開催の予測誤差棒グラフ。0%を中央、破線を±10%の目安として表示。">
+          <div class="noon-error-axis"><span style="top:40px">+10%</span><span style="top:80px">0%</span><span style="top:120px">−10%</span></div>
+          <div class="noon-error-guide" style="top:40px"></div>
+          <div class="noon-error-guide zero" style="top:80px"></div>
+          <div class="noon-error-guide" style="top:120px"></div>
+          <div class="noon-error-columns">${plot}</div>
+        </div>
+        <div class="noon-error-rounds" aria-label="大会回数。左から第66回から第83回の検証対象開催">${rounds}</div>
+        <p style="margin:6px 0 0 40px;color:#94a3b8">横軸：大会回（第○回）　縦軸：予測誤差</p>
+        <ul class="noon-error-values">${values}</ul>`;
+    }
 
     const CONFIG = {
       model18: {
@@ -781,10 +858,12 @@
     // DOM Elements
     const els = {
       dayType: document.getElementById('dayType'),
+      score7: document.getElementById('score7'),
       score12: document.getElementById('score12'),
       score18: document.getElementById('score18'),
       score20: document.getElementById('score20'),
       err12: document.getElementById('err12'),
+      err7: document.getElementById('err7'),
       err18: document.getElementById('err18'),
       err20: document.getElementById('err20'),
       info12: document.getElementById('info12'),
@@ -886,8 +965,37 @@
       el.style.display = 'none';
     }
 
-    // Main calculation logic
+    // 公開画面で使う12時予測。18時・20時の旧実装は下に保存しておく。
     function calculate() {
+      const raw7 = els.score7.value.trim();
+      const raw12 = els.score12.value.trim();
+      const score7 = parseNumber(raw7);
+      const score12 = parseNumber(raw12);
+      hideError(els.err7);
+      hideError(els.err12);
+      document.getElementById('result12').style.display = 'none';
+      const calcBlock = document.getElementById('calcExplanationBlock');
+      if (calcBlock) calcBlock.style.display = 'none';
+      document.getElementById('calcExplanation').textContent = '';
+      els.info12.style.display = 'block';
+      els.info12.textContent = '7時と12時の累計貢献度を入力してください';
+      if (!raw7) { showError(els.err7, '7時の累計貢献度を入力してください'); return; }
+      if (!Number.isFinite(score7)) { showError(els.err7, '正しい貢献度を入力してください'); return; }
+      if (!raw12) { showError(els.err12, '12時の累計貢献度を入力してください'); return; }
+      if (!Number.isFinite(score12)) { showError(els.err12, '正しい貢献度を入力してください'); return; }
+      if (score12 <= score7) { showError(els.err12, '12時の累計は7時より大きくしてください'); return; }
+      const prediction = predictFromNoon(els.dayType.value, score7, score12);
+      if (!prediction) { showError(els.err12, '予測を計算できませんでした'); return; }
+      document.getElementById('valPred12').textContent = formatOku(prediction.predictedFinalScore);
+      document.getElementById('model12Note').textContent = `7〜12時の平均速度 × ${prediction.multiplier.toFixed(3)} を12時間分加算`;
+      document.getElementById('calcExplanation').textContent =
+        `7時累計 ${formatOku(score7)}\n12時累計 ${formatOku(score12)}\n7〜12時平均速度 ${formatOku(prediction.morningSpeed)}/h\n倍率 ×${prediction.multiplier.toFixed(3)}\n12〜24時予測平均速度 ${formatOku(prediction.predictedRemainingSpeed)}/h\n24時概算着地 ${formatOku(prediction.predictedFinalScore)}`;
+      if (calcBlock) calcBlock.style.display = 'block';
+      document.getElementById('result12').style.display = 'block';
+      els.info12.style.display = 'none';
+    }
+
+    function calculateLegacy() {
       renderShadowComparison(); // 前回のシャドー表示を消し、不正・未入力時の残留を防ぐ。
       const raw12 = els.score12.value.trim();
       const raw18 = els.score18.value.trim();
@@ -1282,6 +1390,11 @@
     }
 
     // Initialize
+    for (const input of [els.score7, els.score12, els.dayType]) {
+      input.addEventListener('input', calculate);
+      input.addEventListener('change', calculate);
+    }
+    renderNoonErrorChart();
     refreshHistoryModels();
   </script>
   <script src="../firebase-config.js"></script>

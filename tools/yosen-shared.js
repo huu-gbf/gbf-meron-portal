@@ -34,6 +34,21 @@
     return {schemaVersion:1,eventDate:$('editDate').value,dayType:$('editDay').value,earlyAvgSpeed,
       score12:parseNumber($('edit12').value),score18:$('edit18').value.trim()===''?null:parseNumber($('edit18').value),score20:$('edit20').value.trim()===''?null:parseNumber($('edit20').value),updatedAt:{toDate:()=>new Date()}};
   }
+  function dropStaleEveningScores(d, previous) {
+    if (!previous) return d;
+    // 前回の実測値を引き継いだまま12時値を更新した場合だけ、矛盾する旧値を空欄にする。
+    if (d.score18 !== null && d.score18 <= d.score12 && d.score18 === previous.score18
+        && (d.score12 !== previous.score12 || d.eventDate !== previous.eventDate)
+        && (d.score20 === null || d.score20 === previous.score20)) {
+      d.score18 = null;
+      d.score20 = null;
+    } else if (d.score20 !== null && d.score18 !== null && d.score20 <= d.score18
+        && d.score20 === previous.score20
+        && (d.score18 !== previous.score18 || d.eventDate !== previous.eventDate)) {
+      d.score20 = null;
+    }
+    return d;
+  }
   function preview() {
     if(!admin||!ready||saving)return;
     dirty=true;
@@ -45,6 +60,9 @@
       $('shared'+hour).textContent=input===''?'未入力':Number.isFinite(d['score'+hour])?formatOku(d['score'+hour]):'入力を確認してください';
     }
     globalThis.yosenEarlyAvgSpeed=safeEarlySpeed(d.earlyAvgSpeed)?d.earlyAvgSpeed:null;
+    const score7=safeEarlySpeed(d.earlyAvgSpeed)&&Number.isFinite(d.score12)?d.score12-d.earlyAvgSpeed*50000:null;
+    els.score7.value=Number.isSafeInteger(score7)&&score7>=0?String(score7):'';
+    $('shared7').textContent=els.score7.value?formatOku(score7):'未登録';
     $('sharedEarlyAvgSpeed').textContent=!$('editEarlyAvgSpeed').value.trim()?'未入力':safeEarlySpeed(d.earlyAvgSpeed)?(d.earlyAvgSpeed/10000).toFixed(2)+'億/h':'入力を確認してください';
     calculate(); document.body.classList.add('shared-ready');
     $('sharedMeta').textContent='未公開の入力値　対象日：'+(d.eventDate||'未入力');
@@ -61,8 +79,8 @@
   }
   function clearShared(message) {
     document.body.classList.remove('shared-ready'); $('sharedMeta').hidden=true;
-    $('calcDetails').style.display='none'; $('calcExplanation').textContent='';
-    for(const hour of ['12','18','20']) { els['score'+hour].value=''; $('shared'+hour).textContent=''; }
+    $('result12').style.display='none'; $('calcDetails').style.display='none'; $('calcExplanation').textContent='';
+    for(const hour of ['7','12','18','20']) { els['score'+hour].value=''; $('shared'+hour).textContent=''; }
     $('sharedEarlyAvgSpeed').textContent=''; globalThis.yosenEarlyAvgSpeed=null;
     $('sharedStatus').textContent=message;
   }
@@ -75,6 +93,9 @@
       return;
     }
     els.dayType.value=d.dayType; $('sharedDay').textContent=days[d.dayType];
+    const score7=d.earlyAvgSpeed == null ? null : d.score12-d.earlyAvgSpeed*50000;
+    els.score7.value=Number.isSafeInteger(score7)&&score7>=0?String(score7):'';
+    $('shared7').textContent=els.score7.value?formatOku(score7):'未登録';
     for(const hour of ['12','18','20']) { const value=d['score'+hour]; els['score'+hour].value=value===null?'':String(value); $('shared'+hour).textContent=value===null?'未登録':formatOku(value); }
     globalThis.yosenEarlyAvgSpeed=d.earlyAvgSpeed ?? null;
     $('sharedEarlyAvgSpeed').textContent=d.earlyAvgSpeed == null ? '未登録' : (d.earlyAvgSpeed/10000).toFixed(2)+'億/h';
@@ -95,7 +116,7 @@
   $('signOut').onclick=async()=>{try{await auth.signOut();}catch(e){$('adminStatus').textContent='ログアウトに失敗しました。'+(e.code||'');}};
   $('publishForm').onsubmit=async e=>{
     e.preventDefault(); if(!admin||!ready||saving||auth.currentUser?.uid!==ADMIN_UID)return;
-    const d=readDraft();
+    const d=dropStaleEveningScores(readDraft(), latest);
     if(!validData(d)){ $('adminStatus').textContent='対象日・開催条件・平均時速・累計を確認してください。12時累計は必須、18時・20時は順に大きい値を入力してください。';return; }
     saving=true;pendingPublish={data:d,confirmed:false};buttons();$('adminStatus').textContent='保存しています…';
     try {
