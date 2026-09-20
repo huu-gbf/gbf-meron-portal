@@ -1090,6 +1090,10 @@
         </div>
 
         <form id="postForm" onsubmit="handleSubmit(event)">
+          <div id="duplicateDraftBar" style="display:none; margin-bottom:16px; padding:10px 12px; border:1px solid rgba(139,92,246,0.35); border-radius:8px; color:#ddd6fe; font-size:0.8rem; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+            <span id="duplicateDraftLabel"></span>
+            <button type="button" onclick="cancelDuplicateDraft()" style="background:transparent; border:1px solid rgba(139,92,246,0.5); border-radius:6px; color:#ddd6fe; padding:4px 8px; cursor:pointer;">複製をやめる</button>
+          </div>
           <!-- ① ゲーム内の名前 -->
           <div class="form-group" id="nameWrapper">
             <!-- 初回: 入力フォーム -->
@@ -1521,8 +1525,11 @@ Qバブ召喚
     let imageProcessingQueue = Promise.resolve();
     let imageProcessingCount = 0;
     let imageSelectionVersion = 0;
-    let selectedImages = []; // 圧縮JPEG。プレビューとAPI送信専用（Firestoreには保存しない）
+    let selectedImages = []; // 通常投稿は圧縮JPEG、複製中は元画像URL/Data URLもプレビューに使用
     let selectedImageCaptions = []; // 画像ごとの説明文（最大20文字）
+    let selectedImageOrigins = []; // 複製中は画像と同じ順番で source index / upload を保持
+    let duplicateDraft = null;
+    let pendingDuplicateSubmission = null;
     let db = null;
     let messaging = null;
     let isInitialLoadDone = false;
@@ -1536,7 +1543,7 @@ Qバブ召喚
     const deletingPostIds = new Set();
 
     window.addEventListener('beforeunload', (event) => {
-      if (!pendingSubmission) return;
+      if (!pendingSubmission && !pendingDuplicateSubmission) return;
       event.preventDefault();
       event.returnValue = '';
     });
@@ -1955,6 +1962,7 @@ Qバブ召喚
             if (selectedImages.length < MAX_IMAGES) {
               selectedImages.push(image);
               selectedImageCaptions.push('');
+              selectedImageOrigins.push({ kind: 'upload' });
             }
             updatePreviewUI();
           } catch (error) {
@@ -2007,7 +2015,7 @@ Qバブ召喚
 
           const img = document.createElement('img');
           img.alt = `プレビュー #${idx + 1}`;
-          const valid = validateImageDataUrl(src);
+          const valid = duplicateDraft ? validateFormationImageUrl(src) : validateImageDataUrl(src);
           if (valid) img.src = valid;
 
           const label = document.createElement('span');
@@ -2047,6 +2055,7 @@ Qバブ召喚
       if (e) e.stopPropagation();
       selectedImages.splice(idx, 1);
       selectedImageCaptions.splice(idx, 1);
+      selectedImageOrigins.splice(idx, 1);
       updatePreviewUI();
     }
 
@@ -2055,6 +2064,7 @@ Qバブ召喚
       imageSelectionVersion++;
       selectedImages = [];
       selectedImageCaptions = [];
+      selectedImageOrigins = [];
       document.getElementById('fileInput').value = '';
       updatePreviewUI();
     }
@@ -2630,6 +2640,10 @@ Qバブ召喚
       return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
     }
 
+    function createDeleteSecret() {
+      return encodeBase64url(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+    }
+
     function canonicalizeImageCaptions(captions, imageCount) {
       if (!Array.isArray(captions)) return [];
       const count = typeof imageCount === 'number' ? Math.max(0, imageCount) : captions.length;
@@ -2645,7 +2659,7 @@ Qバブ召喚
     function getOrCreatePendingSubmission(content) {
       if (pendingSubmission) return pendingSubmission;
       const request_id = createRequestId();
-      const delete_secret = encodeBase64url(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
+      const delete_secret = createDeleteSecret();
       pendingSubmission = {
         category,
         request_id,
@@ -2731,11 +2745,234 @@ Qバブ召喚
       })[status] || '投稿結果を確認できません。内容を変更せず再試行してください。';
     }
 
+    function updateDuplicateDraftUI() {
+      const bar = document.getElementById('duplicateDraftBar');
+      bar.style.display = duplicateDraft ? 'flex' : 'none';
+      document.getElementById('duplicateDraftLabel').textContent = duplicateDraft
+        ? `${duplicateDraft.sourceName}さんの投稿を複製中` : '';
+    }
+
+    function beginDuplicateDraft(postId) {
+      const post = getPosts().find(item => item.id === postId);
+      if (!post || !isSafePostId(post.id)) return;
+      if (pendingSubmission || submissionInFlight || imageProcessingCount > 0) {
+        showSubmissionStatus('確認中の投稿があります。結果を確認してから複製してください。');
+        return;
+      }
+      if (pendingDuplicateSubmission?.uncertain) {
+        showSubmissionStatus('前の複製結果が未確認です。同じ内容を再送して結果を確認してください。');
+        return;
+      }
+      if (duplicateDraft || document.getElementById('comment').value.length || selectedImages.length || selectedTags.length) {
+        if (!confirm('入力中の内容を破棄して、この投稿を複製しますか？')) return;
+      }
+
+      const images = [];
+      const captions = [];
+      const origins = [];
+      post.images.forEach((src, slot) => {
+        const valid = validateFormationImageUrl(src);
+        if (!valid) return;
+        const index = post.imageSourceIndexes?.[slot];
+        if (!Number.isSafeInteger(index) || index < 0) return;
+        images.push(valid);
+        captions.push(typeof post.imageCaptions?.[slot] === 'string' ? post.imageCaptions[slot].slice(0, 20) : '');
+        origins.push({ kind: 'source', index });
+      });
+      const allowed = new Set([
+        ...AVAILABLE_TAGS.attributes, ...AVAILABLE_TAGS.types, ...AVAILABLE_TAGS.styles,
+        ...(AVAILABLE_TAGS.categories[category] || [])
+      ]);
+      const tags = [];
+      for (const tag of post.tags || []) {
+        if (!allowed.has(tag) || tags.includes(tag)) continue;
+        const group = AVAILABLE_TAGS.attributes.includes(tag) ? AVAILABLE_TAGS.attributes
+          : AVAILABLE_TAGS.types.includes(tag) ? AVAILABLE_TAGS.types : null;
+        if (group && tags.some(existing => group.includes(existing))) continue;
+        tags.push(tag);
+      }
+      clearAllImages();
+      duplicateDraft = { sourcePostId: post.id, sourceName: post.name };
+      pendingDuplicateSubmission = null;
+      document.getElementById('comment').value = post.comment;
+      document.getElementById('charCount').textContent = Array.from(post.comment).length;
+      selectedImages = images;
+      selectedImageCaptions = captions;
+      selectedImageOrigins = origins;
+      selectedTags = tags;
+      updatePreviewUI();
+      renderTagSelectionUI();
+      updateDuplicateDraftUI();
+      document.getElementById('postForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function cancelDuplicateDraft() {
+      if (!duplicateDraft || submissionInFlight) return;
+      if (pendingDuplicateSubmission?.uncertain) {
+        showSubmissionStatus('複製結果が未確認のため中止できません。同じ内容を再送して確認してください。');
+        return;
+      }
+      if (!confirm('複製中の編集内容を破棄しますか？')) return;
+      pendingDuplicateSubmission = null;
+      duplicateDraft = null;
+      document.getElementById('comment').value = '';
+      document.getElementById('charCount').textContent = '0';
+      clearAllImages();
+      clearAllTags();
+      updateDuplicateDraftUI();
+    }
+
+    function readDuplicateContent() {
+      if (!duplicateDraft || selectedImages.length !== selectedImageOrigins.length
+          || selectedImages.length !== selectedImageCaptions.length) {
+        throw new Error('複製画像の状態を確認できません。');
+      }
+      const imageItems = selectedImageOrigins.map((origin, index) => {
+        if (origin.kind === 'source' && Number.isSafeInteger(origin.index) && origin.index >= 0
+            && validateFormationImageUrl(selectedImages[index])) {
+          return { kind: 'source', index: origin.index };
+        }
+        if (origin.kind === 'upload' && selectedImages[index].startsWith('data:image/jpeg;base64,')) {
+          return { kind: 'upload', data: selectedImages[index] };
+        }
+        throw new Error('複製画像の状態を確認できません。');
+      });
+      return {
+        sourcePostId: duplicateDraft.sourcePostId,
+        name: document.getElementById('playerName').value.trim(),
+        comment: document.getElementById('comment').value.trim(),
+        tags: [...selectedTags], imageItems,
+        imageCaptions: canonicalizeImageCaptions(selectedImageCaptions, imageItems.length)
+      };
+    }
+
+    function sameDuplicateContent(a, b) {
+      return a.sourcePostId === b.sourcePostId && a.name === b.name && a.comment === b.comment
+        && JSON.stringify(a.tags) === JSON.stringify(b.tags)
+        && JSON.stringify(a.imageItems) === JSON.stringify(b.imageItems)
+        && JSON.stringify(a.imageCaptions) === JSON.stringify(b.imageCaptions);
+    }
+
+    function validateDuplicateContent(content) {
+      const uploads = content.imageItems.filter(item => item.kind === 'upload').map(item => item.data);
+      validateSubmission({ ...content, images: uploads, imageCaptions: [] });
+      if (content.imageItems.length > MAX_IMAGES) throw new Error(`画像は最大${MAX_IMAGES}枚までです。`);
+      if (content.imageCaptions.length && content.imageCaptions.length !== content.imageItems.length) {
+        throw new Error('画像の説明の件数が画像数と一致していません。');
+      }
+      for (const caption of content.imageCaptions) {
+        if (Array.from(caption).length > 20 || /[\u0000-\u001f\u007f-\u009f]/.test(caption)) {
+          throw new Error('各画像の説明は20文字以内で入力してください。');
+        }
+      }
+    }
+
+    function duplicateErrorMessage(status, code) {
+      return ({
+        SOURCE_POST_NOT_FOUND: '複製元の投稿が見つかりません。入力内容を保持しています。',
+        SOURCE_IMAGE_UNAVAILABLE: '複製元の画像を取得できません。入力内容を保持しています。',
+        INVALID_INPUT: '投稿内容または複製元画像を確認してください。',
+        REQUEST_ID_CONFLICT: '投稿情報が競合しました。内容を確認してください。',
+        RATE_LIMITED: '短時間に投稿が集中しています。少し待って再試行してください。',
+        PORTAL_NOT_READY: '投稿サービスは現在準備中です。',
+        STORE_UNAVAILABLE: '保存結果を確認できません。内容を変更せず再試行してください。',
+        STORAGE_UNAVAILABLE: '画像の保存に失敗しました。入力内容を保持しています。',
+        ORIGIN_NOT_ALLOWED: 'このページからは投稿できません。正しいページから開き直してください。'
+      })[code] || requestErrorMessage(status);
+    }
+
+    async function handleDuplicateSubmit(e) {
+      e.preventDefault();
+      if (submissionInFlight || imageProcessingCount > 0 || pendingSubmission) return;
+      const submitBtn = document.getElementById('submitBtn');
+      const originalText = submitBtn.innerHTML;
+      submissionInFlight = true;
+      submitBtn.disabled = true;
+      try {
+        const current = readDuplicateContent();
+        const resolvingPrevious = pendingDuplicateSubmission?.uncertain
+          && !sameDuplicateContent(current, pendingDuplicateSubmission);
+        if (!resolvingPrevious) validateDuplicateContent(current);
+        if (!pendingDuplicateSubmission
+            || (!sameDuplicateContent(current, pendingDuplicateSubmission) && !resolvingPrevious)) {
+          pendingDuplicateSubmission = {
+            ...current, request_id: createRequestId(), delete_secret: createDeleteSecret(), uncertain: false
+          };
+        }
+        const pending = pendingDuplicateSubmission;
+        const url = `${formationApiUrl(pending.sourcePostId)}/duplicate`;
+        if (!rememberDeleteSecret(category, pending.request_id, pending.delete_secret)) {
+          showSubmissionStatus('削除用情報をこの端末に保存できないため投稿できません。');
+          return;
+        }
+        const { sourcePostId, uncertain, ...payload } = pending;
+        const body = JSON.stringify(payload);
+        if (new TextEncoder().encode(body).length > MAX_SUBMISSION_BYTES) {
+          showSubmissionStatus('画像が大きすぎます。画像を減らしてください。');
+          return;
+        }
+        showSubmissionStatus(resolvingPrevious ? '前の複製結果を確認中…' : '複製結果を確認中…');
+        submitBtn.textContent = pending.imageItems.length ? '画像を複製中…' : '送信中…';
+        let response;
+        let result;
+        try {
+          response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'omit' });
+          if (response.status !== 200 && response.status !== 201) {
+            let failure;
+            try { failure = await response.json(); } catch { /* status fallback */ }
+            const code = failure?.error?.code;
+            if ([400, 403, 404, 409, 410, 413, 415, 422, 429].includes(response.status)
+                || ['SOURCE_IMAGE_UNAVAILABLE', 'STORAGE_UNAVAILABLE', 'PORTAL_NOT_READY'].includes(code)) {
+              pending.uncertain = false;
+            } else {
+              pending.uncertain = true;
+            }
+            showSubmissionStatus(duplicateErrorMessage(response.status, code));
+            return;
+          }
+          result = await response.json();
+        } catch {
+          pending.uncertain = true;
+          showSubmissionStatus('通信結果を確認できませんでした。内容を変更せず再送すると同じ投稿として確認できます。');
+          return;
+        }
+        if (!result || result.id !== pending.request_id || result.category !== category
+            || typeof result.timestamp !== 'string' || typeof result.replayed !== 'boolean') {
+          pending.uncertain = true;
+          showSubmissionStatus('複製結果を確認できません。内容を変更せず再送してください。');
+          return;
+        }
+        // snapshot が先着していても、delete secret はfetch前からlocalStorageに保存済み。
+        rememberDeleteSecret(category, pending.request_id, pending.delete_secret);
+        pendingDuplicateSubmission = null;
+        if (!snapshotIds.has(result.id)) awaitingSnapshotIds.add(result.id);
+        if (sameDuplicateContent(readDuplicateContent(), pending)) {
+          duplicateDraft = null;
+          document.getElementById('comment').value = '';
+          document.getElementById('charCount').textContent = '0';
+          clearAllImages();
+          clearAllTags();
+          updateDuplicateDraftUI();
+          showSubmissionStatus(awaitingSnapshotIds.size ? '投稿済み・一覧更新待ち' : '投稿済み・一覧に反映されました。');
+        } else {
+          showSubmissionStatus('複製投稿は完了しました。現在編集中の内容は保持しています。');
+        }
+      } catch (error) {
+        showSubmissionStatus(error?.message || '複製の準備ができません。入力内容を確認してください。');
+      } finally {
+        submissionInFlight = false;
+        submitBtn.disabled = imageProcessingCount > 0;
+        submitBtn.innerHTML = originalText;
+      }
+    }
+
     // ==========================================================
     //  投稿処理（APIと同一request_idでの再送）
     // ==========================================================
     async function handleSubmit(e) {
       e.preventDefault();
+
+      if (duplicateDraft) return handleDuplicateSubmit(e);
 
       if (submissionInFlight || imageProcessingCount > 0) return;
       const submitBtn = document.getElementById('submitBtn');
@@ -2909,6 +3146,8 @@ Qバブ召喚
         comment: typeof data.comment === 'string' ? data.comment : '',
         timestamp: typeof data.timestamp === 'string' && Number.isFinite(Date.parse(data.timestamp)) ? data.timestamp : '',
         images: images.slice(0, MAX_IMAGES).map(validateFormationImageUrl),
+        // 画像が無効でもslotを詰めず、元Firestore imagesのindexを保持する。
+        imageSourceIndexes: images.slice(0, MAX_IMAGES).map((_, index) => index),
         imageCaptions,
         tags: Array.isArray(data.tags) ? data.tags.filter(t => typeof t === 'string').slice(0, 20) : [],
         addenda
@@ -2929,6 +3168,7 @@ Qバブ召喚
         const id = button.dataset.postId;
         if (!isSafePostId(id)) return;
         if (button.dataset.action === 'favorite') button.addEventListener('click', () => toggleFavorite(id, button));
+        if (button.dataset.action === 'duplicate') button.addEventListener('click', () => beginDuplicateDraft(id));
         if (button.dataset.action === 'addendum') button.addEventListener('click', () => toggleAddendumUI(id));
         if (button.dataset.action === 'delete') {
           button.disabled = deletingPostIds.has(id);
@@ -3229,6 +3469,8 @@ Qバブ召喚
                   <span>${isFav ? '★' : '☆'}</span>
                   <span>${isFav ? '登録済' : 'お気に入り'}</span>
                 </button>
+
+                <button type="button" data-action="duplicate" data-post-id="${p.id}" title="この投稿を複製して新しく投稿" style="background:rgba(139,92,246,0.12); border:1px solid rgba(139,92,246,0.3); color:#c4b5fd; padding:3px 8px; border-radius:6px; font-size:0.75rem; cursor:pointer;">複製</button>
 
                 ${isMine ? `
                   <button type="button" class="post-addendum-btn" data-action="addendum" data-post-id="${p.id}" title="補足情報を追記" style="background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); color: var(--violet-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px; cursor: pointer;">
