@@ -8334,9 +8334,9 @@ def update_formation_transaction(
         public_snapshot = public_ref.get(transaction=txn)
         if not public_snapshot.exists:
             raise PortalAPIError(404, "POST_NOT_FOUND", "指定された投稿が見つかりません。")
-        
+
         public_data = _snapshot_data(public_snapshot)
-        
+
         existing_images = public_data.get("images", [])
         if len(image_captions) > len(existing_images):
             raise PortalAPIError(422, "INVALID_INPUT", "画像キャプションの数が画像の数を超えています。")
@@ -8344,12 +8344,12 @@ def update_formation_transaction(
         existing_comment = public_data.get("comment", "")
         existing_tags = public_data.get("tags", [])
         existing_captions = public_data.get("imageCaptions", [])
-        
+
         if existing_comment == comment and existing_tags == tags and existing_captions == image_captions:
             return {"replayed": False, "updated_at": public_data.get("updatedAt")}
-            
+
         updated_at_str = now.isoformat().replace("+00:00", "Z")
-        
+
         txn.set(public_ref, {
             "comment": comment,
             "tags": tags,
@@ -8360,7 +8360,7 @@ def update_formation_transaction(
             "last_edit_request_id": request_id_str,
             "last_edit_payload_hash": payload_hash,
         }, merge=True)
-        
+
         return {"replayed": False, "updated_at": updated_at_str}
 
     try:
@@ -8484,15 +8484,15 @@ def update_formation(
     comment, tags = validate_formation_update_payload(request, category)
     captions = request.imageCaptions
     payload_hash = build_formation_update_payload_hash(comment, tags, captions)
-    
+
     consume_portal_quota("formation_update", secret_hash, per_limit=10, global_limit=100)
     now = datetime.now(timezone.utc)
-    
+
     result = update_formation_transaction(
         category, post_id, secret_hash, str(request.request_id),
         comment, tags, captions, payload_hash, now
     )
-    
+
     status_code = 200
     return JSONResponse(
         status_code=status_code,
