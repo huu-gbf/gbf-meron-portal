@@ -276,6 +276,28 @@ def patch_api(client, category="gw", post_id=POST_ID, value=None, secret=DELETE_
     )
 
 
+def test_openapi_exposes_required_secret_header_and_body_contract():
+    schema = main.app.openapi()
+    operation = schema["paths"]["/api/formations/{category}/{post_id}"]["patch"]
+    parameters = operation["parameters"]
+
+    secret_header = next(
+        parameter for parameter in parameters
+        if parameter["in"] == "header" and parameter["name"] == "X-Delete-Secret"
+    )
+    assert secret_header["required"] is True
+    assert {
+        parameter["name"] for parameter in parameters if parameter["in"] == "path"
+    } == {"category", "post_id"}
+
+    body_reference = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    body_schema = schema["components"]["schemas"][body_reference.rsplit("/", 1)[-1]]
+    assert set(body_schema["properties"]) == {
+        "request_id", "comment", "tags", "imageCaptions",
+    }
+    assert "delete_secret" not in body_schema["properties"]
+
+
 def setup_db(database, category="gw", post_id=POST_ID, public_data=None, private_data=None):
     public_path, private_path, _ = paths(category, post_id)
     if public_data is not None:
@@ -369,7 +391,7 @@ def test_correct_header_secret_succeeds_and_body_secret_is_not_accepted(client, 
     database.data.clear()
     setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
     body_secret = payload(delete_secret=DELETE_SECRET)
-    assert patch_api(client, value=body_secret, secret=None).status_code == 422
+    assert patch_api(client, value=body_secret).status_code == 422
 
 
 def test_secret_and_private_document_failures(client, portal):
@@ -377,7 +399,7 @@ def test_secret_and_private_document_failures(client, portal):
     setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
     wrong_secret = base64.urlsafe_b64encode(b"a" * 32).rstrip(b"=").decode("ascii")
 
-    assert patch_api(client, secret=None).status_code == 401
+    assert patch_api(client, secret=None).status_code == 422
     assert patch_api(client, secret="invalid").status_code == 401
     assert patch_api(client, secret=wrong_secret).status_code == 403
 

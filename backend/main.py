@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
     HTTPException,
+    Header,
     Request,
     Response,
     UploadFile,
@@ -8265,9 +8266,8 @@ def get_addendum_secret_hash(http_request: Request) -> str:
         raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "追記権限を確認してください。") from None
 
 
-def get_update_secret_hash(http_request: Request) -> str:
+def get_update_secret_hash(delete_secret: str) -> str:
     """Read the existing ownership secret from the standard header."""
-    delete_secret = http_request.headers.get("x-delete-secret")
     if not delete_secret:
         consume_portal_quota("formation_update", None, global_limit=100)
         raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "編集権限を確認してください。")
@@ -8474,13 +8474,14 @@ def add_formation_addendum_transaction(
 @app.patch("/api/formations/{category}/{post_id}")
 def update_formation(
     category: str, post_id: str,
-    request: FormationUpdateRequest, http_request: Request,
+    request: FormationUpdateRequest,
+    x_delete_secret: Annotated[str, Header(alias="X-Delete-Secret")],
 ):
     if category not in PUSH_FORMATIONS:
         raise PortalAPIError(404, "CATEGORY_NOT_FOUND", "指定された投稿カテゴリはありません。")
     require_portal_writes_enabled()
     post_id = validate_delete_post_id(post_id)
-    secret_hash = get_update_secret_hash(http_request)
+    secret_hash = get_update_secret_hash(x_delete_secret)
     comment, tags = validate_formation_update_payload(request, category)
     captions = request.imageCaptions
     payload_hash = build_formation_update_payload_hash(comment, tags, captions)
