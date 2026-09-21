@@ -975,6 +975,22 @@
       animation: card-enter 0.35s ease;
     }
 
+    @keyframes direct-highlight {
+      0% { box-shadow: 0 0 0 rgba(139, 92, 246, 0); border-color: var(--border-gold); }
+      15% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.6); border-color: var(--violet-400); }
+      100% { box-shadow: 0 0 0 rgba(139, 92, 246, 0); border-color: var(--border-gold); }
+    }
+    .direct-link-highlight {
+      animation: direct-highlight 3s ease-out;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .direct-link-highlight {
+        animation: none;
+        border-color: var(--violet-400);
+        transition: border-color 3s ease-out;
+      }
+    }
+
     /* ===== レスポンシブ ===== */
     @media (max-width: 540px) {
       .preview-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1597,6 +1613,16 @@ Qバブ召喚
     let memoryPosts = null;
     let snapshotIds = new Set();
     const awaitingSnapshotIds = new Set();
+
+    let directTargetPostId = null;
+    const directTargetUrlPostId = urlParams.get('post');
+    if (isSafePostId(directTargetUrlPostId)) {
+      directTargetPostId = directTargetUrlPostId;
+    }
+    let directTargetScrolled = false;
+    let directTargetNotFoundShown = false;
+    let hasConfirmedServerSnapshot = false;
+
     let pendingSubmission = null;
     let submissionInFlight = false;
     const deletingPostIds = new Set();
@@ -2344,6 +2370,10 @@ Qバブ召喚
           // includeMetadataChanges により、同じ空集合でも server 確認後の snapshot を受け取る。
           if (isUnconfirmedEmptyCacheSnapshot(snapshot)) return;
 
+          if (!snapshot.metadata.fromCache) {
+            hasConfirmedServerSnapshot = true;
+          }
+
           const remoteFormations = [];
           snapshot.forEach((doc) => {
             const post = normalizeRemoteFormation(doc);
@@ -2391,6 +2421,38 @@ Qバブ召喚
     let currentFormationFilter = 'all'; // 'all' | 'favorites'
     let currentSearchQuery = ''; // 現在の検索文字列（正規化前の生テキスト）
     let isMyPostsFilterEnabled = false;
+
+    function copyDirectLink(postId) {
+      const url = window.location.origin + window.location.pathname + '?category=' + encodeURIComponent(category) + '&post=' + encodeURIComponent(postId);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          showSubmissionStatus('🔗 リンクをコピーしました');
+        }).catch(err => {
+          console.warn('Clipboard API error', err);
+          fallbackCopyDirectLink(url);
+        });
+      } else {
+        fallbackCopyDirectLink(url);
+      }
+    }
+
+    function fallbackCopyDirectLink(url) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = url;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showSubmissionStatus('🔗 リンクをコピーしました');
+      } catch (e) {
+        console.error('Fallback copy error', e);
+        showSubmissionStatus('リンクをコピーできませんでした');
+      }
+    }
 
     function getMyFavorites() {
       try {
@@ -3473,6 +3535,7 @@ Qバブ召喚
       list.querySelectorAll('[data-action]').forEach(button => {
         const id = button.dataset.postId;
         if (!isSafePostId(id)) return;
+        if (button.dataset.action === 'share') button.addEventListener('click', () => copyDirectLink(id));
         if (button.dataset.action === 'favorite') button.addEventListener('click', () => toggleFavorite(id, button));
         if (button.dataset.action === 'duplicate') button.addEventListener('click', () => beginDuplicateDraft(id));
         if (button.dataset.action === 'edit') button.addEventListener('click', () => beginEditPost(id));
@@ -3629,6 +3692,21 @@ Qバブ召喚
         }
       }
 
+      // 直接共有URLの初回表示時: 対象が存在すれば強制的にフィルターを全表示状態にリセット
+      if (directTargetPostId && !directTargetScrolled && isInitialLoadDone) {
+        const targetExistsInAll = allPosts.some(p => p.id === directTargetPostId);
+        if (targetExistsInAll) {
+          currentFormationFilter = 'all';
+          isMyPostsFilterEnabled = false;
+          viewerSelectedTags = [];
+          currentSearchQuery = '';
+          const searchInput = document.getElementById('formationSearchInput');
+          if (searchInput) searchInput.value = '';
+          const searchClearBtn = document.getElementById('searchClearBtn');
+          if (searchClearBtn) searchClearBtn.style.display = 'none';
+        }
+      }
+
       // フィルター適用（お気に入り）
       let posts = currentFormationFilter === 'favorites'
         ? allPosts.filter(p => favs.includes(p.id))
@@ -3719,6 +3797,14 @@ Qバブ召喚
           `;
         }
         return;
+      }
+
+      if (directTargetPostId && isInitialLoadDone && hasConfirmedServerSnapshot && !directTargetScrolled && !directTargetNotFoundShown) {
+        const targetExistsInAll = allPosts.some(p => p.id === directTargetPostId);
+        if (!targetExistsInAll) {
+          showSubmissionStatus('共有された投稿が見つかりません。削除された可能性があります。');
+          directTargetNotFoundShown = true;
+        }
       }
 
       listEl.innerHTML = posts.map(p => {
@@ -3842,7 +3928,7 @@ Qバブ召喚
         }
 
         return `
-          <div class="post-card${textOnlyClass}">
+          <div class="post-card${textOnlyClass}" id="post-card-${p.id}">
             <div class="post-card-header">
               <div class="post-user">
                 <div class="post-avatar">${esc(p.name.charAt(0))}</div>
@@ -3853,6 +3939,17 @@ Qバブ召喚
               </div>
               <div class="post-actions" style="display: flex; align-items: center; gap: 6px;">
                 ${hasImages ? `<span class="post-img-badge">📷 ${images.length}枚</span>` : ''}
+
+                <!-- 共有ボタン -->
+                <button
+                  type="button"
+                  data-action="share" data-post-id="${p.id}"
+                  style="font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 3px; border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.1); color: #34d399;"
+                  title="この投稿への直接リンクをコピー"
+                >
+                  <span>🔗</span>
+                  <span>共有</span>
+                </button>
 
                 <!-- お気に入りボタン -->
                 <button
@@ -3890,6 +3987,19 @@ Qバブ召喚
         `;
       }).join('');
       bindPostActions();
+
+      // 直接共有URLの初回スクロール
+      if (directTargetPostId && !directTargetScrolled && isInitialLoadDone) {
+        const targetCard = document.getElementById('post-card-' + directTargetPostId);
+        if (targetCard) {
+          setTimeout(() => {
+            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetCard.classList.add('direct-link-highlight');
+            setTimeout(() => targetCard.classList.remove('direct-link-highlight'), 3500);
+          }, 100);
+          directTargetScrolled = true;
+        }
+      }
     }
 
     // ==========================================================
