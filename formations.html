@@ -623,6 +623,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
       padding: 16px 20px 12px;
     }
     .post-user {
@@ -660,6 +662,7 @@
       gap: 8px;
       flex-wrap: wrap;
       justify-content: flex-end;
+      min-width: 0;
     }
     .post-img-badge {
       font-size: 0.7rem;
@@ -683,6 +686,50 @@
     .post-delete-btn:hover {
       color: var(--rose-400);
       background: rgba(251, 113, 133, 0.08);
+    }
+
+    .post-edit-area {
+      margin: 0 16px 14px;
+      padding: 14px;
+      border: 1px solid rgba(96, 165, 250, 0.28);
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.72);
+      min-width: 0;
+    }
+    .post-edit-textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      border-radius: 6px;
+      background: rgba(2, 6, 23, 0.65);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #f1f5f9;
+      resize: vertical;
+    }
+    .post-edit-images {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .post-edit-image {
+      min-width: 0;
+    }
+    .post-edit-image img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #020617;
+      margin-bottom: 6px;
+    }
+    .post-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
     }
 
     /* カード画像グリッド */
@@ -1553,9 +1600,13 @@ Qバブ召喚
     let pendingSubmission = null;
     let submissionInFlight = false;
     const deletingPostIds = new Set();
+    let editingPostId = null;
+    let editDraft = null;
+    let pendingEditSubmission = null;
+    let editSubmissionInFlight = false;
 
     window.addEventListener('beforeunload', (event) => {
-      if (!pendingSubmission && !pendingDuplicateSubmission) return;
+      if (!pendingSubmission && !pendingDuplicateSubmission && !editingPostId && !pendingEditSubmission) return;
       event.preventDefault();
       event.returnValue = '';
     });
@@ -2752,6 +2803,236 @@ Qバブ召喚
       msg.classList.add('visible');
     }
 
+    function canonicalizeFormationTags(tags) {
+      const allowed = new Set([
+        ...AVAILABLE_TAGS.attributes, ...AVAILABLE_TAGS.types, ...AVAILABLE_TAGS.styles,
+        ...(AVAILABLE_TAGS.categories[category] || [])
+      ]);
+      const unique = [];
+      for (const tag of Array.isArray(tags) ? tags : []) {
+        if (!allowed.has(tag) || unique.includes(tag)) continue;
+        const exclusive = AVAILABLE_TAGS.attributes.includes(tag) ? AVAILABLE_TAGS.attributes
+          : AVAILABLE_TAGS.types.includes(tag) ? AVAILABLE_TAGS.types : [];
+        if (exclusive.some(existing => unique.includes(existing))) continue;
+        unique.push(tag);
+      }
+      const rank = tag => AVAILABLE_TAGS.attributes.includes(tag) ? 10
+        : AVAILABLE_TAGS.types.includes(tag) ? 20
+          : AVAILABLE_TAGS.styles.includes(tag) ? 30 : 40;
+      return unique.sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
+    }
+
+    function editContentFromPost(post) {
+      const imageCount = Array.isArray(post.images) ? post.images.length : 0;
+      return {
+        comment: typeof post.comment === 'string' ? post.comment.trim() : '',
+        tags: canonicalizeFormationTags(post.tags),
+        imageCaptions: canonicalizeImageCaptions(post.imageCaptions, imageCount),
+        imageCount
+      };
+    }
+
+    function sameEditContent(a, b) {
+      return Boolean(a && b)
+        && a.comment === b.comment
+        && JSON.stringify(a.tags) === JSON.stringify(b.tags)
+        && JSON.stringify(a.imageCaptions) === JSON.stringify(b.imageCaptions);
+    }
+
+    function beginEditPost(postId) {
+      if (!isSafePostId(postId)) return;
+      if (editingPostId === postId) return;
+      if (editingPostId && editingPostId !== postId) {
+        showSubmissionStatus('編集中の投稿を保存またはキャンセルしてください。');
+        return;
+      }
+      const post = getPosts().find(item => item.id === postId);
+      if (!post || !isMyPost(post)) {
+        showSubmissionStatus('この端末ではこの投稿を編集できません。');
+        return;
+      }
+      const initial = editContentFromPost(post);
+      editingPostId = postId;
+      editDraft = {
+        postId,
+        comment: initial.comment,
+        tags: [...initial.tags],
+        imageCaptions: [...initial.imageCaptions],
+        imageCount: initial.imageCount,
+        initial,
+        message: ''
+      };
+      pendingEditSubmission = null;
+      renderPosts();
+    }
+
+    function updateEditComment(value) {
+      if (!editDraft) return;
+      editDraft.comment = value;
+      editDraft.message = '';
+      const count = document.getElementById('edit-comment-count-' + editDraft.postId);
+      if (count) count.textContent = Array.from(value).length;
+    }
+
+    function updateEditCaption(index, value) {
+      if (!editDraft || !Number.isSafeInteger(index) || index < 0 || index >= editDraft.imageCount) return;
+      if (editDraft.imageCaptions.length !== editDraft.imageCount) {
+        editDraft.imageCaptions = Array.from(
+          { length: editDraft.imageCount },
+          (_, slot) => typeof editDraft.imageCaptions[slot] === 'string' ? editDraft.imageCaptions[slot] : ''
+        );
+      }
+      editDraft.imageCaptions[index] = value;
+      editDraft.message = '';
+    }
+
+    function toggleEditTag(tag) {
+      if (!editDraft) return;
+      const allowed = [
+        ...AVAILABLE_TAGS.attributes, ...AVAILABLE_TAGS.types, ...AVAILABLE_TAGS.styles,
+        ...(AVAILABLE_TAGS.categories[category] || [])
+      ];
+      if (!allowed.includes(tag)) return;
+      if (editDraft.tags.includes(tag)) {
+        editDraft.tags = editDraft.tags.filter(item => item !== tag);
+      } else {
+        const exclusive = AVAILABLE_TAGS.attributes.includes(tag) ? AVAILABLE_TAGS.attributes
+          : AVAILABLE_TAGS.types.includes(tag) ? AVAILABLE_TAGS.types : [];
+        editDraft.tags = editDraft.tags.filter(item => !exclusive.includes(item));
+        editDraft.tags.push(tag);
+      }
+      editDraft.tags = canonicalizeFormationTags(editDraft.tags);
+      editDraft.message = '';
+      renderPosts();
+    }
+
+    function cancelEditPost(postId) {
+      if (postId !== editingPostId || editSubmissionInFlight) return;
+      editingPostId = null;
+      editDraft = null;
+      pendingEditSubmission = null;
+      renderPosts();
+    }
+
+    function readEditContent() {
+      if (!editDraft || editDraft.postId !== editingPostId) throw new Error('編集内容を確認できません。');
+      return {
+        comment: editDraft.comment.trim(),
+        tags: canonicalizeFormationTags(editDraft.tags),
+        imageCaptions: canonicalizeImageCaptions(editDraft.imageCaptions, editDraft.imageCount)
+      };
+    }
+
+    function validateEditContent(content) {
+      if (Array.from(content.comment).length > 3000
+          || /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(editDraft.comment)) {
+        throw new Error('コメントは3000文字以内で、改行とタブ以外の制御文字を含めないでください。');
+      }
+      if (content.imageCaptions.length > MAX_IMAGES
+          || (content.imageCaptions.length && content.imageCaptions.length !== editDraft.imageCount)) {
+        throw new Error('画像の説明の件数を確認してください。');
+      }
+      for (const caption of content.imageCaptions) {
+        if (Array.from(caption).length > 20 || /[\u0000-\u001f\u007f-\u009f]/.test(caption)) {
+          throw new Error('各画像の説明は20文字以内で入力してください。');
+        }
+      }
+    }
+
+    function editErrorMessage(status, code) {
+      if (code === 'REQUEST_ID_CONFLICT') return '編集内容が競合しました。内容を確認して、もう一度保存してください。';
+      return ({
+        401: 'この端末ではこの投稿を編集できません。',
+        403: 'この端末ではこの投稿を編集できません。',
+        404: '編集対象の投稿が見つかりません。',
+        410: 'この投稿は削除済みです。',
+        422: '編集内容を確認してください。',
+        429: '短時間に操作が集中しています。少し待ってから再試行してください。'
+      })[status] || '編集結果を確認できません。内容を変更せず再試行してください。';
+    }
+
+    async function submitEditPost(postId) {
+      if (postId !== editingPostId || !editDraft || editSubmissionInFlight) return;
+      const secret = readDeleteSecret(category, postId);
+      if (!secret) {
+        editDraft.message = 'この端末ではこの投稿を編集できません。';
+        renderPosts();
+        return;
+      }
+
+      let current;
+      try {
+        current = readEditContent();
+        validateEditContent(current);
+      } catch (error) {
+        editDraft.message = error?.message || '編集内容を確認してください。';
+        renderPosts();
+        return;
+      }
+      if (sameEditContent(current, editDraft.initial)) {
+        pendingEditSubmission = null;
+        editDraft.message = '変更はありません。';
+        renderPosts();
+        return;
+      }
+
+      if (!pendingEditSubmission || pendingEditSubmission.postId !== postId
+          || !sameEditContent(current, pendingEditSubmission)) {
+        pendingEditSubmission = {
+          postId,
+          request_id: createRequestId(),
+          comment: current.comment,
+          tags: [...current.tags],
+          imageCaptions: [...current.imageCaptions],
+          uncertain: false
+        };
+      }
+      const pending = pendingEditSubmission;
+      const body = JSON.stringify({
+        request_id: pending.request_id,
+        comment: pending.comment,
+        tags: pending.tags,
+        imageCaptions: pending.imageCaptions
+      });
+
+      editSubmissionInFlight = true;
+      editDraft.message = '保存中…';
+      renderPosts();
+      try {
+        const response = await fetch(formationApiUrl(postId), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-Delete-Secret': secret },
+          body,
+          credentials: 'omit'
+        });
+        let result;
+        try { result = await response.json(); } catch { /* status or malformed response handling below */ }
+        if (response.status !== 200) {
+          const code = result?.error?.code;
+          pending.uncertain = response.status >= 500;
+          if (response.status >= 400 && response.status < 500) pendingEditSubmission = null;
+          if (editDraft) editDraft.message = editErrorMessage(response.status, code);
+          return;
+        }
+        if (!result || result.id !== postId || result.category !== category
+            || typeof result.replayed !== 'boolean') {
+          pending.uncertain = true;
+          if (editDraft) editDraft.message = '編集結果を確認できません。内容を変更せず再試行してください。';
+          return;
+        }
+        editingPostId = null;
+        editDraft = null;
+        pendingEditSubmission = null;
+        showSubmissionStatus('編集を保存しました。一覧への反映を待っています。');
+      } catch {
+        pending.uncertain = true;
+        if (editDraft) editDraft.message = '通信結果を確認できませんでした。内容を変更せず再送してください。';
+      } finally {
+        editSubmissionInFlight = false;
+        renderPosts();
+      }
+    }
+
     function requestErrorMessage(status) {
       return ({
         413: '画像を減らして、もう一度投稿してください。',
@@ -3139,6 +3420,12 @@ Qバブ召喚
 
     function normalizeFormation(id, data) {
       if (!isSafePostId(id) || !data || typeof data !== 'object' || Array.isArray(data)) return null;
+      const normalizeDateValue = value => {
+        try {
+          const candidate = value && typeof value.toDate === 'function' ? value.toDate().toISOString() : value;
+          return typeof candidate === 'string' && Number.isFinite(Date.parse(candidate)) ? candidate : '';
+        } catch { return ''; }
+      };
       const images = Array.isArray(data.images) ? data.images : typeof data.image === 'string' ? [data.image] : [];
       const imageCaptions = Array.isArray(data.imageCaptions)
         ? data.imageCaptions.map(c => typeof c === 'string' ? c.trim() : '').slice(0, MAX_IMAGES)
@@ -3162,7 +3449,8 @@ Qバブ召喚
         id,
         name: typeof data.name === 'string' && data.name ? data.name : '名前不明',
         comment: typeof data.comment === 'string' ? data.comment : '',
-        timestamp: typeof data.timestamp === 'string' && Number.isFinite(Date.parse(data.timestamp)) ? data.timestamp : '',
+        timestamp: normalizeDateValue(data.timestamp),
+        updatedAt: normalizeDateValue(data.updatedAt),
         images: images.slice(0, MAX_IMAGES).map(validateFormationImageUrl),
         // 画像が無効でもslotを詰めず、元Firestore imagesのindexを保持する。
         imageSourceIndexes: images.slice(0, MAX_IMAGES).map((_, index) => index),
@@ -3187,11 +3475,15 @@ Qバブ召喚
         if (!isSafePostId(id)) return;
         if (button.dataset.action === 'favorite') button.addEventListener('click', () => toggleFavorite(id, button));
         if (button.dataset.action === 'duplicate') button.addEventListener('click', () => beginDuplicateDraft(id));
+        if (button.dataset.action === 'edit') button.addEventListener('click', () => beginEditPost(id));
         if (button.dataset.action === 'addendum') button.addEventListener('click', () => toggleAddendumUI(id));
         if (button.dataset.action === 'delete') {
-          button.disabled = deletingPostIds.has(id);
+          button.disabled = deletingPostIds.has(id) || editingPostId === id;
           button.addEventListener('click', () => deletePost(id, button));
         }
+      });
+      list.querySelectorAll('[data-edit-tag]').forEach(button => {
+        button.addEventListener('click', () => toggleEditTag(button.dataset.editTag));
       });
       list.querySelectorAll('[data-image-slot]').forEach(slot => {
         const post = getPosts().find(item => item.id === slot.dataset.postId);
@@ -3225,6 +3517,68 @@ Qバブ召喚
           textEl.value = pending.text;
         }
       });
+    }
+
+    function renderEditTagSelection() {
+      if (!editDraft) return '';
+      const groups = [
+        ['属性 (最大1つ)', AVAILABLE_TAGS.attributes],
+        ['編成タイプ (最大1つ)', AVAILABLE_TAGS.types],
+        ['戦い方 (複数可)', AVAILABLE_TAGS.styles],
+        ['用途 (複数可)', AVAILABLE_TAGS.categories[category] || []]
+      ];
+      return groups.filter(([, tags]) => tags.length).map(([title, tags]) => `
+        <div class="tag-group">
+          <div class="tag-group-title">${title}</div>
+          <div class="tag-list">
+            ${tags.map(tag => `<button type="button" class="tag-btn${editDraft.tags.includes(tag) ? ' selected' : ''}" data-edit-tag="${esc(tag)}">${esc(tag)}</button>`).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderEditArea(post) {
+      if (!editDraft || editingPostId !== post.id || editDraft.postId !== post.id) return '';
+      const imageEditors = (post.images || []).map((src, slot) => {
+        const valid = validateFormationImageUrl(src);
+        const sourceIndex = post.imageSourceIndexes?.[slot];
+        if (!Number.isSafeInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= editDraft.imageCount) return '';
+        const caption = typeof editDraft.imageCaptions[sourceIndex] === 'string' ? editDraft.imageCaptions[sourceIndex] : '';
+        return `
+          <div class="post-edit-image">
+            ${valid
+              ? `<img src="${esc(valid)}" alt="画像${sourceIndex + 1}のプレビュー">`
+              : `<div style="display:flex; align-items:center; justify-content:center; aspect-ratio:4/3; border-radius:8px; background:#020617; color:var(--text-muted); font-size:0.72rem; margin-bottom:6px;">画像を表示できません</div>`}
+            <input type="text" class="preview-caption-input" maxlength="20"
+              value="${esc(caption)}" aria-label="画像${sourceIndex + 1}の説明"
+              placeholder="画像の説明（20文字以内）"
+              oninput="updateEditCaption(${sourceIndex}, this.value)">
+          </div>
+        `;
+      }).join('');
+      const isInformationalMessage = ['変更はありません。', '保存中…'].includes(editDraft.message);
+      const message = editDraft.message
+        ? `<div style="margin-top:8px; color:${isInformationalMessage ? 'var(--text-muted)' : 'var(--rose-400)'}; font-size:0.75rem;">${esc(editDraft.message)}</div>`
+        : '';
+      return `
+        <div class="post-edit-area" data-edit-post-id="${post.id}">
+          <div style="font-size:0.82rem; font-weight:700; color:#bfdbfe; margin-bottom:8px;">投稿を編集</div>
+          <textarea class="post-edit-textarea" id="edit-comment-${post.id}" rows="4" maxlength="3000"
+            oninput="updateEditComment(this.value)">${esc(editDraft.comment)}</textarea>
+          <div style="text-align:right; font-size:0.7rem; color:var(--text-muted); margin:3px 0 10px;">
+            <span id="edit-comment-count-${post.id}">${Array.from(editDraft.comment).length}</span> / 3000
+          </div>
+          <div class="tag-selection-area" style="margin-bottom:0;">${renderEditTagSelection()}</div>
+          ${imageEditors ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:12px;">画像は変更できません。説明のみ編集できます。</div><div class="post-edit-images">${imageEditors}</div>` : ''}
+          ${message}
+          <div class="post-edit-actions">
+            <button type="button" onclick="cancelEditPost('${post.id}')" ${editSubmissionInFlight ? 'disabled' : ''}
+              style="padding:6px 12px; border-radius:6px; background:transparent; border:1px solid rgba(148,163,184,0.5); color:var(--text-muted); cursor:pointer;">キャンセル</button>
+            <button type="button" onclick="submitEditPost('${post.id}')" ${editSubmissionInFlight ? 'disabled' : ''}
+              style="padding:6px 12px; border-radius:6px; background:#2563eb; border:none; color:#fff; font-weight:700; cursor:pointer;">${editSubmissionInFlight ? '保存中…' : '保存'}</button>
+          </div>
+        </div>
+      `;
     }
 
     function renderPosts() {
@@ -3370,6 +3724,11 @@ Qバブ召喚
       listEl.innerHTML = posts.map(p => {
         const d = new Date(p.timestamp);
         const dateStr = p.timestamp ? `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}` : '日時不明';
+        const updated = new Date(p.updatedAt);
+        const updatedDateStr = p.updatedAt && Number.isFinite(updated.getTime())
+          ? `${updated.getFullYear()}/${pad(updated.getMonth()+1)}/${pad(updated.getDate())} ${pad(updated.getHours())}:${pad(updated.getMinutes())}`
+          : '';
+        const dateDisplay = updatedDateStr ? `${dateStr} ・ 編集 ${updatedDateStr}` : dateStr;
 
         // 過去データ互換
         const images = (p.images && Array.isArray(p.images)) ? p.images : (p.image ? [p.image] : []);
@@ -3431,6 +3790,7 @@ Qバブ召喚
 
         const isMine = isMyPost(p);
         const isFav = isFavorite(p.id);
+        const editHtml = isMine ? renderEditArea(p) : '';
 
         let addendaHtml = '';
         if (p.addenda && p.addenda.length > 0) {
@@ -3488,7 +3848,7 @@ Qバブ召喚
                 <div class="post-avatar">${esc(p.name.charAt(0))}</div>
                 <div>
                   <div class="post-user-name">${esc(p.name)}</div>
-                  <div class="post-user-date">${dateStr}</div>
+                  <div class="post-user-date">${dateDisplay}</div>
                 </div>
               </div>
               <div class="post-actions" style="display: flex; align-items: center; gap: 6px;">
@@ -3508,6 +3868,7 @@ Qバブ召喚
                 <button type="button" data-action="duplicate" data-post-id="${p.id}" title="この投稿を複製して新しく投稿" style="background:rgba(139,92,246,0.12); border:1px solid rgba(139,92,246,0.3); color:#c4b5fd; padding:3px 8px; border-radius:6px; font-size:0.75rem; cursor:pointer;">複製</button>
 
                 ${isMine ? `
+                  <button type="button" data-action="edit" data-post-id="${p.id}" title="自分の投稿を編集" style="background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.3); color:#93c5fd; padding:3px 8px; border-radius:6px; font-size:0.75rem; cursor:pointer;">✏️ 編集</button>
                   <button type="button" class="post-addendum-btn" data-action="addendum" data-post-id="${p.id}" title="補足情報を追記" style="background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.2); color: var(--violet-400); padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; display: flex; align-items: center; gap: 3px; cursor: pointer;">
                     <span>✍️</span>
                     <span>追記</span>
@@ -3522,6 +3883,7 @@ Qバブ召喚
             ${imagesHtml}
             ${tagsHtml}
             ${commentHtml}
+            ${editHtml}
             ${addendaHtml}
             ${addendumInputHtml}
           </div>
