@@ -7806,6 +7806,14 @@ class FormationDuplicateImageItem(BaseModel):
         return self
 
 
+class FormationUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID4
+    delete_secret: StrictStr
+    comment: StrictStr
+    tags: list[StrictStr] | None = None
+    imageCaptions: list[Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=20)]] = Field(default_factory=list, max_length=10)
+
 class FormationDuplicateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID4
@@ -7833,6 +7841,40 @@ class FormationDuplicateRequest(BaseModel):
         self.imageCaptions = self.imageCaptions if any(self.imageCaptions) else []
         return self
 
+
+def validate_formation_update_payload(request: FormationUpdateRequest, category: str) -> tuple[str, list[str]]:
+    if _has_disallowed_control(request.comment, {"\n", "\t"}):
+        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
+    comment = request.comment.strip()
+    if len(comment) > 3000:
+        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
+
+    tags_in = request.tags or []
+    allowed_tags = TAGS_ELEMENT | TAGS_SUMMON | TAGS_PLAYSTYLE
+    if category == "gw":
+        allowed_tags |= TAGS_GW
+    elif category == "multi":
+        allowed_tags |= TAGS_MULTI
+
+    validated_tags = set()
+    element_count = 0
+    summon_count = 0
+
+    for tag in tags_in:
+        if tag not in allowed_tags:
+            raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
+        if tag in TAGS_ELEMENT and tag not in validated_tags:
+            element_count += 1
+        if tag in TAGS_SUMMON and tag not in validated_tags:
+            summon_count += 1
+        validated_tags.add(tag)
+
+    if element_count > 1:
+        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
+    if summon_count > 1:
+        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
+
+    return comment, sorted(validated_tags)
 
 def validate_duplicate_uploads(request: FormationDuplicateRequest, category: str):
     """Use the normal create validator for name, comment, tags and JPEG uploads."""
@@ -8215,6 +8257,92 @@ def get_addendum_secret_hash(http_request: Request) -> str:
         raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "追記権限を確認してください。") from None
 
 
+def update_formation_transaction(
+    category: str,
+    post_id: str,
+    secret_hash: str,
+    request_id_str: str,
+    comment: str,
+    tags: list[str],
+    image_captions: list[str],
+    now: datetime,
+) -> dict:
+    portal = get_portal_db()
+    event_id = f"{category}_{post_id}"
+    public_ref = portal.collection(PUSH_FORMATIONS[category]).document(post_id)
+    private_ref = portal.collection("formation_private").document(event_id)
+
+    @firestore.transactional
+    def update(txn):
+        private_snapshot = private_ref.get(transaction=txn)
+        if not private_snapshot.exists:
+            raise PortalAPIError(403, "NOT_AUTHORIZED", "この投稿を編集する権限がありません。")
+        private_data = _snapshot_data(private_snapshot)
+
+        if private_data.get("schema_version") != 1:
+            _formation_store_inconsistent()
+
+        stored_hash = private_data.get("delete_secret_hash")
+        if not isinstance(stored_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", stored_hash):
+            _formation_store_inconsistent()
+        if not hmac.compare_digest(stored_hash, secret_hash):
+            raise PortalAPIError(403, "NOT_AUTHORIZED", "この投稿を編集する権限がありません。")
+
+        if private_data.get("deleted_at") is not None:
+            raise PortalAPIError(410, "POST_DELETED", "削除済みの投稿です。")
+
+        last_edit = private_data.get("last_edit_request_id")
+        if last_edit == request_id_str:
+            public_snapshot = public_ref.get(transaction=txn)
+            if not public_snapshot.exists:
+                raise PortalAPIError(404, "POST_NOT_FOUND", "指定された投稿が見つかりません。")
+            public_data = _snapshot_data(public_snapshot)
+            return {"replayed": True, "updated_at": public_data.get("updatedAt")}
+
+        public_snapshot = public_ref.get(transaction=txn)
+        if not public_snapshot.exists:
+            raise PortalAPIError(404, "POST_NOT_FOUND", "指定された投稿が見つかりません。")
+        
+        public_data = _snapshot_data(public_snapshot)
+        
+        existing_images = public_data.get("images", [])
+        if len(image_captions) > len(existing_images):
+            raise PortalAPIError(422, "INVALID_INPUT", "画像キャプションの数が画像の数を超えています。")
+
+        existing_comment = public_data.get("comment", "")
+        existing_tags = public_data.get("tags", [])
+        existing_captions = public_data.get("imageCaptions", [])
+        
+        if existing_comment == comment and existing_tags == tags and existing_captions == image_captions:
+            txn.set(private_ref, {"last_edit_request_id": request_id_str}, merge=True)
+            return {"replayed": False, "updated_at": public_data.get("updatedAt")}
+            
+        updated_at_str = now.isoformat().replace("+00:00", "Z")
+        
+        txn.set(public_ref, {
+            "comment": comment,
+            "tags": tags,
+            "imageCaptions": image_captions,
+            "updatedAt": updated_at_str
+        }, merge=True)
+        txn.set(private_ref, {"last_edit_request_id": request_id_str}, merge=True)
+        
+        return {"replayed": False, "updated_at": updated_at_str}
+
+    try:
+        return update(portal.transaction())
+    except PortalAPIError:
+        raise
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        print("Portal formation update store error")
+        raise PortalAPIError(
+            503,
+            "STORE_UNAVAILABLE",
+            "投稿を更新できません。しばらく待って再試行してください。",
+        ) from None
+
 def add_formation_addendum_transaction(
     category: str,
     post_id: str,
@@ -8308,6 +8436,34 @@ def add_formation_addendum_transaction(
             "追記を保存できません。しばらく待って再試行してください。",
         ) from None
 
+
+@app.patch("/api/formations/{category}/{post_id}")
+def update_formation(
+    category: str, post_id: str,
+    request: FormationUpdateRequest, http_request: Request,
+):
+    if category not in PUSH_FORMATIONS:
+        raise PortalAPIError(404, "CATEGORY_NOT_FOUND", "指定された投稿カテゴリはありません。")
+    require_portal_writes_enabled()
+    post_id = validate_delete_post_id(post_id)
+    secret_hash = hash_delete_secret(request.delete_secret)
+    comment, tags = validate_formation_update_payload(request, category)
+    captions = request.imageCaptions
+    
+    consume_portal_quota("formation_update", secret_hash, per_limit=10, global_limit=100)
+    now = datetime.now(timezone.utc)
+    
+    result = update_formation_transaction(
+        category, post_id, secret_hash, str(request.request_id),
+        comment, tags, captions, now
+    )
+    
+    status_code = 200
+    return JSONResponse(
+        status_code=status_code,
+        content={"id": post_id, "category": category, **result},
+        headers={"Cache-Control": "no-store"},
+    )
 
 @app.post("/api/formations/{category}/{post_id}/addenda")
 def add_formation_addendum(
