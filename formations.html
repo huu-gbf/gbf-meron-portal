@@ -2437,19 +2437,28 @@ Qバブ召喚
     }
 
     function fallbackCopyDirectLink(url) {
+      let textarea;
+      let copied = false;
       try {
-        const textarea = document.createElement('textarea');
+        textarea = document.createElement('textarea');
         textarea.value = url;
         textarea.setAttribute('readonly', '');
         textarea.style.position = 'absolute';
         textarea.style.left = '-9999px';
         document.body.appendChild(textarea);
         textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        showSubmissionStatus('🔗 リンクをコピーしました');
+        copied = document.execCommand('copy');
       } catch (e) {
         console.error('Fallback copy error', e);
+      } finally {
+        if (textarea && textarea.parentNode) {
+          textarea.parentNode.removeChild(textarea);
+        }
+      }
+
+      if (copied) {
+        showSubmissionStatus('🔗 リンクをコピーしました');
+      } else {
         showSubmissionStatus('リンクをコピーできませんでした');
       }
     }
@@ -3704,6 +3713,33 @@ Qバブ召喚
           if (searchInput) searchInput.value = '';
           const searchClearBtn = document.getElementById('searchClearBtn');
           if (searchClearBtn) searchClearBtn.style.display = 'none';
+
+          // フィルターボタン表示同期
+          const filterBtnAll = document.getElementById('filterBtnAll');
+          const filterBtnFav = document.getElementById('filterBtnFav');
+          if (filterBtnAll && filterBtnFav) {
+            filterBtnAll.style.background = 'var(--violet-600, #7c3aed)';
+            filterBtnAll.style.color = '#fff';
+            filterBtnFav.style.background = 'transparent';
+            filterBtnFav.style.color = '#94a3b8';
+          }
+          const filterBtnMyPosts = document.getElementById('filterBtnMyPosts');
+          if (filterBtnMyPosts) {
+            filterBtnMyPosts.style.background = 'transparent';
+            filterBtnMyPosts.style.color = '#94a3b8';
+          }
+          document.querySelectorAll('#viewerTagContainer .filter-tag').forEach(t => t.classList.remove('selected'));
+          const clearTagsBtn = document.getElementById('clearViewerTagsBtn');
+          if (clearTagsBtn) clearTagsBtn.style.display = 'none';
+        }
+      }
+
+      // 直接共有URLが存在しない場合のメッセージ (削除後対応)
+      if (directTargetPostId && hasConfirmedServerSnapshot && !directTargetNotFoundShown) {
+        const targetExistsInAll = allPosts.some(p => p.id === directTargetPostId);
+        if (!targetExistsInAll) {
+          showSubmissionStatus('共有された投稿が見つかりません。削除された可能性があります。');
+          directTargetNotFoundShown = true;
         }
       }
 
@@ -3797,14 +3833,6 @@ Qバブ召喚
           `;
         }
         return;
-      }
-
-      if (directTargetPostId && isInitialLoadDone && hasConfirmedServerSnapshot && !directTargetScrolled && !directTargetNotFoundShown) {
-        const targetExistsInAll = allPosts.some(p => p.id === directTargetPostId);
-        if (!targetExistsInAll) {
-          showSubmissionStatus('共有された投稿が見つかりません。削除された可能性があります。');
-          directTargetNotFoundShown = true;
-        }
       }
 
       listEl.innerHTML = posts.map(p => {
@@ -3993,7 +4021,8 @@ Qバブ召喚
         const targetCard = document.getElementById('post-card-' + directTargetPostId);
         if (targetCard) {
           setTimeout(() => {
-            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            targetCard.scrollIntoView({ behavior: prefersReduced ? 'auto' : 'smooth', block: 'center' });
             targetCard.classList.add('direct-link-highlight');
             setTimeout(() => targetCard.classList.remove('direct-link-highlight'), 3500);
           }, 100);
