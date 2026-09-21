@@ -1416,6 +1416,18 @@ Qバブ召喚
               <span id="favCountBadge" style="font-size:0.65rem; padding:1px 6px; border-radius:10px; background:rgba(245,158,11,0.2); color:#fbbf24; display:none;">0</span>
             </button>
           </div>
+          <!-- 自分の投稿フィルター -->
+          <div style="display:inline-flex; padding:2px; background:rgba(15,23,42,0.9); border:1px solid rgba(51,65,85,0.8); border-radius:10px;">
+            <button
+              type="button"
+              id="filterBtnMyPosts"
+              onclick="toggleMyPostsFilter()"
+              style="padding:4px 10px; font-size:0.75rem; font-weight:700; border-radius:8px; border:none; cursor:pointer; background:transparent; color:#94a3b8; display:flex; align-items:center; gap:4px;"
+            >
+              <span style="color:#3b82f6">👤</span>
+              <span>自分の投稿</span>
+            </button>
+          </div>
 
 
           <button
@@ -2327,6 +2339,7 @@ Qバブ召喚
 
     let currentFormationFilter = 'all'; // 'all' | 'favorites'
     let currentSearchQuery = ''; // 現在の検索文字列（正規化前の生テキスト）
+    let isMyPostsFilterEnabled = false;
 
     function getMyFavorites() {
       try {
@@ -2381,6 +2394,11 @@ Qバブ召喚
 
     function setFormationFilter(filter) {
       currentFormationFilter = filter;
+      renderPosts();
+    }
+
+    function toggleMyPostsFilter() {
+      isMyPostsFilterEnabled = !isMyPostsFilterEnabled;
       renderPosts();
     }
 
@@ -3234,6 +3252,18 @@ Qバブ召喚
         }
       }
 
+      // 自分の投稿フィルターUI更新
+      const filterBtnMyPosts = document.getElementById('filterBtnMyPosts');
+      if (filterBtnMyPosts) {
+        if (isMyPostsFilterEnabled) {
+          filterBtnMyPosts.style.background = 'rgba(59, 130, 246, 0.2)';
+          filterBtnMyPosts.style.color = '#60a5fa'; // blue-400
+        } else {
+          filterBtnMyPosts.style.background = 'transparent';
+          filterBtnMyPosts.style.color = '#94a3b8';
+        }
+      }
+
       // お気に入り数バッジ
       const matchingFavCount = allPosts.filter(p => favs.includes(p.id)).length;
       if (favCountBadge) {
@@ -3249,6 +3279,11 @@ Qバブ召喚
       let posts = currentFormationFilter === 'favorites'
         ? allPosts.filter(p => favs.includes(p.id))
         : allPosts;
+
+      // フィルター適用（自分の投稿）
+      if (isMyPostsFilterEnabled) {
+        posts = posts.filter(p => isMyPost(p));
+      }
 
 
       // 文字検索フィルター適用
