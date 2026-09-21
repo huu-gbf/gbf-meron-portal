@@ -500,6 +500,42 @@ input.error {
 .pred-card.standard .pred-value { color: var(--blue); }
 .pred-card.caution .pred-value { color: var(--orange); }
 
+.reference-range {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(148,163,184,0.06);
+  border: 1px solid rgba(148,163,184,0.18);
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.reference-range-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+}
+
+.reference-range-value {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.reference-range-meta {
+  margin-top: 6px;
+  font-size: 0.68rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.reference-range-note {
+  margin-top: 2px;
+}
+
 /* Status Info Rows */
 .info-row {
   display: flex;
@@ -1079,6 +1115,17 @@ input.error {
       </div>
     </div>
 
+    <!-- Historical variation of the standard prediction's 12:00-24:00 added amount -->
+    <div class="reference-range" id="reference-range-block">
+      <div class="reference-range-label">参考レンジ</div>
+      <div class="reference-range-value" id="reference-range-value">—</div>
+      <div class="reference-range-meta">
+        <div id="reference-same-count">—</div>
+        <div id="reference-source-count">—</div>
+        <div class="reference-range-note" id="reference-source-note"></div>
+      </div>
+    </div>
+
     <!-- Own team prediction (if entered) -->
     <div id="own-pred-block" class="result-hidden">
       <div class="divider"></div>
@@ -1127,7 +1174,8 @@ input.error {
 
     <div class="help-text mt8">
       📌 <strong>警戒予測について：</strong>統計的な上限値ではなく「過去の強いケースより少し安全側に置いた警戒用予測」です。相手が現在遅い場合でも下げません。<br><br>
-      📌 <strong>予測精度について：</strong>過去データでは良好な結果を確認していますが、現行仕様（第80回以降）の開催数が少ないため精度は参考値です。特に2・3戦目の土日祝は1開催のみの暫定モデルです。
+      📌 <strong>予測精度について：</strong>過去データでは良好な結果を確認していますが、現行仕様（第80回以降）の開催数が少ないため精度は参考値です。特に2・3戦目の土日祝は1開催のみの暫定モデルです。<br><br>
+      📌 参考レンジについて：過去の古戦場で、12時時点に出した標準予測と、実際の最終結果にどのくらい差が出たかをもとにした参考範囲です。標準予測が過去にどの程度上振れ・下振れしたかを見るための目安であり、今回も必ずこの範囲に収まるという意味ではありません。
     </div>
   </section>
 
@@ -1351,6 +1399,28 @@ const MODELS = {
 // Time block durations in hours
 const TIME_BLOCKS = { t12_17: 5, t17_19: 2, t19_23: 4, t23_24: 1 };
 
+// Historical error range of the standard model's 12:00-24:00 added amount.
+// Source definition: 300th-place data from rounds 80-83; overseas timestamps are
+// JST-1, and each displayed speed is the hourly rate for the preceding 20 minutes.
+const REFERENCE_RANGES = Object.freeze({
+  day1: Object.freeze({
+    weekday: Object.freeze({ lowRate: -0.0415, highRate: 0.0248, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' }),
+    weekend: Object.freeze({ lowRate: -0.0540, highRate: 0.0441, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' })
+  }),
+  day2: Object.freeze({
+    weekday: Object.freeze({ lowRate: -0.0129, highRate: 0.0142, sameConditionCount: 3, rangeSourceCount: 3, rangeSourceLabel: '3開催', rangeSourceNote: '' }),
+    weekend: Object.freeze({ lowRate: -0.0129, highRate: 0.0142, sameConditionCount: 1, rangeSourceCount: 4, rangeSourceLabel: '現行仕様の2戦目 4開催', rangeSourceNote: '' })
+  }),
+  day3: Object.freeze({
+    weekday: Object.freeze({ lowRate: -0.0186, highRate: 0.0434, sameConditionCount: 3, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '※1開催は一部データ欠損のため除外' }),
+    weekend: Object.freeze({ lowRate: -0.0186, highRate: 0.0434, sameConditionCount: 1, rangeSourceCount: 3, rangeSourceLabel: '現行仕様の3戦目 3開催', rangeSourceNote: '※第80回は一部データ欠損のため除外' })
+  }),
+  day4: Object.freeze({
+    weekday: Object.freeze({ lowRate: -0.0162, highRate: 0.0181, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' }),
+    weekend: Object.freeze({ lowRate: -0.0503, highRate: 0.0177, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' })
+  })
+});
+
 /* ================================================
    SECTION 2: NUMBER PARSERS
    ================================================ */
@@ -1526,6 +1596,26 @@ function calcPrediction(contrib12, speed, dayKey, dayType, modelType) {
     added: added,
     multiplier: calcTotalMultiplier(m)
   };
+}
+
+function calcReferenceBounds(contrib12, standardAdded, lowRate, highRate) {
+  return {
+    low: contrib12 + standardAdded * (1 + lowRate),
+    high: contrib12 + standardAdded * (1 + highRate)
+  };
+}
+
+function calcReferenceRange(contrib12, standardAdded, dayKey, dayType) {
+  const config = REFERENCE_RANGES[dayKey][dayType];
+  return { ...calcReferenceBounds(contrib12, standardAdded, config.lowRate, config.highRate), config };
+}
+
+function renderReferenceRange(contrib12, standardAdded, dayKey, dayType) {
+  const range = calcReferenceRange(contrib12, standardAdded, dayKey, dayType);
+  document.getElementById('reference-range-value').textContent = `${fmt億(range.low)} ～ ${fmt億(range.high)}`;
+  document.getElementById('reference-same-count').textContent = `現行仕様・同条件：${range.config.sameConditionCount}開催`;
+  document.getElementById('reference-source-count').textContent = `参考レンジ算出：${range.config.rangeSourceLabel}`;
+  document.getElementById('reference-source-note').textContent = range.config.rangeSourceNote;
 }
 
 /**
@@ -1961,6 +2051,7 @@ function runPrediction() {
   document.getElementById('pred-caut-enemy').textContent = fmt億(enemyCaut.total);
   document.getElementById('pred-std-enemy-sub').textContent = `+${fmt億(enemyStd.added)}`;
   document.getElementById('pred-caut-enemy-sub').textContent = `+${fmt億(enemyCaut.added)}`;
+  renderReferenceRange(ec, enemyStd.added, state.dayKey, state.dayType);
 
   // Own team
   const ownBlock = document.getElementById('own-pred-block');
@@ -2968,6 +3059,31 @@ function selfTest() {
     }
   }
   if (parserOk) console.log('[SELF-TEST PASS] All parser tests verified.');
+
+  // Reference range formula and all eight condition definitions
+  const example = calcReferenceBounds(500e8, 500e8, -0.05, 0.04);
+  let referenceOk = example.low === 975e8 && example.high === 1020e8;
+  if (!referenceOk) {
+    console.error(`[SELF-TEST FAIL] Reference range example: expected 975/1020億, got ${example.low / 1e8}/${example.high / 1e8}億`);
+  }
+
+  const EXPECTED_REFERENCES = {
+    day1: { weekday: [-0.0415, 0.0248, 2, 2], weekend: [-0.0540, 0.0441, 2, 2] },
+    day2: { weekday: [-0.0129, 0.0142, 3, 3], weekend: [-0.0129, 0.0142, 1, 4] },
+    day3: { weekday: [-0.0186, 0.0434, 3, 2], weekend: [-0.0186, 0.0434, 1, 3] },
+    day4: { weekday: [-0.0162, 0.0181, 2, 2], weekend: [-0.0503, 0.0177, 2, 2] }
+  };
+  for (const [dayKey, dayTypes] of Object.entries(EXPECTED_REFERENCES)) {
+    for (const [dayType, expected] of Object.entries(dayTypes)) {
+      const actual = REFERENCE_RANGES[dayKey][dayType];
+      const values = [actual.lowRate, actual.highRate, actual.sameConditionCount, actual.rangeSourceCount];
+      if (values.some((value, index) => value !== expected[index])) {
+        console.error(`[SELF-TEST FAIL] Reference config ${dayKey}/${dayType}: expected ${expected}, got ${values}`);
+        referenceOk = false;
+      }
+    }
+  }
+  if (referenceOk) console.log('[SELF-TEST PASS] Reference ranges and source counts verified.');
 }
 
 /* ================================================
