@@ -180,11 +180,13 @@ class FakeTransaction:
                     current[key] = value
             staged[reference.path] = current
         self.database.data = staged
+        self.database.committed_operations.extend(self.operations)
 
 
 class FakeFirestore:
     def __init__(self):
         self.data = {}
+        self.committed_operations = []
         self.lock = threading.RLock()
         self.fail_reads = False
         self.fail_create_write_number = None
@@ -233,26 +235,6 @@ def client():
     return TestClient(main.app, raise_server_exceptions=False)
 
 
-def payload(**changes):
-    value = {
-        "request_id": REQUEST_ID,
-        "delete_secret": DELETE_SECRET,
-        "name": "  団員A  ",
-        "comment": "  コメント\n二行目  ",
-        "images": [JPEG],
-    }
-    value.update(changes)
-    return value
-
-
-def post(client, category="gw", value=None, headers=None):
-    return client.post(
-        f"/api/formations/{category}",
-        json=payload() if value is None else value,
-        headers=HEADERS if headers is None else headers,
-    )
-
-
 def paths(category="gw", post_id=POST_ID):
     event_id = f"{category}_{post_id}"
     return (
@@ -262,29 +244,37 @@ def paths(category="gw", post_id=POST_ID):
     )
 
 
-def formation_documents(database):
-    return {path: data for path, data in database.data.items() if path in paths()}
+def formation_documents(database, category="gw", post_id=POST_ID):
+    expected = set(paths(category, post_id)[:2])
+    return {path: copy.deepcopy(data) for path, data in database.data.items() if path in expected}
 
 
-@pytest.mark.parametrize("category", ["gw", "multi", "high"])
+def formation_write_count(database):
+    collections = set(main.PUSH_FORMATIONS.values()) | {"formation_private"}
+    return sum(operation[1].path[0] in collections for operation in database.committed_operations)
+
 
 def payload(**changes):
     value = {
         "request_id": REQUEST_ID,
-        "delete_secret": DELETE_SECRET,
         "comment": "updated comment",
         "tags": ["火", "マグナ"],
-        "imageCaptions": ["caption1"]
+        "imageCaptions": ["caption1"],
     }
     value.update(changes)
     return value
 
-def patch_api(client, category="gw", post_id=POST_ID, value=None):
+
+def patch_api(client, category="gw", post_id=POST_ID, value=None, secret=DELETE_SECRET):
+    headers = dict(HEADERS)
+    if secret is not None:
+        headers["X-Delete-Secret"] = secret
     return client.patch(
         f"/api/formations/{category}/{post_id}",
         json=payload() if value is None else value,
-        headers=HEADERS,
+        headers=headers,
     )
+
 
 def setup_db(database, category="gw", post_id=POST_ID, public_data=None, private_data=None):
     public_path, private_path, _ = paths(category, post_id)
@@ -303,8 +293,9 @@ def get_base_public_data():
         "images": [JPEG],
         "imageStoragePaths": ["path"],
         "tags": ["水"],
-        "addenda": [{"id": "a1", "text": "addendum"}]
+        "addenda": [{"id": "a1", "text": "addendum"}],
     }
+
 
 def get_base_private_data():
     return {
@@ -315,32 +306,39 @@ def get_base_private_data():
         "deleted_at": None,
     }
 
-def test_normal_edit(client, portal):
+
+@pytest.mark.parametrize(
+    ("changes", "field", "expected"),
+    [
+        ({"comment": "new comment", "tags": ["水"], "imageCaptions": []}, "comment", "new comment"),
+        ({"comment": "old comment", "tags": ["火", "マグナ"], "imageCaptions": []}, "tags", ["火", "マグナ"]),
+        ({"comment": "old comment", "tags": ["水"], "imageCaptions": ["caption1"]}, "imageCaptions", ["caption1"]),
+    ],
+)
+def test_each_editable_field_updates_and_preserves_immutable_fields(client, portal, changes, field, expected):
     database, _ = portal
-    setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
+    original = get_base_public_data()
+    setup_db(database, public_data=original, private_data=get_base_private_data())
 
-    response = patch_api(client)
+    response = patch_api(client, value=payload(**changes))
     assert response.status_code == 200, response.json()
-
-    body = response.json()
-    assert body["replayed"] is False
-    assert "updated_at" in body
 
     public_path, private_path, _ = paths()
     public = database.data[public_path]
     private = database.data[private_path]
-
-    assert public["comment"] == "updated comment"
-    assert public["tags"] == ["マグナ", "火"]
-    assert public["imageCaptions"] == ["caption1"]
-    assert "updatedAt" in public
-    assert public["updatedAt"] == body["updated_at"]
-    assert public["timestamp"] == "2026-09-21T00:00:00Z"
-    assert public["name"] == "tester"
-    
+    assert response.json()["replayed"] is False
+    assert public[field] == expected
+    assert public["updatedAt"] == response.json()["updated_at"]
+    for immutable in ("timestamp", "name", "images", "imageStoragePaths", "addenda", "schema_version"):
+        assert public[immutable] == original[immutable]
     assert private["last_edit_request_id"] == REQUEST_ID.lower()
+    assert private["last_edit_payload_hash"] == main.build_formation_update_payload_hash(
+        public["comment"], public["tags"], public.get("imageCaptions", []),
+    )
 
-def test_noop_edit(client, portal):
+
+@pytest.mark.parametrize("captions", [[], ["", ""], ["   ", "\t"]])
+def test_canonical_noop_performs_no_public_or_private_write(client, portal, captions):
     database, _ = portal
     public = get_base_public_data()
     public.update({
@@ -349,39 +347,88 @@ def test_noop_edit(client, portal):
         "imageCaptions": [],
         "updatedAt": "2026-09-21T10:00:00Z"
     })
-    setup_db(database, public_data=public, private_data=get_base_private_data())
+    private = get_base_private_data()
+    setup_db(database, public_data=public, private_data=private)
+    before = formation_documents(database)
 
-    response = patch_api(client, value=payload(comment="same comment  ", tags=["火"], imageCaptions=[]))
+    response = patch_api(client, value=payload(comment="same comment  ", tags=["火"], imageCaptions=captions))
     assert response.status_code == 200, response.json()
+    assert response.json() == {
+        "id": POST_ID, "category": "gw", "replayed": False,
+        "updated_at": "2026-09-21T10:00:00Z",
+    }
+    assert formation_documents(database) == before
+    assert formation_write_count(database) == 0
 
-    body = response.json()
-    assert body["replayed"] is False
-    assert body["updated_at"] == "2026-09-21T10:00:00Z"
 
-    public_path, private_path, _ = paths()
-    assert database.data[public_path]["updatedAt"] == "2026-09-21T10:00:00Z"
-
-def test_ownership_failures(client, portal):
+def test_correct_header_secret_succeeds_and_body_secret_is_not_accepted(client, portal):
     database, _ = portal
     setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
-    
-    wrong_secret = base64.urlsafe_b64encode(b"a"*32).rstrip(b"=").decode("ascii")
-    response = patch_api(client, value=payload(delete_secret=wrong_secret))
-    assert response.status_code == 403
+    assert patch_api(client).status_code == 200
 
-def test_validation_failures(client, portal):
+    database.data.clear()
+    setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
+    body_secret = payload(delete_secret=DELETE_SECRET)
+    assert patch_api(client, value=body_secret, secret=None).status_code == 422
+
+
+def test_secret_and_private_document_failures(client, portal):
     database, _ = portal
     setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
+    wrong_secret = base64.urlsafe_b64encode(b"a" * 32).rstrip(b"=").decode("ascii")
 
-    assert patch_api(client, category="invalid").status_code == 404
-    assert patch_api(client, value=payload(comment="a" * 3001)).status_code == 422
-    assert patch_api(client, value=payload(tags=["invalid"])).status_code == 422
-    assert patch_api(client, value=payload(tags=["火", "水"])).status_code == 422
-    
+    assert patch_api(client, secret=None).status_code == 401
+    assert patch_api(client, secret="invalid").status_code == 401
+    assert patch_api(client, secret=wrong_secret).status_code == 403
+
+    database.data.pop(paths()[1])
+    assert patch_api(client).status_code == 403
+
+    private = get_base_private_data()
+    private["deleted_at"] = datetime.now(timezone.utc)
+    setup_db(database, private_data=private)
+    assert patch_api(client).status_code == 410
+
+
+@pytest.mark.parametrize(
+    ("category", "post_id", "changes"),
+    [
+        ("invalid", POST_ID, {}),
+        ("gw", "invalid!id", {}),
+        ("gw", POST_ID, {"comment": "a" * 3001}),
+        ("gw", POST_ID, {"comment": "bad\x00comment"}),
+        ("gw", POST_ID, {"tags": ["invalid"]}),
+        ("gw", POST_ID, {"tags": ["火", "水"]}),
+        ("gw", POST_ID, {"tags": ["神石", "マグナ"]}),
+        ("multi", POST_ID, {"tags": ["90HELL"]}),
+        ("gw", POST_ID, {"imageCaptions": ["a" * 21]}),
+        ("gw", POST_ID, {"imageCaptions": [str(i) for i in range(11)]}),
+    ],
+)
+def test_validation_failures(client, portal, category, post_id, changes):
+    database, _ = portal
+    setup_db(database, category=category if category in main.PUSH_FORMATIONS else "gw",
+             post_id=post_id, public_data=get_base_public_data(), private_data=get_base_private_data())
+    assert patch_api(client, category=category, post_id=post_id, value=payload(**changes)).status_code in {404, 422}
+
+
+def test_caption_count_cannot_exceed_existing_images(client, portal):
+    database, _ = portal
     public = get_base_public_data()
     public["images"] = []
     setup_db(database, public_data=public, private_data=get_base_private_data())
     assert patch_api(client, value=payload(imageCaptions=["cap"])).status_code == 422
+
+
+def test_post_without_updated_at_can_be_edited(client, portal):
+    database, _ = portal
+    public = get_base_public_data()
+    assert "updatedAt" not in public
+    setup_db(database, public_data=public, private_data=get_base_private_data())
+    response = patch_api(client)
+    assert response.status_code == 200
+    assert database.data[paths()[0]]["updatedAt"] == response.json()["updated_at"]
+
 
 def test_addenda_does_not_change_updated_at(client, portal):
     database, _ = portal
@@ -398,18 +445,30 @@ def test_addenda_does_not_change_updated_at(client, portal):
     public_path, _, _ = paths()
     assert database.data[public_path]["updatedAt"] == "2026-09-21T10:00:00Z"
 
-def test_retry(client, portal):
-    database, _ = portal
-    private = get_base_private_data()
-    private["last_edit_request_id"] = REQUEST_ID.lower()
-    public = get_base_public_data()
-    public["updatedAt"] = "2026-09-21T10:00:00Z"
-    setup_db(database, public_data=public, private_data=private)
 
-    response = patch_api(client)
+def test_same_request_id_and_same_canonical_payload_replays_without_writes(client, portal):
+    database, _ = portal
+    setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
+    first = patch_api(client)
+    assert first.status_code == 200
+    write_count = formation_write_count(database)
+
+    response = patch_api(client, value=payload(comment=" updated comment ", tags=["マグナ", "火"]))
     assert response.status_code == 200, response.json()
     assert response.json()["replayed"] is True
-    
+    assert response.json()["updated_at"] == first.json()["updated_at"]
+    assert formation_write_count(database) == write_count
+
+
+def test_same_request_id_and_different_canonical_payload_conflicts(client, portal):
+    database, _ = portal
+    setup_db(database, public_data=get_base_public_data(), private_data=get_base_private_data())
+    assert patch_api(client).status_code == 200
+    before = formation_documents(database)
+    write_count = formation_write_count(database)
+
     response = patch_api(client, value=payload(comment="diff"))
-    assert response.status_code == 200, response.json()
-    assert response.json()["replayed"] is True
+    assert response.status_code == 409, response.json()
+    assert response.json()["error"]["code"] == "REQUEST_ID_CONFLICT"
+    assert formation_documents(database) == before
+    assert formation_write_count(database) == write_count

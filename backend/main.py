@@ -7426,6 +7426,11 @@ TAGS_GW = {"肉集め", "90HELL", "95HELL", "100HELL", "150HELL", "200HELL", "25
 TAGS_MULTI = {"ソロモナスの賢者", "ヒヒ掘り"}
 
 
+def canonicalize_image_captions(image_captions: list[str]) -> list[str]:
+    """Collapse an all-empty, already-trimmed caption list to its canonical form."""
+    return image_captions if any(image_captions) else []
+
+
 class FormationCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID4
@@ -7441,7 +7446,7 @@ class FormationCreateRequest(BaseModel):
     def normalize_image_captions(cls, value, info):
         if value and len(value) != len(info.data.get("images", [])):
             raise ValueError("imageCaptions must match images length")
-        return value if any(value) else []
+        return canonicalize_image_captions(value)
 
     @field_validator("request_id", mode="before")
     @classmethod
@@ -7472,44 +7477,16 @@ def _has_disallowed_control(value: str, allowed: set[str] | None = None) -> bool
     return any(character not in allowed and unicodedata.category(character) == "Cc" for character in value)
 
 
-def validate_formation_payload(request: FormationCreateRequest, category: str) -> tuple[str, str, list[str], list[str]]:
-    if _has_disallowed_control(request.name):
+def validate_formation_comment_and_tags(
+    comment_input: str, tags_input: list[str] | None, category: str,
+) -> tuple[str, list[str]]:
+    if _has_disallowed_control(comment_input, {"\n", "\t"}):
         raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
-    name = request.name.strip()
-    if not 1 <= len(name) <= 30:
-        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
-
-    if _has_disallowed_control(request.comment, {"\n", "\t"}):
-        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
-    comment = request.comment.strip()
+    comment = comment_input.strip()
     if len(comment) > 3000:
         raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
 
-    total_size = 0
-    images = []
-    prefix = "data:image/jpeg;base64,"
-    for image in request.images:
-        try:
-            image_size = len(image.encode("ascii"))
-        except UnicodeEncodeError:
-            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。") from None
-        if image_size > PORTAL_FORMATION_IMAGE_LIMIT:
-            raise PortalAPIError(413, "BODY_TOO_LARGE", "リクエスト本文が大きすぎます。")
-        total_size += image_size
-        if total_size > PORTAL_FORMATION_IMAGES_LIMIT:
-            raise PortalAPIError(413, "BODY_TOO_LARGE", "リクエスト本文が大きすぎます。")
-        if not image.startswith(prefix):
-            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
-        encoded = image[len(prefix):]
-        try:
-            decoded = base64.b64decode(encoded, validate=True)
-        except (ValueError, binascii.Error):
-            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。") from None
-        if len(decoded) < 5 or decoded[:3] != b"\xff\xd8\xff" or decoded[-2:] != b"\xff\xd9":
-            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
-        images.append(image)
-
-    tags_in = request.tags or []
+    tags_in = tags_input or []
     allowed_tags = TAGS_ELEMENT | TAGS_SUMMON | TAGS_PLAYSTYLE
     if category == "gw":
         allowed_tags |= TAGS_GW
@@ -7541,6 +7518,44 @@ def validate_formation_payload(request: FormationCreateRequest, category: str) -
         return (40, t)
 
     final_tags = sorted(list(validated_tags), key=tag_sort_key)
+
+    return comment, final_tags
+
+
+def validate_formation_payload(request: FormationCreateRequest, category: str) -> tuple[str, str, list[str], list[str]]:
+    if _has_disallowed_control(request.name):
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+    name = request.name.strip()
+    if not 1 <= len(name) <= 30:
+        raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+
+    comment, final_tags = validate_formation_comment_and_tags(
+        request.comment, request.tags, category,
+    )
+
+    total_size = 0
+    images = []
+    prefix = "data:image/jpeg;base64,"
+    for image in request.images:
+        try:
+            image_size = len(image.encode("ascii"))
+        except UnicodeEncodeError:
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。") from None
+        if image_size > PORTAL_FORMATION_IMAGE_LIMIT:
+            raise PortalAPIError(413, "BODY_TOO_LARGE", "リクエスト本文が大きすぎます。")
+        total_size += image_size
+        if total_size > PORTAL_FORMATION_IMAGES_LIMIT:
+            raise PortalAPIError(413, "BODY_TOO_LARGE", "リクエスト本文が大きすぎます。")
+        if not image.startswith(prefix):
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+        encoded = image[len(prefix):]
+        try:
+            decoded = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。") from None
+        if len(decoded) < 5 or decoded[:3] != b"\xff\xd8\xff" or decoded[-2:] != b"\xff\xd9":
+            raise PortalAPIError(422, "INVALID_INPUT", "投稿内容を確認してください。")
+        images.append(image)
 
     return name, comment, images, final_tags
 
@@ -7809,10 +7824,24 @@ class FormationDuplicateImageItem(BaseModel):
 class FormationUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID4
-    delete_secret: StrictStr
     comment: StrictStr
     tags: list[StrictStr] | None = None
     imageCaptions: list[Annotated[str, StringConstraints(strict=True, strip_whitespace=True, max_length=20)]] = Field(default_factory=list, max_length=10)
+
+    @field_validator("request_id", mode="before")
+    @classmethod
+    def validate_request_id_format(cls, value):
+        if not isinstance(value, str) or not re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}",
+            value,
+        ):
+            raise ValueError("request_id must be a canonical UUIDv4")
+        return value
+
+    @field_validator("imageCaptions")
+    @classmethod
+    def normalize_image_captions(cls, value):
+        return canonicalize_image_captions(value)
 
 class FormationDuplicateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -7838,43 +7867,22 @@ class FormationDuplicateRequest(BaseModel):
     def validate_captions(self):
         if self.imageCaptions and len(self.imageCaptions) != len(self.imageItems):
             raise ValueError("imageCaptions must match imageItems length")
-        self.imageCaptions = self.imageCaptions if any(self.imageCaptions) else []
+        self.imageCaptions = canonicalize_image_captions(self.imageCaptions)
         return self
 
 
 def validate_formation_update_payload(request: FormationUpdateRequest, category: str) -> tuple[str, list[str]]:
-    if _has_disallowed_control(request.comment, {"\n", "\t"}):
-        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
-    comment = request.comment.strip()
-    if len(comment) > 3000:
-        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
+    return validate_formation_comment_and_tags(request.comment, request.tags, category)
 
-    tags_in = request.tags or []
-    allowed_tags = TAGS_ELEMENT | TAGS_SUMMON | TAGS_PLAYSTYLE
-    if category == "gw":
-        allowed_tags |= TAGS_GW
-    elif category == "multi":
-        allowed_tags |= TAGS_MULTI
 
-    validated_tags = set()
-    element_count = 0
-    summon_count = 0
-
-    for tag in tags_in:
-        if tag not in allowed_tags:
-            raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
-        if tag in TAGS_ELEMENT and tag not in validated_tags:
-            element_count += 1
-        if tag in TAGS_SUMMON and tag not in validated_tags:
-            summon_count += 1
-        validated_tags.add(tag)
-
-    if element_count > 1:
-        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
-    if summon_count > 1:
-        raise PortalAPIError(422, "INVALID_INPUT", "不正な入力です。")
-
-    return comment, sorted(validated_tags)
+def build_formation_update_payload_hash(
+    comment: str, tags: list[str], image_captions: list[str],
+) -> str:
+    canonical = json.dumps(
+        {"comment": comment, "tags": tags, "imageCaptions": image_captions},
+        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 def validate_duplicate_uploads(request: FormationDuplicateRequest, category: str):
     """Use the normal create validator for name, comment, tags and JPEG uploads."""
@@ -8257,6 +8265,19 @@ def get_addendum_secret_hash(http_request: Request) -> str:
         raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "追記権限を確認してください。") from None
 
 
+def get_update_secret_hash(http_request: Request) -> str:
+    """Read the existing ownership secret from the standard header."""
+    delete_secret = http_request.headers.get("x-delete-secret")
+    if not delete_secret:
+        consume_portal_quota("formation_update", None, global_limit=100)
+        raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "編集権限を確認してください。")
+    try:
+        return hash_delete_secret(delete_secret)
+    except PortalAPIError:
+        consume_portal_quota("formation_update", None, global_limit=100)
+        raise PortalAPIError(401, "DELETE_SECRET_REQUIRED", "編集権限を確認してください。") from None
+
+
 def update_formation_transaction(
     category: str,
     post_id: str,
@@ -8265,6 +8286,7 @@ def update_formation_transaction(
     comment: str,
     tags: list[str],
     image_captions: list[str],
+    payload_hash: str,
     now: datetime,
 ) -> dict:
     portal = get_portal_db()
@@ -8293,6 +8315,16 @@ def update_formation_transaction(
 
         last_edit = private_data.get("last_edit_request_id")
         if last_edit == request_id_str:
+            last_payload_hash = private_data.get("last_edit_payload_hash")
+            if not (
+                isinstance(last_payload_hash, str)
+                and hmac.compare_digest(last_payload_hash, payload_hash)
+            ):
+                raise PortalAPIError(
+                    409,
+                    "REQUEST_ID_CONFLICT",
+                    "同じrequest_idが別の編集に使用されています。",
+                )
             public_snapshot = public_ref.get(transaction=txn)
             if not public_snapshot.exists:
                 raise PortalAPIError(404, "POST_NOT_FOUND", "指定された投稿が見つかりません。")
@@ -8314,7 +8346,6 @@ def update_formation_transaction(
         existing_captions = public_data.get("imageCaptions", [])
         
         if existing_comment == comment and existing_tags == tags and existing_captions == image_captions:
-            txn.set(private_ref, {"last_edit_request_id": request_id_str}, merge=True)
             return {"replayed": False, "updated_at": public_data.get("updatedAt")}
             
         updated_at_str = now.isoformat().replace("+00:00", "Z")
@@ -8325,7 +8356,10 @@ def update_formation_transaction(
             "imageCaptions": image_captions,
             "updatedAt": updated_at_str
         }, merge=True)
-        txn.set(private_ref, {"last_edit_request_id": request_id_str}, merge=True)
+        txn.set(private_ref, {
+            "last_edit_request_id": request_id_str,
+            "last_edit_payload_hash": payload_hash,
+        }, merge=True)
         
         return {"replayed": False, "updated_at": updated_at_str}
 
@@ -8446,16 +8480,17 @@ def update_formation(
         raise PortalAPIError(404, "CATEGORY_NOT_FOUND", "指定された投稿カテゴリはありません。")
     require_portal_writes_enabled()
     post_id = validate_delete_post_id(post_id)
-    secret_hash = hash_delete_secret(request.delete_secret)
+    secret_hash = get_update_secret_hash(http_request)
     comment, tags = validate_formation_update_payload(request, category)
     captions = request.imageCaptions
+    payload_hash = build_formation_update_payload_hash(comment, tags, captions)
     
     consume_portal_quota("formation_update", secret_hash, per_limit=10, global_limit=100)
     now = datetime.now(timezone.utc)
     
     result = update_formation_transaction(
         category, post_id, secret_hash, str(request.request_id),
-        comment, tags, captions, now
+        comment, tags, captions, payload_hash, now
     )
     
     status_code = 200
