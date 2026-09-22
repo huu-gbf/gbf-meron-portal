@@ -156,8 +156,9 @@
         <form id="publishForm">
           <label for="editDate">対象日</label><input id="editDate" type="date" required>
           <label for="editDay">開催条件</label><select id="editDay"><option value="weekday">平日</option><option value="saturday">土曜</option><option value="sunday">日曜</option><option value="holiday">祝日</option></select>
-          <label for="editEarlyAvgSpeed">7〜12時 平均時速（万/h入力）</label><input id="editEarlyAvgSpeed" type="text" inputmode="text" placeholder="50000 → 5.00億/h">
+          <label for="edit7">7時累計貢献度</label><input id="edit7" type="text" required placeholder="600億">
           <label for="edit12">12時累計貢献度</label><input id="edit12" type="text" required placeholder="1000億">
+          <label for="editEarlyAvgSpeed">7〜12時 平均時速（自動計算・表示専用）</label><input id="editEarlyAvgSpeed" type="text" readonly style="background: rgba(15, 23, 42, 0.3); border-color: transparent; color: #cbd5e1;" tabindex="-1">
           <label for="edit18">18時累計貢献度（任意）</label><input id="edit18" type="text" placeholder="未入力可">
           <label for="edit20">20時累計貢献度（任意）</label><input id="edit20" type="text" placeholder="未入力可">
           <button id="publishButton" type="submit" style="margin-top:16px">保存して公開</button>
