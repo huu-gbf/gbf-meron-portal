@@ -1186,10 +1186,10 @@ input[type=number] {
               <span class="label-step">3</span>
               <span>ロード・リザルト硬直</span>
             </label>
-            <span class="interval-value-badge">+<span id="intervalDisplay">3</span>秒 / 周</span>
+            <span class="interval-value-badge">+<span id="intervalDisplay">3.0</span>秒 / 周</span>
           </div>
           <div class="slider-row">
-            <input type="range" id="inputInterval" min="0" max="15" step="1" value="3">
+            <input type="range" id="inputInterval" min="0" max="15" step="0.1" value="3">
             <span class="slider-hint">※再戦クリック〜戦闘開始までの演出・ロード時間目安（0〜15秒）</span>
           </div>
           <div class="cycle-summary">
@@ -1469,8 +1469,8 @@ function setupEventListeners() {
 
   // Interval Slider
   elements.inputInterval.addEventListener('input', (e) => {
-    state.intervalSec = parseInt(e.target.value, 10) || 0;
-    elements.intervalDisplay.textContent = state.intervalSec;
+    state.intervalSec = parseFloat(e.target.value) || 0;
+    elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
     updateCalculation();
     renderComparisonTable();
   });
@@ -1684,7 +1684,7 @@ function renderComparisonTable() {
       </td>
       <td>
         <input type="number" min="1" max="999" class="table-time-input" value="${time}" data-hell="${hell.level}">
-        <span style="font-size: 0.75rem; color: var(--text-muted);">秒 (+${state.intervalSec}秒)</span>
+        <span style="font-size: 0.75rem; color: var(--text-muted);">秒 (+${state.intervalSec.toFixed(1)}秒)</span>
       </td>
       <td>
         <span style="font-family: var(--font-numbers); font-weight: 700;">${clears.toFixed(1)}</span> <span style="font-size:0.75rem; color:var(--text-muted);">周/h</span>
@@ -1764,7 +1764,7 @@ function copyResultToClipboard() {
   const meatPerHour = Math.round(clearsPerHour * currentHell.meat);
 
   const text = `【古戦場時速計算】${currentHell.name}
-・クリアタイム: ${state.minutes > 0 ? `${state.minutes}分` : ''}${state.seconds}秒 (+硬直${state.intervalSec}秒 / 実質${totalCycleSec}秒)
+・クリアタイム: ${state.minutes > 0 ? `${state.minutes}分` : ''}${state.seconds}秒 (+硬直${state.intervalSec.toFixed(1)}秒 / 実質${parseFloat(totalCycleSec.toFixed(1))}秒)
 ・貢献度時速: ${formattedHonor.num}${formattedHonor.unit} pt/h (${Math.round(honorPerHour).toLocaleString()} pt)
 ・周回ペース: ${clearsPerHour} 周/h
 ・消費肉ペース: ${meatPerHour.toLocaleString()} 個/h
