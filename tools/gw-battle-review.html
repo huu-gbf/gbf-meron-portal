@@ -1184,6 +1184,9 @@ input.error {
        ======================== -->
   <section class="glass section" id="sec-snapshot">
     <div class="section-title"><span class="icon">⚡</span>現在の戦況</div>
+    <div class="notice notice-info" style="margin-bottom:12px;">
+      7:00〜12:00は戦況記録のみ利用できます。着地予測は12:00以降に有効になります。
+    </div>
 
     <div class="field-group">
       <label class="field-label" for="snap-time">現在時刻</label>
@@ -2212,7 +2215,7 @@ function recordSnapshot() {
   if (!timeStr) { errors.push('時刻を入力してください'); }
   const currentMin = timeStrToMinutes(timeStr);
   if (currentMin == null) errors.push('時刻を正しく入力してください');
-  else if (currentMin < 12 * 60) errors.push('時刻が12:00より前です。本戦は12時から開始です');
+  else if (currentMin < 7 * 60) errors.push('時刻が7:00より前です。本戦は7:00から開始です');
   else if (currentMin > timeStrToMinutes(getCurrentTimeStr())) errors.push('現在時刻より未来の時刻は記録できません。');
 
   const own = ownStr.trim() ? parseContrib(ownStr) : null;
@@ -2509,7 +2512,7 @@ function drawChart() {
   const PLOT_H = SVG_H - PAD_T - PAD_B;
 
   // X-axis: 12:00 (720) to 24:00 (1440)
-  const X_MIN = 720;
+  const X_MIN = 420;
   const X_MAX = 1440;
   function toX(min) {
     return PAD_L + (min - X_MIN) / (X_MAX - X_MIN) * PLOT_W;
@@ -2638,8 +2641,8 @@ function drawChart() {
   }
 
   // X-axis tick times
-  const xTickMins = [720, 840, 960, 1080, 1200, 1320, 1440];
-  const xTickLabels = ['12','14','16','18','20','22','24'];
+  const xTickMins = [420, 600, 780, 960, 1140, 1320, 1440];
+  const xTickLabels = ['7','10','13','16','19','22','24'];
 
   // Build SVG
   const ticks = yTicks();
@@ -2884,7 +2887,7 @@ function saveEditSnap(id) {
   const currentMin = timeStrToMinutes(timeStr);
   if (!timeStr) errors.push('時刻を入力してください');
   else if (currentMin == null) errors.push('時刻を正しく入力してください');
-  else if (currentMin < 12 * 60) errors.push('時刻が12:00より前です');
+  else if (currentMin < 7 * 60) errors.push('時刻が7:00より前です');
 
   const own = ownStr.trim() ? parseContrib(ownStr) : null;
   const enemy = enemyStr.trim() ? parseContrib(enemyStr) : null;
