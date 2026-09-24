@@ -1444,6 +1444,7 @@ const elements = {
 };
 
 const LS_KEY_HELL_TIMES = 'gbf_unf_speed_calc_times';
+const LS_KEY_INTERVAL = 'gbf_unf_speed_calc_interval';
 
 function loadSavedTimes() {
   try {
@@ -1461,6 +1462,22 @@ function loadSavedTimes() {
   }
 }
 
+function loadSavedInterval() {
+  try {
+    const saved = localStorage.getItem(LS_KEY_INTERVAL);
+    if (saved !== null) {
+      const val = parseFloat(saved);
+      if (!isNaN(val)) {
+        state.intervalSec = val;
+        elements.inputInterval.value = val;
+        elements.intervalDisplay.textContent = val.toFixed(1);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load saved interval', e);
+  }
+}
+
 function saveTimes() {
   try {
     localStorage.setItem(LS_KEY_HELL_TIMES, JSON.stringify(state.comparisonTimes));
@@ -1469,9 +1486,18 @@ function saveTimes() {
   }
 }
 
+function saveInterval() {
+  try {
+    localStorage.setItem(LS_KEY_INTERVAL, state.intervalSec);
+  } catch (e) {
+    console.error('Failed to save interval', e);
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   loadSavedTimes();
+  loadSavedInterval();
   
   if (state.comparisonTimes[state.selectedHell]) {
     const initialSec = state.comparisonTimes[state.selectedHell];
@@ -1507,6 +1533,7 @@ function setupEventListeners() {
   elements.inputInterval.addEventListener('input', (e) => {
     state.intervalSec = parseFloat(e.target.value) || 0;
     elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
+    saveInterval();
     updateCalculation();
     renderComparisonTable();
   });
