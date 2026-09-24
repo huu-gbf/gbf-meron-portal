@@ -64,7 +64,7 @@ service cloud.firestore {
           && score(d.own) && score(d.enemy)
           && existsAfter(/databases/$(database)/documents/gwBattleReviews/$(session)/entries/meta);
       }
-      allow read: if battleAdmin();
+      allow read: if true;
       allow create, update: if battleAdmin()
         && request.resource.data.updatedAt is timestamp && request.resource.data.updatedAt == request.time
         && ((entry == 'meta' && validMeta(request.resource.data)

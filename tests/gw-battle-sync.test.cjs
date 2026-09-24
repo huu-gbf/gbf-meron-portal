@@ -98,13 +98,13 @@ test('emulator: authentication, migration, two clients, CRUD, concurrency, offli
   const make=(initial,opts)=>{const c=client(admin(),initial,opts);clients.push(c);return c;};
   try {
     await env.clearFirestore();
-    await t.test('unauthenticated and non-admin cannot get/list/create/update/delete',async()=>{
+    await t.test('unauthenticated and non-admin can read but cannot create/update/delete',async()=>{
       for(const db of [env.unauthenticatedContext().firestore(),env.authenticatedContext('not-admin').firestore()]) {
         const col=db.collection('gwBattleReviews/2026-09-24_day1/entries');
-        await assertFails(col.get());await assertFails(col.doc('meta').get());await assertFails(col.doc('0800').get());
+        await assertSucceeds(col.get());await assertSucceeds(col.doc('meta').get());await assertSucceeds(col.doc('0800').get());
         await assertFails(col.doc('0800').set({...record('08:00'),updatedAt:serverTimestamp()}));
         await assertFails(col.doc('0800').update({own:100}));await assertFails(col.doc('0800').delete());
-        const c=client(db);await c.sync.authorize(null,db);assert.equal(c.applied,0);assert.equal(c.sync.unsubscribe,null);
+        const c=client(db);await c.sync.authorize(null,db);assert.equal(c.applied,0);assert.notEqual(c.sync.unsubscribe,null);
       }
     });
     const initial={...empty(),snapshots:[{id:123,...record('08:00')},{id:456,...record('08:17',120,110)}]};
