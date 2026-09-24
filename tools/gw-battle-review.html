@@ -1773,14 +1773,38 @@ const StorageManager = {
     } catch(e) { return null; }
   },
 
-  saveSnapshots(list) {
-    try { localStorage.setItem(this.KEYS.snapshots, JSON.stringify(list)); } catch(e) {}
+  snapshotDayKeys: ['day1', 'day2', 'day3', 'day4'],
+
+  normalizeSnapshotStore(value) {
+    const empty = { day1: [], day2: [], day3: [], day4: [] };
+    if (Array.isArray(value)) return { ...empty, day1: value };
+    if (!value || typeof value !== 'object') return empty;
+    for (const dayKey of this.snapshotDayKeys) {
+      empty[dayKey] = Array.isArray(value[dayKey]) ? value[dayKey] : [];
+    }
+    return empty;
   },
 
-  loadSnapshots() {
+  saveSnapshots(list, dayKey = state.dayKey) {
+    try {
+      const raw = localStorage.getItem(this.KEYS.snapshots);
+      const store = this.normalizeSnapshotStore(raw ? JSON.parse(raw) : null);
+      store[this.snapshotDayKeys.includes(dayKey) ? dayKey : 'day1'] = list;
+      localStorage.setItem(this.KEYS.snapshots, JSON.stringify(store));
+    } catch(e) {}
+  },
+
+  loadSnapshots(dayKey = state.dayKey) {
     try {
       const s = localStorage.getItem(this.KEYS.snapshots);
-      return s ? JSON.parse(s) : [];
+      if (!s) return [];
+      const parsed = JSON.parse(s);
+      const store = this.normalizeSnapshotStore(parsed);
+      // Legacy arrays are existing first-battle history. Persist the migration once.
+      if (Array.isArray(parsed)) {
+        localStorage.setItem(this.KEYS.snapshots, JSON.stringify(store));
+      }
+      return store[this.snapshotDayKeys.includes(dayKey) ? dayKey : 'day1'];
     } catch(e) { return []; }
   },
 
@@ -1988,9 +2012,15 @@ function setupConditionListeners() {
   document.querySelectorAll('input[name="gw-day"]').forEach(radio => {
     radio.addEventListener('change', () => {
       state.dayKey = radio.value;
+      state.snapshots = StorageManager.loadSnapshots(state.dayKey);
       updateDayDescription();
       saveConditions();
       if (state.predictDone) runPrediction();
+      renderHistory();
+      drawChart();
+      updateAnalysis();
+      updateRealtimeDisplay();
+      globalThis.onBattleDayChanged?.();
     });
   });
 
@@ -3361,13 +3391,14 @@ class BattleSync {
         if (hasLocal && !this.io.backup()) throw Error('退避保存に失敗したため移行を中止しました。');
         this.initialize(local); return;
       }
-      if (!sameSession && hasLocal) {
+      if (!sameSession && hasLocal && !this.switchingDay) {
         if (!this.io.confirm(this.session + ' に共有データがあります。\n端末データを退避保存して共有データを読み込みますか？\n「キャンセル」で端末内データを維持します。')) {
           this.stop(); this.message('端末内データを維持しています。共有同期は停止中です。'); return;
         }
         if (!this.io.backup()) throw Error('退避保存に失敗したため読み込みを中止しました。');
       }
       this.journal = {session: this.session, queue: [], localOnly: false};
+      this.switchingDay = false;
       if (!this.persist()) return;
       this.ready = true;
     }
@@ -3388,6 +3419,7 @@ class BattleSync {
   }
   async initialize(local) {
     if (this.busy) return;
+    this.switchingDay = false;
     const session = this.session;
     if (!battleBase(local.base) || local.snapshots.some(s => !battleSnapshot(s)) || new Set(local.snapshots.map(s => s.time)).size !== local.snapshots.length
       || local.snapshots.length > 450) { this.stop(); this.message('端末データの形式・件数を確認してください。移行せず保存を維持しました。'); return; }
@@ -3487,8 +3519,8 @@ class BattleSync {
     apply: data => {
       // Use the existing cache formats; do not round-trip through formatted/rounded inputs.
       localStorage.setItem(StorageManager.KEYS.base, JSON.stringify(data.base));
-      localStorage.setItem(StorageManager.KEYS.snapshots, JSON.stringify(data.snapshots));
       localStorage.setItem(StorageManager.KEYS.conditions, JSON.stringify(data.conditions));
+      StorageManager.saveSnapshots(data.snapshots, data.conditions.dayKey);
       state.enemyContrib12 = state.enemySpeed = state.ownContrib12 = state.ownSpeed = null;
       state.predictDone = false;
       ['enemy-contrib12','enemy-speed','own-contrib12','own-speed'].forEach(id => { $(id).value = ''; });
@@ -3506,13 +3538,20 @@ class BattleSync {
   });
   for (const [method, load, kind] of [['saveBase','loadBase','base'],['saveSnapshots','loadSnapshots','snapshots'],['saveConditions','loadConditions','conditions']]) {
     const original = StorageManager[method].bind(StorageManager);
-    StorageManager[method] = data => {
-      const before = StorageManager[load](); original(data);
+    StorageManager[method] = (data, dayKey) => {
+      const before = kind === 'snapshots' ? StorageManager[load](dayKey) : StorageManager[load]();
+      original(data, dayKey);
       if (kind === 'base' && !sync.applying) baseDraft = false;
-      sync.changed(kind, before, data);
+      const changedDay = kind === 'conditions' && before?.dayKey !== data.dayKey;
+      if (!changedDay) sync.changed(kind, before, data);
       if (kind === 'base' && !sync.applying && battleEqual(before, data)) sync.refresh();
     };
   }
+  globalThis.onBattleDayChanged = () => {
+    sync.stop();
+    sync.switchingDay = true;
+    if (sync.db) sync.connect();
+  };
   document.querySelectorAll('#sec-base input').forEach(el => el.addEventListener('input', () => { baseDraft = true; }));
   $('history-list').addEventListener('click', e => {
     if (e.target.closest('.snapshot-edit-form')) queueMicrotask(() => sync.refresh());
