@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="./css/tailwind.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
@@ -785,14 +786,13 @@
               </div>
               <h3 class="text-xl font-bold text-white">めろ～ん王国 団員募集要項</h3>
             </div>
-            <button
-              onclick="copyRecruitText()"
-              id="copyRecruitBtn"
-              class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 text-sm sm:min-h-0 sm:px-4 sm:py-2 sm:text-xs bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 whitespace-nowrap"
-            >
-              <span>📋</span>
-              <span id="copyRecruitTextLabel">募集全文をコピー</span>
-            </button>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <button type="button" onclick="requestRecruitEdit()" id="editRecruitBtn" hidden class="inline-flex items-center justify-center min-h-[44px] px-5 text-sm sm:min-h-0 sm:px-4 sm:py-2 sm:text-xs bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold rounded-xl transition">✏️ 編集</button>
+              <button type="button" onclick="copyRecruitText()" id="copyRecruitBtn" class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 text-sm sm:min-h-0 sm:px-4 sm:py-2 sm:text-xs bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-500/20 transition transform active:scale-95 whitespace-nowrap">
+                <span>📋</span>
+                <span id="copyRecruitTextLabel">募集全文をコピー</span>
+              </button>
+            </div>
           </div>
 
           <!-- Basic Info Grid -->
@@ -869,6 +869,29 @@
 ご連絡お待ちしておりますm(_ _)m
 
 現在の傭兵ノルマ10万位以内</div>
+          <form id="recruitAdminLogin" hidden onsubmit="handleRecruitAdminLogin(event)" class="mt-4 bg-slate-900/90 border border-slate-700 rounded-xl p-4">
+            <p class="text-sm font-bold text-white mb-3">募集文を編集するにはFirebase管理者認証が必要です。</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label class="text-xs text-slate-300">メールアドレス<input id="recruitAdminEmail" type="email" autocomplete="username" required class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-base sm:text-sm text-white" /></label>
+              <label class="text-xs text-slate-300">パスワード<input id="recruitAdminPassword" type="password" autocomplete="current-password" required class="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-base sm:text-sm text-white" /></label>
+            </div>
+            <p id="recruitAuthStatus" role="status" class="mt-3 text-xs text-rose-300" hidden></p>
+            <div class="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-4">
+              <button type="button" onclick="cancelRecruitAdminLogin()" class="min-h-[44px] px-4 py-2 text-sm font-bold rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800">キャンセル</button>
+              <button id="recruitAdminLoginBtn" type="submit" class="min-h-[44px] px-4 py-2 text-sm font-bold rounded-lg bg-emerald-500 text-slate-950 hover:bg-emerald-400">ログイン</button>
+            </div>
+          </form>
+          <div id="recruitEditor" hidden class="mt-4">
+            <label for="recruitTextarea" class="block text-sm font-bold text-white mb-2">団員募集全文</label>
+            <textarea id="recruitTextarea" maxlength="10000" rows="20" class="block w-full max-w-full min-h-[24rem] resize-y rounded-xl border border-slate-700 bg-slate-950 p-4 text-base sm:text-sm leading-relaxed text-slate-100 font-mono"></textarea>
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+              <p id="recruitEditStatus" role="status" class="text-xs text-slate-300"></p>
+              <div class="flex flex-col-reverse sm:flex-row gap-2">
+                <button id="cancelRecruitBtn" type="button" onclick="cancelRecruitEdit()" class="min-h-[44px] px-4 py-2 text-sm font-bold rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800">キャンセル</button>
+                <button id="saveRecruitBtn" type="button" onclick="saveRecruitText()" class="min-h-[44px] px-4 py-2 text-sm font-bold rounded-lg bg-emerald-500 text-slate-950 hover:bg-emerald-400">保存</button>
+              </div>
+            </div>
+          </div>
           </div>
         </details>
       </section>
@@ -1057,6 +1080,8 @@
     // 管理人用パスワードのハッシュ
     const ADMIN_HASH = 'a7ea8f2832251e800e040ae0373732dfa2623b954e774c26a74d5c55ccc2da38';
     const STORAGE_KEY = 'gbf_crew_auth_hash';
+    const RECRUIT_ADMIN_UID = 'wJRZibao8FgMDqDDQ3csPdVuGkx1';
+    const RECRUIT_MAX_LENGTH = 10000;
     window.isAdmin = false;
 
     // 文字列をSHA-256ハッシュ化する関数（Web Crypto APIを利用）
@@ -1104,12 +1129,15 @@
 
     function handleLogout() {
       localStorage.removeItem(STORAGE_KEY);
+      window.isAdmin = false;
+      closeRecruitAdminUi();
       showAuth();
     }
 
     function showPortal() {
       document.getElementById('authScreen').classList.add('hidden');
       document.getElementById('portalScreen').classList.remove('hidden');
+      document.getElementById('editRecruitBtn').hidden = !window.isAdmin;
       initNavObserver();
       initNavAccordionSync();
       // AI機能の一時休止中は登録済み情報を自動取得しない。
@@ -1205,7 +1233,7 @@
     }
 
     function copyRecruitText() {
-      const rawText = document.getElementById('recruitRawText').innerText;
+      const rawText = document.getElementById('recruitRawText').textContent;
       navigator.clipboard.writeText(rawText).then(() => {
         const label = document.getElementById('copyRecruitTextLabel');
         const originalText = label.innerText;
@@ -1240,8 +1268,163 @@
     const MAX_IMAGES = 4;
     let selectedImages = []; // Array of base64 strings
     let db = null;
+    let firebaseAuth = null;
+    let firebaseAuthReady = Promise.resolve();
     let isInitialLoadDone = false;
     let unsubscribeFirestore = null;
+    let unsubscribeRecruitment = null;
+    let fallbackRecruitText = '';
+    let recruitmentText = '';
+    let recruitmentTextBeforeEdit = '';
+    let recruitmentSaving = false;
+
+    function setRecruitmentText(text) {
+      const safeText = typeof text === 'string' && text.length > 0 ? text : fallbackRecruitText;
+      recruitmentText = safeText;
+      document.getElementById('recruitRawText').textContent = safeText;
+    }
+
+    function initRecruitmentService() {
+      const rawText = document.getElementById('recruitRawText');
+      if (!rawText) return;
+      fallbackRecruitText = rawText.textContent;
+      setRecruitmentText(fallbackRecruitText);
+      if (!db) return;
+      unsubscribeRecruitment?.();
+      unsubscribeRecruitment = db.doc('portalConfig/recruitment').onSnapshot(snapshot => {
+        if (snapshot.exists) {
+          const text = snapshot.data()?.text;
+          if (typeof text === 'string' && text.length > 0 && text.length <= RECRUIT_MAX_LENGTH) setRecruitmentText(text);
+        } else {
+          setRecruitmentText(fallbackRecruitText);
+        }
+      }, error => {
+        console.warn('募集文を取得できないため固定文を表示します。', error);
+        setRecruitmentText(fallbackRecruitText);
+      });
+    }
+
+    function showRecruitAuthStatus(message) {
+      const status = document.getElementById('recruitAuthStatus');
+      status.textContent = message;
+      status.hidden = !message;
+    }
+
+    function closeRecruitAdminUi() {
+      document.getElementById('recruitAdminLogin').hidden = true;
+      document.getElementById('recruitEditor').hidden = true;
+      document.getElementById('recruitAdminPassword').value = '';
+      showRecruitAuthStatus('');
+    }
+
+    function beginRecruitEdit() {
+      if (!window.isAdmin || firebaseAuth?.currentUser?.uid !== RECRUIT_ADMIN_UID) return;
+      recruitmentTextBeforeEdit = recruitmentText || fallbackRecruitText;
+      const textarea = document.getElementById('recruitTextarea');
+      textarea.value = recruitmentTextBeforeEdit;
+      document.getElementById('recruitAdminLogin').hidden = true;
+      document.getElementById('recruitEditor').hidden = false;
+      document.getElementById('recruitEditStatus').textContent = '';
+      textarea.focus();
+    }
+
+    async function requestRecruitEdit() {
+      if (!window.isAdmin) return;
+      if (!firebaseAuth) {
+        document.getElementById('recruitAdminLogin').hidden = false;
+        showRecruitAuthStatus('Firebase認証を利用できません。ページを再読み込みしてください。');
+        return;
+      }
+      await firebaseAuthReady;
+      if (!window.isAdmin) return;
+      if (firebaseAuth.currentUser?.uid === RECRUIT_ADMIN_UID) {
+        beginRecruitEdit();
+        return;
+      }
+      document.getElementById('recruitEditor').hidden = true;
+      document.getElementById('recruitAdminLogin').hidden = false;
+      showRecruitAuthStatus(firebaseAuth.currentUser ? '管理者権限を確認できませんでした。管理者アカウントでログインしてください。' : '');
+      document.getElementById('recruitAdminEmail').focus();
+    }
+
+    async function handleRecruitAdminLogin(event) {
+      event.preventDefault();
+      if (!window.isAdmin || !firebaseAuth) return;
+      const button = document.getElementById('recruitAdminLoginBtn');
+      const email = document.getElementById('recruitAdminEmail').value.trim();
+      const password = document.getElementById('recruitAdminPassword').value;
+      button.disabled = true;
+      button.textContent = 'ログイン中...';
+      showRecruitAuthStatus('');
+      try {
+        const credential = await firebaseAuth.signInWithEmailAndPassword(email, password);
+        if (credential.user?.uid !== RECRUIT_ADMIN_UID) {
+          await firebaseAuth.signOut();
+          showRecruitAuthStatus('管理者権限を確認できませんでした。');
+          return;
+        }
+        beginRecruitEdit();
+      } catch (error) {
+        console.warn('Firebase管理者認証に失敗しました。', error);
+        showRecruitAuthStatus('ログインに失敗しました。メールアドレスとパスワードを確認してください。');
+      } finally {
+        document.getElementById('recruitAdminPassword').value = '';
+        button.disabled = false;
+        button.textContent = 'ログイン';
+      }
+    }
+
+    function cancelRecruitAdminLogin() {
+      document.getElementById('recruitAdminLogin').hidden = true;
+      document.getElementById('recruitAdminPassword').value = '';
+      showRecruitAuthStatus('');
+    }
+
+    function cancelRecruitEdit() {
+      if (recruitmentSaving) return;
+      document.getElementById('recruitTextarea').value = recruitmentTextBeforeEdit;
+      document.getElementById('recruitEditor').hidden = true;
+      document.getElementById('recruitEditStatus').textContent = '';
+    }
+
+    async function saveRecruitText() {
+      if (recruitmentSaving) return;
+      const textarea = document.getElementById('recruitTextarea');
+      const status = document.getElementById('recruitEditStatus');
+      const saveButton = document.getElementById('saveRecruitBtn');
+      const cancelButton = document.getElementById('cancelRecruitBtn');
+      const text = textarea.value;
+      if (!window.isAdmin || !firebaseAuth || firebaseAuth.currentUser?.uid !== RECRUIT_ADMIN_UID) {
+        status.textContent = '管理者権限を確認できませんでした。もう一度認証してください。';
+        return;
+      }
+      if (!db) {
+        status.textContent = 'Firestoreへ接続できません。入力内容を保持したまま再試行してください。';
+        return;
+      }
+      if (!text.length || text.length > RECRUIT_MAX_LENGTH) {
+        status.textContent = `募集文は1〜${RECRUIT_MAX_LENGTH}文字で入力してください。`;
+        return;
+      }
+      recruitmentSaving = true;
+      saveButton.disabled = true;
+      cancelButton.disabled = true;
+      saveButton.textContent = '保存中...';
+      status.textContent = '';
+      try {
+        await db.doc('portalConfig/recruitment').set({ text, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        setRecruitmentText(text);
+        document.getElementById('recruitEditor').hidden = true;
+      } catch (error) {
+        console.warn('募集文の保存に失敗しました。', error);
+        status.textContent = '保存に失敗しました。入力内容は保持されています。';
+      } finally {
+        recruitmentSaving = false;
+        saveButton.disabled = false;
+        cancelButton.disabled = false;
+        saveButton.textContent = '保存';
+      }
+    }
 
     // Firebase 初期化
     function initFirebaseService() {
@@ -1257,6 +1440,15 @@
             firebase.initializeApp(firebaseConfig);
           }
           db = firebase.firestore();
+          firebaseAuth = firebase.auth();
+          firebaseAuthReady = new Promise(resolve => {
+            let unsubscribe = () => {};
+            unsubscribe = firebaseAuth.onAuthStateChanged(() => {
+              unsubscribe();
+              resolve();
+            }, () => resolve());
+          });
+          initRecruitmentService();
 
           if (statusBadge && statusText) {
             statusBadge.className = 'text-[10px] px-2.5 py-0.5 rounded-full font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 flex items-center gap-1';

@@ -14,6 +14,26 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;
     }
+    match /portalConfig/recruitment {
+      function recruitmentAdmin() {
+        return request.auth != null
+          && request.auth.uid == 'wJRZibao8FgMDqDDQ3csPdVuGkx1';
+      }
+      function validRecruitment() {
+        let d = request.resource.data;
+        return d.keys().hasAll(['text', 'updatedAt'])
+          && d.keys().hasOnly(['text', 'updatedAt'])
+          && d.text is string
+          && d.text.size() > 0
+          && d.text.size() <= 10000
+          && d.updatedAt is timestamp
+          && d.updatedAt == request.time;
+      }
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if recruitmentAdmin() && validRecruitment();
+      allow delete: if false;
+    }
     match /publicTools/yosenPredictor {
       function validScore(v) { return v is int && v >= 0 && v <= 9007199254740991; }
       function validSharedData() {

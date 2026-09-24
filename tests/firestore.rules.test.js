@@ -20,6 +20,8 @@ after(async () => {
 });
 
 describe("Firestore Security Rules", () => {
+  const recruitmentPath = "portalConfig/recruitment";
+  const adminUid = "wJRZibao8FgMDqDDQ3csPdVuGkx1";
   const publicCollections = ["formations_gw", "formations_multi", "formations_high"];
   const internalCollections = [
     "formation_private",
@@ -96,4 +98,39 @@ describe("Firestore Security Rules", () => {
       });
     });
   }
+
+  describe("Recruitment portal config", () => {
+    it("allows anyone to read the single recruitment document", async () => {
+      await assertSucceeds(testEnv.unauthenticatedContext().firestore().doc(recruitmentPath).get());
+      await assertSucceeds(testEnv.authenticatedContext("crew-member").firestore().doc(recruitmentPath).get());
+    });
+
+    it("rejects collection listing", async () => {
+      await assertFails(testEnv.unauthenticatedContext().firestore().collection("portalConfig").get());
+    });
+
+    it("rejects unauthenticated and non-admin writes", async () => {
+      const serverTimestamp = require("firebase/firestore").serverTimestamp();
+      await assertFails(testEnv.unauthenticatedContext().firestore().doc(recruitmentPath).set({ text: "更新", updatedAt: serverTimestamp }));
+      await assertFails(testEnv.authenticatedContext("crew-member").firestore().doc(recruitmentPath).set({ text: "更新", updatedAt: serverTimestamp }));
+    });
+
+    it("allows the administrator to create and update valid data", async () => {
+      const doc = testEnv.authenticatedContext(adminUid).firestore().doc(recruitmentPath);
+      const serverTimestamp = require("firebase/firestore").serverTimestamp();
+      await assertSucceeds(doc.set({ text: "管理者による更新", updatedAt: serverTimestamp }));
+      await assertSucceeds(doc.set({ text: "再更新", updatedAt: serverTimestamp }));
+    });
+
+    it("rejects invalid fields, text values, timestamps, and deletion", async () => {
+      const doc = testEnv.authenticatedContext(adminUid).firestore().doc(recruitmentPath);
+      const serverTimestamp = require("firebase/firestore").serverTimestamp();
+      await assertFails(doc.set({ text: "更新", updatedAt: serverTimestamp, extra: true }));
+      await assertFails(doc.set({ text: "", updatedAt: serverTimestamp }));
+      await assertFails(doc.set({ text: "a".repeat(10001), updatedAt: serverTimestamp }));
+      await assertFails(doc.set({ text: 123, updatedAt: serverTimestamp }));
+      await assertFails(doc.set({ text: "更新", updatedAt: new Date(0) }));
+      await assertFails(doc.delete());
+    });
+  });
 });
