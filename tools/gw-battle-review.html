@@ -3356,11 +3356,8 @@ class BattleSync {
         if (!this.admin) {
           this.stop(); this.message('共有先のデータがまだありません。'); return;
         }
-        if (hasLocal && !this.io.confirm('この端末に保存されている戦況データがあります。\n' + this.session + ' の共有データとしてクラウドへ移行しますか？\n「キャンセル」で今は移行しません。')) {
-          this.stop(); this.message('移行していません。端末内データを表示・保存しています。'); return;
-        }
-        if (hasLocal && !this.io.backup()) throw Error('退避保存に失敗したため移行を中止しました。');
-        this.initialize(local); return;
+        // Initialize an empty session to prevent auto-migrating legacy local data.
+        this.initialize({ base: null, snapshots: [], conditions: local.conditions }); return;
       }
       if (!sameSession && hasLocal && !this.switchingDay) {
         if (!this.io.confirm(this.session + ' に共有データがあります。\n端末データを退避保存して共有データを読み込みますか？\n「キャンセル」で端末内データを維持します。')) {
