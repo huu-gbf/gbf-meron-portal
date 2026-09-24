@@ -2841,6 +2841,44 @@ function renderSnapshotItem(snap, idx, allPoints) {
   const allIdx = allPoints.findIndex(p => !p.virtual && p.id === snap.id);
   const speeds = allIdx > 0 ? calcSpeedBetween(allPoints, allIdx) : { own: null, enemy: null };
 
+  let diffHtml = '';
+  if (snap.own != null && snap.enemy != null) {
+    const diff = snap.own - snap.enemy;
+    let diffStr = '';
+    let diffColor = 'var(--text-secondary)';
+    if (diff > 0) {
+      diffStr = `リード +${fmt億(diff)}`;
+      diffColor = 'var(--blue)';
+    } else if (diff < 0) {
+      diffStr = `ビハインド ${fmt億(-diff)}`;
+      diffColor = 'var(--red)';
+    } else {
+      diffStr = '同点 0億';
+    }
+
+    let speedDiffStr = '--';
+    let speedColor = 'var(--text-secondary)';
+    if (speeds.own != null && speeds.enemy != null) {
+      const spdDiff = speeds.own - speeds.enemy;
+      if (spdDiff > 0) {
+        speedDiffStr = `+${fmtSpeed(spdDiff)}`;
+        speedColor = 'var(--blue)';
+      } else if (spdDiff < 0) {
+        speedDiffStr = `-${fmtSpeed(-spdDiff)}`;
+        speedColor = 'var(--red)';
+      } else {
+        speedDiffStr = '0億/h';
+      }
+    }
+
+    diffHtml = `
+      <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; padding:6px 10px; background:rgba(255,255,255,0.03); border-radius:6px; font-size:0.75rem; font-weight:700;">
+        <div style="color:${diffColor};">📊 ${diffStr}</div>
+        <div style="color:${speedColor};">⚡ 時速差 ${speedDiffStr}</div>
+      </div>
+    `;
+  }
+
   el.innerHTML = `
     <div class="snapshot-header">
       <span class="snapshot-time">🕐 ${snap.time}</span>
@@ -2861,6 +2899,7 @@ function renderSnapshotItem(snap, idx, allPoints) {
         ${speeds.enemy != null ? `<div class="snapshot-team-speed">区間: ${fmtSpeed(speeds.enemy)}</div>` : ''}
       </div>
     </div>
+    ${diffHtml}
     <div class="snapshot-edit-form result-hidden" id="edit-form-${snap.id}">
       <div class="edit-row">
         <span class="edit-label">時刻</span>
