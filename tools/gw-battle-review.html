@@ -2602,7 +2602,7 @@ function drawChart() {
     const x2 = toX(1440).toFixed(1);
     const y2 = toY(predVal).toFixed(1);
     const dash = dashLen || '5,4';
-    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.5" stroke-dasharray="${dash}" stroke-linecap="round" opacity="0.75"/>`;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1" stroke-dasharray="${dash}" stroke-linecap="round" opacity="0.75"/>`;
   }
 
   // Prediction endpoint markers with collision avoidance
@@ -2658,7 +2658,7 @@ function drawChart() {
     const cx = toX(1440).toFixed(1);
     let html = '';
     items.forEach(p => {
-      html += `<circle cx="${cx}" cy="${p.markerY.toFixed(1)}" r="3" fill="${p.color}" opacity="0.9"/>`;
+      html += `<circle cx="${cx}" cy="${p.markerY.toFixed(1)}" r="2" fill="${p.color}" opacity="0.9"/>`;
       html += `<text x="${parseFloat(cx) - 3}" y="${p.labelY.toFixed(1)}" text-anchor="end" font-size="6.5" fill="${p.color}" opacity="0.9">${p.label}: ${fmtAxisOku(p.val)}</text>`;
     });
     return html;
@@ -2703,11 +2703,11 @@ function drawChart() {
     if (points.length === 1) {
       const cx = toX(points[0].min).toFixed(1);
       const cy = toY(points[0].val).toFixed(1);
-      return `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${color}" opacity="0.9"/>`;
+      return `<circle cx="${cx}" cy="${cy}" r="2.5" fill="${color}" opacity="0.9"/>`;
     }
     return [
-      `<polyline points="${pts(points)}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>`,
-      ...points.map(p => `<circle cx="${toX(p.min).toFixed(1)}" cy="${toY(p.val).toFixed(1)}" r="2.5" fill="${color}" opacity="1"/>`)
+      `<polyline points="${pts(points)}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>`,
+      ...points.map(p => `<circle cx="${toX(p.min).toFixed(1)}" cy="${toY(p.val).toFixed(1)}" r="1.8" fill="${color}" opacity="1"/>`)
     ].join('');
   }
 
@@ -2740,8 +2740,8 @@ function drawChart() {
   // Legend
   function legendItem(color, label, dashed) {
     const style = dashed
-      ? `background:repeating-linear-gradient(to right,${color} 0,${color} 4px,transparent 4px,transparent 8px);height:2px;`
-      : `background:${color};height:3px;`;
+      ? `background:repeating-linear-gradient(to right,${color} 0,${color} 4px,transparent 4px,transparent 8px);height:1.5px;`
+      : `background:${color};height:2px;`;
     return `<div class="legend-item"><div class="legend-line" style="${style}width:20px;border-radius:2px;"></div><span>${label}</span></div>`;
   }
 
@@ -2844,37 +2844,49 @@ function renderSnapshotItem(snap, idx, allPoints) {
   let diffHtml = '';
   if (snap.own != null && snap.enemy != null) {
     const diff = snap.own - snap.enemy;
-    let diffStr = '';
+    let diffLabel = '';
+    let diffVal = '';
     let diffColor = 'var(--text-secondary)';
+    
     if (diff > 0) {
-      diffStr = `リード +${fmt億(diff)}`;
+      diffLabel = 'リード';
+      diffVal = `+${fmt億(diff)}`;
       diffColor = 'var(--blue)';
     } else if (diff < 0) {
-      diffStr = `ビハインド ${fmt億(-diff)}`;
+      diffLabel = 'ビハインド';
+      diffVal = `${fmt億(-diff)}`;
       diffColor = 'var(--red)';
     } else {
-      diffStr = '同点 0億';
+      diffLabel = '同点';
+      diffVal = '0億';
+      diffColor = 'var(--text-secondary)';
     }
 
-    let speedDiffStr = '--';
+    let speedLabel = '時速差';
+    let speedVal = '--';
     let speedColor = 'var(--text-secondary)';
+    
     if (speeds.own != null && speeds.enemy != null) {
       const spdDiff = speeds.own - speeds.enemy;
       if (spdDiff > 0) {
-        speedDiffStr = `+${fmtSpeed(spdDiff)}`;
+        speedVal = `+${fmtSpeed(spdDiff)}`;
         speedColor = 'var(--blue)';
       } else if (spdDiff < 0) {
-        speedDiffStr = `-${fmtSpeed(-spdDiff)}`;
+        speedVal = `-${fmtSpeed(-spdDiff)}`;
         speedColor = 'var(--red)';
       } else {
-        speedDiffStr = '0億/h';
+        speedVal = '0億/h';
       }
     }
 
     diffHtml = `
-      <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; padding:6px 10px; background:rgba(255,255,255,0.03); border-radius:6px; font-size:0.75rem; font-weight:700;">
-        <div style="color:${diffColor};">📊 ${diffStr}</div>
-        <div style="color:${speedColor};">⚡ 時速差 ${speedDiffStr}</div>
+      <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; padding:6px 10px; background:rgba(255,255,255,0.03); border-radius:6px; font-size:0.75rem;">
+        <div style="color:var(--text-secondary);">
+          <span style="opacity:0.7; font-size:0.7rem; margin-right:2px;">📊</span>${diffLabel} <span style="color:${diffColor}; font-weight:600; margin-left:4px;">${diffVal}</span>
+        </div>
+        <div style="color:var(--text-secondary);">
+          <span style="opacity:0.7; font-size:0.7rem; margin-right:2px;">⚡</span>${speedLabel} <span style="color:${speedColor}; font-weight:600; margin-left:4px;">${speedVal}</span>
+        </div>
       </div>
     `;
   }
