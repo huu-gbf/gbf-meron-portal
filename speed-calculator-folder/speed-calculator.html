@@ -1443,8 +1443,44 @@ const elements = {
   toast: document.getElementById('toast')
 };
 
+const LS_KEY_HELL_TIMES = 'gbf_unf_speed_calc_times';
+
+function loadSavedTimes() {
+  try {
+    const saved = localStorage.getItem(LS_KEY_HELL_TIMES);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      for (const key in parsed) {
+        if (state.comparisonTimes[key] !== undefined) {
+          state.comparisonTimes[key] = parsed[key];
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load saved times', e);
+  }
+}
+
+function saveTimes() {
+  try {
+    localStorage.setItem(LS_KEY_HELL_TIMES, JSON.stringify(state.comparisonTimes));
+  } catch (e) {
+    console.error('Failed to save times', e);
+  }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+  loadSavedTimes();
+  
+  if (state.comparisonTimes[state.selectedHell]) {
+    const initialSec = state.comparisonTimes[state.selectedHell];
+    state.minutes = Math.floor(initialSec / 60);
+    state.seconds = initialSec % 60;
+    elements.inputMinutes.value = state.minutes;
+    elements.inputSeconds.value = state.seconds;
+  }
+
   setupEventListeners();
   renderComparisonTable();
   updateCalculation();
@@ -1455,11 +1491,11 @@ function setupEventListeners() {
   // HELL Card Selection
   elements.hellCards.forEach(card => {
     card.addEventListener('click', () => {
-      elements.hellCards.forEach(c => c.classList.remove('active'));
-      card.classList.add('active');
-      state.selectedHell = parseInt(card.dataset.level, 10);
-      updateCalculation();
-      highlightComparisonRow();
+      const level = parseInt(card.dataset.level, 10);
+      selectHell(level);
+
+
+
     });
   });
 
@@ -1603,6 +1639,7 @@ function updateCalculation() {
 
   // Also update comparison state for current Hell
   state.comparisonTimes[state.selectedHell] = battleSec;
+  saveTimes();
   renderComparisonTable();
 
   // Update Goal
@@ -1714,6 +1751,7 @@ function renderComparisonTable() {
     input.addEventListener('input', (e) => {
       const val = parseInt(e.target.value, 10) || 1;
       state.comparisonTimes[hell.level] = val;
+      saveTimes();
       if (hell.level === state.selectedHell) {
         setTimeFromTotalSeconds(val);
       } else {
@@ -1751,6 +1789,7 @@ function selectHell(level) {
   } else {
     updateCalculation();
   }
+  highlightComparisonRow();
 }
 
 // Copy Result Function
