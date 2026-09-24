@@ -3302,36 +3302,7 @@ class BattleSync {
     if (this.busy) { this.message('送信処理の完了を待ってから再試行してください。'); return; }
     this.stop();
     if (!this.db) return;
-    const sessionBase = this.io.session();
-    let session = sessionBase;
-
-    if (!this.admin) {
-      this.message('現在の共有戦況を探索しています…');
-      const dateStr = session.split('_')[0];
-      let foundSession = null;
-      let targetDayKey = session.split('_')[1];
-      try {
-        for (const d of ['day4', 'day3', 'day2', 'day1']) {
-          const testSession = `${dateStr}_${d}`;
-          const doc = await this.db.collection('gwBattleReviews').doc(testSession).collection('entries').doc('meta').get();
-          if (doc.exists) {
-            foundSession = testSession;
-            targetDayKey = d;
-            break;
-          }
-        }
-      } catch (e) {
-        this.message('共有データの探索に失敗しました。' + e.message);
-        return;
-      }
-      if (foundSession) {
-        session = foundSession;
-        if (this.io.setDayKey) this.io.setDayKey(targetDayKey);
-      } else {
-        this.message('この日の共有戦況はまだありません。');
-        // fallback to the default session if not found, to keep the listener active
-      }
-    }
+    const session = this.io.session();
 
     if (this.admin && this.journal.queue.length && this.journal.session !== session) {
       this.message('未同期データがあります。元の共有先 ' + this.journal.session + ' を選び直してください。端末データの保存も可能です。');
@@ -3634,7 +3605,6 @@ class BattleSync {
 
 function setReadonlyMode(isReadonly) {
   const disableSelectors = [
-    'input[name="gw-day"]',
     'input[name="day-type"]',
     '#enemy-contrib12',
     '#enemy-speed',

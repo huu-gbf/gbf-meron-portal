@@ -69,6 +69,7 @@ test('legacy storage shape and 06:59/07:00/08:00/11:59/12:00 recording boundarie
   const main=html.match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.createContext(context);vm.runInContext(main+`
     globalThis.savedState=state;
+    globalThis.savedStorage=StorageManager;
     loadFromStorage();
     renderHistory=drawChart=updateAnalysis=updateRealtimeDisplay=()=>{};
     showError=(_id,message)=>{globalThis.error=message;};
@@ -77,7 +78,13 @@ test('legacy storage shape and 06:59/07:00/08:00/11:59/12:00 recording boundarie
   `,context);
   assert.equal(elements.get('enemy-contrib12').value,'12345678901');
   assert.equal(elements.get('enemy-speed').value,String(base.enemySpeed/1e4));
-  assert.equal(context.savedState.dayKey,'day3');assert.equal(context.savedState.snapshots[0].id,42);
+  assert.equal(context.savedState.dayKey,'day3');assert.equal(context.savedState.snapshots.length,0);
+  const migrated=JSON.parse(values.get('gw_review_snapshots'));
+  assert.deepEqual(clone(migrated),{day1:[{id:42,...record('08:00',100,90)}],day2:[],day3:[],day4:[]});
+  const migratedRaw=values.get('gw_review_snapshots');
+  assert.equal(context.savedStorage.loadSnapshots('day1').length,1);
+  assert.equal(context.savedStorage.loadSnapshots('day1').length,1);
+  assert.equal(values.get('gw_review_snapshots'),migratedRaw);
   assert.deepEqual(JSON.parse(values.get('gw_review_base')),base);
   for(const time of ['06:59','07:00','08:00','11:59','12:00']) {
     context.savedState.snapshots=[];
@@ -87,7 +94,7 @@ test('legacy storage shape and 06:59/07:00/08:00/11:59/12:00 recording boundarie
     context.record();
     assert.equal(context.savedState.snapshots.length,time==='06:59'?0:1,time);
     if(time==='06:59')assert.match(context.error,/7:00/);
-    else {const saved=JSON.parse(values.get('gw_review_snapshots'));assert.equal(saved[0].time,time);assert.deepEqual(Object.keys(saved[0]).sort(),['enemy','id','own','time']);}
+    else {const saved=JSON.parse(values.get('gw_review_snapshots'));assert.equal(saved.day3[0].time,time);assert.deepEqual(Object.keys(saved.day3[0]).sort(),['enemy','id','own','time']);}
   }
 });
 
