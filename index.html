@@ -1143,7 +1143,9 @@
       // AI機能の一時休止中は登録済み情報を自動取得しない。
       // アクセス解析: 認証成功後にfire-and-forgetで記録
       // 失敗してもポータル本体へ影響しない
-      recordVisit();
+      if (localStorage.getItem(STORAGE_KEY) !== ADMIN_HASH) {
+        recordVisit();
+      }
     }
 
     function showAuth() {
