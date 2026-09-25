@@ -92,6 +92,28 @@ service cloud.firestore {
           || (entry.matches('^((0[7-9]|1[0-9]|2[0-3])[0-5][0-9]|2400)$') && validRecord(request.resource.data)));
       allow delete: if battleAdmin() && entry.matches('^((0[7-9]|1[0-9]|2[0-3])[0-5][0-9]|2400)$');
     }
+    // Member identities are server-managed. Knowing a profile ID grants no access.
+    function memberOwnsProfile(profileId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/memberIdentities/$(request.auth.uid))
+        && get(/databases/$(database)/documents/memberIdentities/$(request.auth.uid)).data.active == true
+        && get(/databases/$(database)/documents/memberIdentities/$(request.auth.uid)).data.profileId == profileId
+        && exists(/databases/$(database)/documents/memberProfiles/$(profileId))
+        && get(/databases/$(database)/documents/memberProfiles/$(profileId)).data.status == 'active';
+    }
+    match /memberIdentities/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+    match /memberProfiles/{profileId} {
+      allow get: if memberOwnsProfile(profileId);
+      allow list, write: if false;
+      match /devices/{deviceId} {
+        allow read: if memberOwnsProfile(profileId);
+        allow write: if false;
+      }
+      // Settings remain denied until a tool-specific schema is introduced.
+    }
     match /{document=**} {
       allow read, write: if false;
     }
