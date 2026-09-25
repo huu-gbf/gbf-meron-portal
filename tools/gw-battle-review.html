@@ -1344,7 +1344,8 @@ input.error {
     <div class="notice notice-info" style="margin-bottom:12px;">
       <strong>保存先：</strong>管理者ログイン後、同じJST日付・戦目のデータを共有します。未接続・通信障害時は端末内に保存します。同期状態は「現在の戦況」で確認できます。
     </div>
-    <button class="btn btn-danger" id="btn-clear-all" style="width:100%">🗑️ この端末のレビュー用データをすべて削除</button>
+    <button class="btn btn-danger" id="btn-clear-day" style="width:100%">🗑️ 1戦目のこの端末データを削除</button>
+    <button class="btn btn-danger" id="btn-clear-all" style="width:100%; margin-top:8px; opacity:0.7; font-size:0.85em;">⚠️ 1〜4戦目の全データを削除</button>
   </section>
 
   <!-- ========================
@@ -1815,7 +1816,24 @@ const StorageManager = {
   loadConditions() {
     try {
       const s = localStorage.getItem(this.KEYS.conditions);
-      return s ? JSON.parse(s) : null;
+      let parsed = s ? JSON.parse(s) : null;
+      if (parsed && typeof parsed === 'object' && !parsed.dayDates) {
+        parsed.dayDates = {};
+        try {
+          const jStr = localStorage.getItem('gw_review_sync_v1');
+          if (jStr) {
+            const j = JSON.parse(jStr);
+            if (j && typeof j.session === 'string') {
+              const parts = j.session.split('_');
+              if (parts.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(parts[0]) && /^day\d+$/.test(parts[1])) {
+                parsed.dayDates[parts[1]] = parts[0];
+              }
+            }
+          }
+        } catch(e) {}
+        this.saveConditions(parsed);
+      }
+      return parsed;
     } catch(e) { return null; }
   },
 
@@ -1833,6 +1851,7 @@ const StorageManager = {
 const state = {
   dayKey: 'day1',
   dayType: 'weekday',
+  dayDates: {},
   enemyContrib12: null,
   enemySpeed: null,
   ownContrib12: null,
@@ -2021,6 +2040,7 @@ function setupConditionListeners() {
       updateAnalysis();
       updateRealtimeDisplay();
       globalThis.onBattleDayChanged?.();
+      updateClearDayLabel();
     });
   });
 
@@ -2035,7 +2055,7 @@ function setupConditionListeners() {
 }
 
 function saveConditions() {
-  StorageManager.saveConditions({ dayKey: state.dayKey, dayType: state.dayType });
+  StorageManager.saveConditions({ dayKey: state.dayKey, dayType: state.dayType, dayDates: state.dayDates });
 }
 
 function loadConditions() {
@@ -2043,6 +2063,7 @@ function loadConditions() {
   if (!c) return;
   state.dayKey = c.dayKey || 'day1';
   state.dayType = c.dayType || 'weekday';
+  state.dayDates = c.dayDates || {};
 
   // Update radio buttons
   const dayRadio = document.querySelector(`input[name="gw-day"][value="${state.dayKey}"]`);
@@ -3044,11 +3065,52 @@ function deleteSnap(id) {
    SECTION 15: DATA CLEAR
    ================================================ */
 
-function clearAllData() {
-  if (!confirm('入力した12時データ・戦況記録をすべて削除します。\n共有に接続したデータは、他端末にも削除が反映されます（未同期の場合は再接続後）。\nよろしいですか？')) return;
-  if (!confirm('本当に削除してよいですか？（この操作は元に戻せません）')) return;
+function updateClearDayLabel() {
+  const btn = document.getElementById('btn-clear-day');
+  if (btn) btn.textContent = '🗑️ ' + MODELS[state.dayKey].label + 'のこの端末データを削除';
+}
 
-  StorageManager.clearAll();
+function clearDayData() {
+  const dayLabel = MODELS[state.dayKey].label;
+  const otherDays = ['day1','day2','day3','day4'].filter(d => d !== state.dayKey).map(d => MODELS[d].label).join('・');
+  if (!confirm(dayLabel + ' のこの端末内データを削除します。\n\n' + otherDays + ' のデータは削除されません。\n\nこの操作は元に戻せません。\n削除しますか？')) return;
+
+  // ---- ローカル専用削除：sync.changed を経由しない ----
+  // localStorage を直接操作し、フックされた StorageManager.saveSnapshots を呼ばない
+  try {
+    const raw = localStorage.getItem(StorageManager.KEYS.snapshots);
+    const store = StorageManager.normalizeSnapshotStore(raw ? JSON.parse(raw) : null);
+    store[state.dayKey] = [];
+    localStorage.setItem(StorageManager.KEYS.snapshots, JSON.stringify(store));
+  } catch(e) {}
+
+  // state を更新
+  state.snapshots = [];
+
+  // UI を更新
+  renderHistory();
+  drawChart();
+  updateAnalysis();
+  updateRealtimeDisplay();
+
+  alert(dayLabel + ' のデータを削除しました。Firestore上の共有データは変更されていません。');
+}
+
+function clearAllDataSafe() {
+  const input = prompt('この端末に保存されている\n1戦目・2戦目・3戦目・4戦目の\nすべてのレビュー用データを削除します。\n\nFirestore上の共有データは削除されません。\n\nこの操作は元に戻せません。\n\n続行するには「全データ削除」と入力してください。');
+  if (input !== '全データ削除') {
+    if (input != null) alert('入力が一致しないため削除を中止しました。');
+    return;
+  }
+
+  // ---- ローカル専用削除：sync.changed を経由しない ----
+  // localStorage を直接操作し、フックされた StorageManager.clearAll / saveSnapshots を呼ばない
+  try {
+    localStorage.removeItem(StorageManager.KEYS.base);
+    localStorage.removeItem(StorageManager.KEYS.snapshots);
+    // conditions は dayDates を含むため残す（戦目選択・日付対応を維持）
+  } catch(e) {}
+
   state.enemyContrib12 = null;
   state.enemySpeed = null;
   state.ownContrib12 = null;
@@ -3069,7 +3131,7 @@ function clearAllData() {
   updateAnalysis();
   updateRefMultipliers();
 
-  alert('データを削除しました。');
+  alert('1〜4戦目の全データを削除しました。Firestore上の共有データは変更されていません。');
 }
 
 /* ================================================
@@ -3220,7 +3282,9 @@ function init() {
   // Event listeners
   document.getElementById('btn-predict').addEventListener('click', runPrediction);
   document.getElementById('btn-record').addEventListener('click', recordSnapshot);
-  document.getElementById('btn-clear-all').addEventListener('click', clearAllData);
+  document.getElementById('btn-clear-day').addEventListener('click', clearDayData);
+  document.getElementById('btn-clear-all').addEventListener('click', clearAllDataSafe);
+  updateClearDayLabel();
 
   // Render from storage
   if (state.predictDone) {
@@ -3452,9 +3516,26 @@ class BattleSync {
 (() => {
   const $ = id => document.getElementById(id);
   const JOURNAL = 'gw_review_sync_v1', BACKUP = 'gw_review_backup_v1_';
-  const capture = () => ({base: StorageManager.loadBase(), snapshots: StorageManager.loadSnapshots(), conditions: StorageManager.loadConditions() || {dayKey: state.dayKey, dayType: state.dayType}});
-  let journalError = false, baseDraft = false, selectedDate = null;
-  $('battle-date').value = battleDateJst();
+  const capture = () => ({base: StorageManager.loadBase(), snapshots: StorageManager.loadSnapshots(), conditions: StorageManager.loadConditions() || {dayKey: state.dayKey, dayType: state.dayType, dayDates: state.dayDates}});
+  let journalError = false, baseDraft = false;
+
+  const getSessionDate = () => {
+    if (state.dayDates[state.dayKey]) return state.dayDates[state.dayKey];
+    const days = ['day1', 'day2', 'day3', 'day4'];
+    const targetIdx = days.indexOf(state.dayKey);
+    for (let i = 0; i < days.length; i++) {
+      if (state.dayDates[days[i]]) {
+        const d = new Date(state.dayDates[days[i]] + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + (targetIdx - i));
+        return d.toISOString().slice(0, 10);
+      }
+    }
+    const inputVal = $('battle-date').value;
+    return /^\d{4}-\d{2}-\d{2}$/.test(inputVal) ? inputVal : battleDateJst();
+  };
+  const updateDateInput = () => { $('battle-date').value = getSessionDate(); };
+  updateDateInput();
+
   const setDayKeyFn = (dayKey) => {
     if (state.dayKey !== dayKey) {
       const radio = document.querySelector(`input[name="gw-day"][value="${dayKey}"]`);
@@ -3468,7 +3549,7 @@ class BattleSync {
   };
 
   const sync = new BattleSync({
-    session: () => (selectedDate || battleDateJst()) + '_' + state.dayKey,
+    session: () => getSessionDate() + '_' + state.dayKey,
     setDayKey: setDayKeyFn,
     capture,
     isEditing: () => baseDraft || !!document.querySelector('.snapshot-edit-form:not(.result-hidden)'),
@@ -3487,7 +3568,13 @@ class BattleSync {
     apply: data => {
       // Use the existing cache formats; do not round-trip through formatted/rounded inputs.
       localStorage.setItem(StorageManager.KEYS.base, JSON.stringify(data.base));
-      localStorage.setItem(StorageManager.KEYS.conditions, JSON.stringify(data.conditions));
+      if (sync && typeof sync.session === 'string') {
+        const parts = sync.session.split('_');
+        if (parts.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(parts[0]) && parts[1] === data.conditions.dayKey) {
+          state.dayDates[data.conditions.dayKey] = parts[0];
+        }
+      }
+      localStorage.setItem(StorageManager.KEYS.conditions, JSON.stringify({...data.conditions, dayDates: state.dayDates}));
       StorageManager.saveSnapshots(data.snapshots, data.conditions.dayKey);
       state.enemyContrib12 = state.enemySpeed = state.ownContrib12 = state.ownSpeed = null;
       state.predictDone = false;
@@ -3516,6 +3603,7 @@ class BattleSync {
     };
   }
   globalThis.onBattleDayChanged = () => {
+    updateDateInput();
     sync.stop();
     sync.switchingDay = true;
     if (sync.db) sync.connect();
@@ -3529,8 +3617,8 @@ class BattleSync {
     const before = capture(); clear(); baseDraft = false;
     sync.changed('snapshots', before.snapshots, []); sync.changed('base', before.base, null);
   };
-  // Keep the existing confirmation flow, but make its shared effect explicit.
-  $('btn-clear-all').textContent = 'データ削除（共有接続中は共有にも反映）';
+  // clearAll override is no longer used for the UI button (local-only delete bypasses sync).
+  // The override is kept for backward compatibility but the button now calls clearAllDataSafe/clearDayData instead.
   $('battle-backup').onclick = () => {
     const saved = {};
     const drafts = {};
@@ -3560,7 +3648,10 @@ class BattleSync {
   $('battle-connect').onclick = () => sync.connect();
   $('battle-date').onchange = () => {
     const value = $('battle-date').value;
-    selectedDate = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      state.dayDates[state.dayKey] = value;
+      saveConditions();
+    }
     sync.stop(); sync.message('共有日を変更しました。接続ボタンで共有先を確認してください。');
   };
   $('battle-reload').onclick = () => {
@@ -3580,7 +3671,7 @@ class BattleSync {
   addEventListener('offline', () => sync.message('オフライン：端末内に保存しています。共有同期は未完了です。'));
   addEventListener('online', () => { if (sync.admin) sync.connect(); });
   setInterval(() => {
-    if (!selectedDate) $('battle-date').value = battleDateJst();
+    if (!$('battle-date').value) updateDateInput();
     if (sync.ready && sync.session !== sync.io.session()) { sync.stop(); sync.message('JST日付・戦目が変わりました。当日の共有先へ接続してください。'); }
   }, 30000);
   const startAuth = () => { try {
@@ -3612,6 +3703,7 @@ function setReadonlyMode(isReadonly) {
     '#snap-enemy',
     '#btn-predict',
     '#btn-record',
+    '#btn-clear-day',
     '#btn-clear-all'
   ];
 
