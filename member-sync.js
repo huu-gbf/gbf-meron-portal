@@ -1,6 +1,6 @@
 /* Member identity foundation. Load after Firebase 10 compat app/auth/firestore.
  * Restoration never creates an account. Only an explicit action signs in.
- * Cloud settings APIs are opt-in; calculator UI/localStorage are not connected.
+ * Cloud settings remain opt-in and use the isolated member authentication.
  */
 (function (root) {
   'use strict';
@@ -249,6 +249,103 @@
       subscribeSpeedCalculatorSettings });
   }
 
+  // One controller per calculator; only explicit input events queue writes.
+  function createSpeedCalculatorSync(client, readLocal, applyRemote) {
+    let cloudSyncReady = false, isApplyingRemoteSettings = false;
+    let lastCloudSettings = null, cloudSubscription, starting = false, generation = 0;
+    const pending = new Map(), inFlight = new Map(), acknowledged = new Map();
+    const fieldValue = (settings, field) => field === 'intervalSec'
+      ? settings?.intervalSec : settings?.hellTimesSec[field.split('.')[1]];
+    function stop() {
+      generation++; starting = false; cloudSyncReady = false;
+      cloudSubscription?.(); cloudSubscription = null;
+      pending.forEach(entry => clearTimeout(entry.timer)); pending.clear();
+      inFlight.clear(); acknowledged.clear(); lastCloudSettings = null;
+    }
+    function receive(settings) {
+      if (!settings) { stop(); return; }
+      if (lastCloudSettings && settings.revision < lastCloudSettings.revision) return;
+      isApplyingRemoteSettings = true;
+      try {
+        // Keep unsubmitted edits visible when another field's snapshot arrives.
+        const visible = {...settings, hellTimesSec: {...settings.hellTimesSec}};
+        pending.forEach((entry, field) => {
+          if (field === 'intervalSec') visible.intervalSec = entry.value;
+          else visible.hellTimesSec[field.split('.')[1]] = entry.value;
+        });
+        applyRemote(visible);
+        lastCloudSettings = settings;
+        acknowledged.forEach((write, field) => {
+          if (settings.revision >= write.revision) acknowledged.delete(field);
+        });
+      } finally { isApplyingRemoteSettings = false; }
+    }
+    async function start() {
+      if (starting || cloudSyncReady) return;
+      starting = true;
+      const epoch = generation;
+      try {
+        let settings = await client.getSpeedCalculatorSettings();
+        if (epoch !== generation) return;
+        if (!settings) settings = await client.initializeSpeedCalculatorSettings(readLocal());
+        if (epoch !== generation) return;
+        receive(settings);
+        if (epoch !== generation) return;
+        cloudSyncReady = true;
+        cloudSubscription = client.subscribeSpeedCalculatorSettings(settings => {
+          if (epoch === generation) receive(settings);
+        }, () => { if (epoch === generation) stop(); });
+      } catch { if (epoch === generation) stop(); }
+      finally { if (epoch === generation) starting = false; }
+    }
+    function change(field, value) {
+      if (!cloudSyncReady || isApplyingRemoteSettings) return;
+      if (field === 'intervalSec' ? !validInterval(value)
+          : !HELL_LEVELS.some(level => field === 'hellTimesSec.' + level) || !validHellSeconds(value)) return;
+      const previous = pending.get(field);
+      if (previous?.value === value) return;
+      if (previous) clearTimeout(previous.timer);
+      pending.delete(field);
+      const knownValue = () => acknowledged.has(field)
+        ? acknowledged.get(field).value : fieldValue(lastCloudSettings, field);
+      if (!inFlight.has(field) && knownValue() === value) return;
+      const epoch = generation;
+      const entry = {value};
+      pending.set(field, entry);
+      entry.timer = setTimeout(async () => {
+        // Keep the in-flight write separate from the replaceable debounce entry.
+        await inFlight.get(field);
+        if (epoch !== generation || pending.get(field) !== entry) return;
+        if (knownValue() === value) { pending.delete(field); return; }
+        const sending = (async () => {
+          let committedRevision;
+          try {
+            const revision = await client.updateSpeedCalculatorField(field, value);
+            committedRevision = revision;
+            if (epoch !== generation) return;
+            if (!lastCloudSettings || lastCloudSettings.revision < revision) acknowledged.set(field, {value, revision});
+          } catch {
+            // Local edits remain usable. A later input can retry; no offline replay.
+          } finally {
+            if (epoch === generation) {
+              inFlight.delete(field);
+              if (pending.get(field) === entry) {
+                pending.delete(field);
+                // A newer same-field snapshot may have arrived before commit resolved.
+                if (committedRevision && lastCloudSettings?.revision >= committedRevision
+                    && fieldValue(lastCloudSettings, field) !== value) receive(lastCloudSettings);
+              }
+            }
+          }
+        })();
+        inFlight.set(field, sending);
+        await sending;
+      }, 800);
+    }
+
+    return Object.freeze({start, stop, change});
+  }
+
   const messages = Object.freeze({
     UNAUTHENTICATED: '認証を確認できません。再読み込みしてください',
     MEMBERSHIP_REQUIRED: 'この端末は接続されていません',
@@ -378,9 +475,13 @@
 
   function mount(element) {
     const $ = id => element.querySelector('[data-sync="' + id + '"]');
-    let pairing, loading, current, showInput = false;
+    let pairing, loading, current, client, showInput = false;
     const render = state => {
+      const previousStatus = current?.status;
       current = state;
+      if (state.status !== previousStatus) root.dispatchEvent(new CustomEvent('member-sync-connection', {
+        detail: {ready: state.status === 'ready', client}
+      }));
       const ready = state.status === 'ready', pending = state.status === 'pending';
       $('status').textContent = state.error ? 'エラー' : ready ? '接続済み' : pending ? '承認待ち' : state.status === 'recovering' ? '確認中' : '未設定';
       $('choices').hidden = ready || pending || ['denied','recovering'].includes(state.status);
@@ -422,7 +523,7 @@
             document.head.append(script);
           });
         }
-        const client = createMemberSync(root.firebase, settings.firebaseConfig, options);
+        client = createMemberSync(root.firebase, settings.firebaseConfig, options);
         pairing = createPairing(client, render, {visible: () => !document.hidden});
         return pairing;
       })();
@@ -448,7 +549,7 @@
     if (root.MEMBER_SYNC_LOCAL) invoke(p => p.restore());
   }
 
-  const api = Object.freeze({ APP_NAME, createMemberSync, createPairing, normalizeCode, errorText, localOptions, mount });
+  const api = Object.freeze({ APP_NAME, createMemberSync, createSpeedCalculatorSync, createPairing, normalizeCode, errorText, localOptions, mount });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
     root.MemberSync = api;

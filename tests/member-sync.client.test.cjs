@@ -107,13 +107,13 @@ test('API cannot send token when auth disappears during token retrieval',async()
   const client=createMemberSync(sdk,{}, {fetch:async()=>calls++});await client.restoreAuthentication();
   await assert.rejects(client.request('/status'),/UNAUTHENTICATED/);assert.equal(calls,0);
 });
-test('calculator executable scripts and root calculator are unchanged from Block 3A',()=>{
-  const path='speed-calculator-folder/speed-calculator.html';
-  const before=execFileSync('git',['show','b3b2ed6:'+path],{encoding:'utf8'});
-  const scripts=html=>[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1].replace(/\r\n/g,'\n')).filter(Boolean);
-  assert.deepEqual(scripts(fs.readFileSync(path,'utf8')),scripts(before));
+test('member-sync keeps calculator localStorage responsibility in calculator code',()=>{
   assert.equal(fs.readFileSync('speed-calculator.html','utf8').replace(/\r\n/g,'\n'),execFileSync('git',['show','b3b2ed6:speed-calculator.html'],{encoding:'utf8'}).replace(/\r\n/g,'\n'));
-  assert(!fs.readFileSync('member-sync.js','utf8').includes('gbf_unf_speed_calc'));
+  const source=fs.readFileSync('member-sync.js','utf8');
+  assert(!source.includes('gbf_unf_speed_calc'));
+  assert(!source.includes('localStorage'));
+  const calculator=fs.readFileSync('speed-calculator-folder/speed-calculator.html','utf8');
+  for(const key of ['gbf_unf_speed_calc_times','gbf_unf_speed_calc_interval'])assert(calculator.includes(key));
 });
 
 function settingsFixture() {
@@ -165,10 +165,91 @@ test('settings update paths and initial payload are allowlisted before any Fires
   }
   assert.equal(f.reads(),0);assert.equal(f.transactions(),0);
 });
-test('Block 4A settings APIs are not connected to either calculator HTML or pairing mount',()=>{
-  for(const file of ['speed-calculator-folder/speed-calculator.html','speed-calculator.html']){
-    assert.equal(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n'),execFileSync('git',['show','dc52984:'+file],{encoding:'utf8'}).replace(/\r\n/g,'\n'));
-  }
-  const source=fs.readFileSync('member-sync.js','utf8');
-  assert(!source.slice(source.indexOf('function mount(')).includes('SpeedCalculatorSettings'));
+test('Block 4B settings sync is connected only to the folder calculator',()=>{
+  assert.equal(typeof require('../member-sync').createSpeedCalculatorSync,'function');
+  const calculator=fs.readFileSync('speed-calculator-folder/speed-calculator.html','utf8');
+  assert(calculator.includes('MemberSync.createSpeedCalculatorSync('));
+  assert(calculator.includes("window.addEventListener('member-sync-connection'"));
+  assert(fs.readFileSync('member-sync.js','utf8').includes("new CustomEvent('member-sync-connection'"));
+  const root=fs.readFileSync('speed-calculator.html','utf8');
+  assert(!root.includes('createSpeedCalculatorSync'));
+  assert(!root.includes('member-sync-connection'));
+});
+
+function syncFixture(t, initial) {
+  t.mock.timers.enable({apis:['setTimeout']});
+  let remote=initial || {hellTimesSec:{90:10,95:20,100:45,150:70,200:90,250:240},intervalSec:3,revision:1};
+  const writes=[], applied=[]; let callback, onError, stops=0, fail=false;
+  const client={
+    getSpeedCalculatorSettings:async()=>remote,
+    initializeSpeedCalculatorSettings:async values=>(remote={...values,revision:1}),
+    subscribeSpeedCalculatorSettings(cb,error){callback=cb;onError=error;return ()=>stops++;},
+    async updateSpeedCalculatorField(field,value){
+      writes.push([field,value]); if(fail)throw Error('offline');
+      remote={...remote,hellTimesSec:{...remote.hellTimesSec},revision:remote.revision+1};
+      if(field==='intervalSec')remote.intervalSec=value;else remote.hellTimesSec[field.split('.')[1]]=value;
+      callback(remote);return remote.revision;
+    }
+  };
+  const sync=require('../member-sync').createSpeedCalculatorSync(client,()=>({hellTimesSec:{90:11,95:21,100:46,150:71,200:91,250:241},intervalSec:4}),settings=>{
+    applied.push(settings);sync.change('intervalSec',settings.intervalSec);
+  });
+  const settle=async()=>{for(let i=0;i<15;i++)await Promise.resolve();};
+  return {sync,client,writes,applied,settle,remote:()=>remote,receive:value=>callback(value),deny:()=>onError(Error('MEMBERSHIP_REQUIRED')),stops:()=>stops,fail:value=>{fail=value;}};
+}
+test('sync gates startup, initializes once, and remote apply never loops',async t=>{
+  const f=syncFixture(t); f.client.getSpeedCalculatorSettings=async()=>null;
+  f.sync.change('intervalSec',8);t.mock.timers.tick(800);await f.settle();assert.equal(f.writes.length,0);
+  await f.sync.start();assert.equal(f.remote().revision,1);assert.equal(f.remote().intervalSec,4);
+  t.mock.timers.tick(800);await f.settle();assert.equal(f.writes.length,0);
+  f.sync.stop();assert.equal(f.stops(),1);
+});
+test('sync debounces independently, suppresses identical values and preserves pending fields',async t=>{
+  const f=syncFixture(t);await f.sync.start();
+  f.sync.change('hellTimesSec.90',12);f.sync.change('hellTimesSec.250',260);
+  f.sync.change('hellTimesSec.90',13);f.sync.change('intervalSec',3);
+  t.mock.timers.tick(799);await f.settle();assert.equal(f.writes.length,0);
+  f.receive({...f.remote(),intervalSec:4,revision:2});
+  assert.equal(f.applied.at(-1).hellTimesSec[90],13);assert.equal(f.applied.at(-1).hellTimesSec[250],260);
+  t.mock.timers.tick(1);await f.settle();assert.equal(f.writes.length,2);
+  assert.deepEqual(f.writes.sort(),[['hellTimesSec.250',260],['hellTimesSec.90',13]].sort());
+  f.sync.change('hellTimesSec.90',13);t.mock.timers.tick(800);await f.settle();assert.equal(f.writes.length,2);
+  f.sync.stop();
+});
+test('sync failure allows retry and stop cancels pending writes',async t=>{
+  const f=syncFixture(t);await f.sync.start();f.fail(true);
+  f.sync.change('intervalSec',6);t.mock.timers.tick(800);await f.settle();
+  f.fail(false);f.sync.change('intervalSec',6);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.writes.length,2);assert.equal(f.remote().intervalSec,6);
+  f.sync.change('intervalSec',7);f.deny();t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.writes.length,2);assert.equal(f.stops(),1);
+});
+test('rapid edits during an in-flight write serialize the final field value',async t=>{
+  const f=syncFixture(t);await f.sync.start();let finish;
+  f.client.updateSpeedCalculatorField=(field,value)=>{f.writes.push([field,value]);return new Promise(resolve=>{finish=resolve;});};
+  f.sync.change('intervalSec',5);t.mock.timers.tick(800);await f.settle();
+  f.sync.change('intervalSec',6);f.sync.change('intervalSec',3);
+  t.mock.timers.tick(800);await f.settle();assert.equal(f.writes.length,1);
+  finish(2);await f.settle();assert.deepEqual(f.writes,[['intervalSec',5],['intervalSec',3]]);
+  finish(3);await f.settle();f.sync.stop();
+});
+test('pagehide during initial read prevents late initialization and subscription',async t=>{
+  const f=syncFixture(t);let finish;f.client.getSpeedCalculatorSettings=()=>new Promise(resolve=>{finish=resolve;});
+  const started=f.sync.start();f.sync.stop();finish(null);await started;
+  assert.equal(f.applied.length,0);assert.equal(f.stops(),0);
+});
+
+test('slow cloud read accepts no writes and existing cloud wins over startup input',async t=>{
+  const f=syncFixture(t);let resolve;f.client.getSpeedCalculatorSettings=()=>new Promise(done=>{resolve=done;});
+  const starting=f.sync.start();f.sync.change('intervalSec',9);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.writes.length,0);resolve(f.remote());await starting;
+  assert.equal(f.applied.at(-1).intervalSec,3);f.sync.stop();
+});
+
+test('a newer same-field snapshot wins after the pending write completes',async t=>{
+  const f=syncFixture(t);await f.sync.start();let finish;
+  f.client.updateSpeedCalculatorField=()=>new Promise(resolve=>{finish=resolve;});
+  f.sync.change('intervalSec',5);t.mock.timers.tick(800);await f.settle();
+  f.receive({...f.remote(),intervalSec:7,revision:3});assert.equal(f.applied.at(-1).intervalSec,5);
+  finish(2);await f.settle();assert.equal(f.applied.at(-1).intervalSec,7);f.sync.stop();
 });
