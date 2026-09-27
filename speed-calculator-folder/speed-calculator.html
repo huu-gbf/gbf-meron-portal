@@ -1052,6 +1052,7 @@ input[type=number] {
   <link rel="manifest" href="../manifest.webmanifest">
   <meta name="theme-color" content="#080b14">
   <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="../member-sync.css">
 </head>
 <body>
   <div class="stars-bg"></div>
@@ -1077,6 +1078,30 @@ input[type=number] {
       <h1 class="app-title">古戦場 周回効率・時速計算ツール</h1>
       <p class="app-subtitle">HELL難易度と討伐秒数から、貢献度時速・周回数・消費肉・目標達成時間をリアルタイム算出</p>
     </header>
+    <details class="member-sync" data-member-sync>
+      <summary>端末同期 <span data-sync="status" role="status">未設定</span> <span data-sync="notice" role="status"></span></summary>
+      <div class="member-sync-body">
+        <p class="member-sync-help">端末を接続できます。設定の共有は今後対応予定です。</p>
+        <div data-sync="choices" class="member-sync-actions">
+          <button type="button" data-sync="start" class="member-sync-primary">端末同期を開始</button>
+          <button type="button" data-sync="join">既存の端末と同期</button>
+        </div>
+        <form data-sync="join-form" hidden>
+          <label for="member-sync-code-input">同期コード</label>
+          <input id="member-sync-code-input" data-sync="input" type="text" maxlength="32" placeholder="ABCD-EFGH-JKLM" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+          <button type="submit" class="member-sync-primary">同期を申請</button>
+        </form>
+        <p data-sync="waiting" hidden>既存の端末で承認してください</p>
+        <div data-sync="invite" hidden>
+          <output data-sync="code" class="member-sync-code" aria-label="同期コード"></output>
+          <p>10分間有効 · 新しい端末で入力してください</p>
+          <button type="button" data-sync="copy">コードをコピー</button>
+        </div>
+        <button type="button" data-sync="add" hidden>別の端末を追加</button>
+        <div data-sync="requests"></div>
+        <p data-sync="message" role="status" aria-live="polite"></p>
+      </div>
+    </details>
 
     <!-- Main Grid -->
     <main class="main-layout">
@@ -1852,5 +1877,6 @@ function showToast(msg) {
   }, 2400);
 }
   </script>
+  <script src="../member-sync.js"></script>
 </body>
 </html>

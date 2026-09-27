@@ -397,3 +397,62 @@ def test_concurrent_reissue_leaves_one_usable_code(client, setup):
         invitations = list(pool.map(lambda _: invite(client, headers), range(2)))
     states = [invite_document(invitation).get().to_dict()["status"] for invitation in invitations]
     assert sorted(states) == ["issued", "revoked"], setup
+
+
+def status(client, headers, expected=200):
+    response = client.get("/api/member-sync/status", headers=headers)
+    assert response.status_code == expected
+    assert response.headers["cache-control"] == "no-store"
+    return response.json()
+
+
+def test_status_restores_pending_then_ready_without_exposing_identifiers(client):
+    _, existing = owner(client)
+    uid, new = user()
+    assert status(client, new) == {"status": "unconfigured"}
+    invitation = invite(client, existing)
+    claim(client, new, invitation)
+    assert status(client, new) == {"status": "pending"}
+    assert identity(uid) is None
+    post(client, existing, "/invites/" + invitation["requestId"] + "/approve")
+    assert status(client, new) == {"status": "ready"}
+    assert identity(uid)["active"] is True
+
+
+@pytest.mark.parametrize("action,expected", [("reject", "rejected"), ("revoke", "revoked"), ("expire", "expired")])
+def test_status_terminal_states(client, action, expected):
+    _, existing = owner(client)
+    uid, new = user()
+    invitation = invite(client, existing)
+    claim(client, new, invitation)
+    if action == "expire":
+        invite_document(invitation).update({"expiresAt": m.now_utc() - timedelta(seconds=1)})
+    else:
+        post(client, existing, "/invites/" + invitation["requestId"] + "/" + action)
+    assert status(client, new) == {"status": expected}
+    assert identity(uid) is None
+    claim_response = client.post("/api/member-sync/invites/claim", headers=new, json={"code": invitation["code"]})
+    assert claim_response.status_code == 409
+
+
+def test_status_other_uid_and_forged_pointer_cannot_read_claim(client):
+    _, existing = owner(client)
+    _, new = user()
+    other_uid, other = user()
+    invitation = invite(client, existing)
+    claim(client, new, invitation)
+    # Query parameters never select another user's identity or request.
+    response = client.get("/api/member-sync/status?requestId=" + invitation["requestId"], headers=other)
+    assert response.json() == {"status": "unconfigured"}
+    m.get_member_firestore().document("memberSyncClaimants/" + other_uid).set({"requestId": invitation["requestId"]})
+    status(client, other, 409)
+    status(client, {}, 401)
+    status(client, {"Authorization": "Bearer forged"}, 401)
+
+
+def test_status_denies_revoked_membership_and_deleted_auth(client):
+    uid, headers = owner(client)
+    m.get_member_firestore().document("memberIdentities/" + uid).update({"active": False})
+    status(client, headers, 403)
+    m.auth.delete_user(uid, app=m.get_member_app())
+    status(client, headers, 401)

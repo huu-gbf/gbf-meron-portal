@@ -26,6 +26,7 @@ No Console, IAM, Secret Manager or deployment changes are made in this block.
 | Method/path | JSON body | Result |
 | --- | --- | --- |
 | POST `/profile` | `{}` | Create profile/identity/device atomically, or return ready for existing active membership |
+| GET `/status` | none | Restore only the verified caller's ready/unconfigured/pending/rejected/revoked/expired state; no identifiers returned |
 | POST `/invites` | `{}` | Return code, requestId, expiresAt; revoke issuer's previous unused invite |
 | POST `/invites/claim` | `{"code":"...","label":"optional"}` | Reserve invite as pending, **without** creating membership |
 | GET `/invites/pending` | none | Only caller profile's unexpired pending request IDs, labels and request times |
@@ -84,4 +85,75 @@ secret and AnonymousCredentials, and resets only that emulator's documents.
 Run separately from older Python tests which globally monkeypatch SDK modules.
 Existing JS Auth/Rules suites continue to use `demo-gbf-meron-portal-rules`.
 
-No UI, QR, localStorage integration, settings sync or Block 3B work is included.
+## Block 3B UI (local only, not deployed)
+
+`speed-calculator-folder/speed-calculator.html` contains the compact pairing
+settings panel. `member-sync.css` scopes its styling; `member-sync.js` owns Auth,
+API transport, state, polling and safe DOM updates. The root calculator and all
+calculator scripts/storage formats remain unchanged. No settings are synced.
+
+`restoreAuthentication()` waits for LOCAL persistence without signing in.
+Only explicit start/claim actions call `startAuthentication()`. Named App
+`member-sync` remains separate from default, yosen-shared and FCM Apps.
+Profile creation never issues an invite automatically. Codes display as
+`ABCD-EFGH-JKLM`; the client removes hyphens, trims and uppercases before sending
+the existing 12-character API format. Clipboard copies the displayed format.
+
+The claimant pointer `memberSyncClaimants/{verifiedUid}` is written atomically
+with claim. GET `/status` follows only this caller's pointer, checks claimant UID,
+and validates active identity/profile/device for ready. Request IDs or UIDs in
+query parameters never select a different user. Client reads/writes of this new
+collection are denied by the existing catch-all Rules. Status shares the existing
+authentication, revocation checks, quota and no-store policy.
+
+Visible ready/pending pages poll every 10 seconds. Ready polls check status and
+the existing pending API (12 requests/minute, below the 30/UID cap). Transient
+failures back off to 60 seconds; hidden pages skip calls; pagehide stops polling.
+Reload restores pending from the server without storing codes/request IDs in
+browser storage. Auth/membership loss clears privileged UI and stops polling.
+
+### Browser fixture and checks
+
+The existing global `API_BASE_URL` points at production, so this UI deliberately
+does not use it. Without `MEMBER_SYNC_LOCAL` it displays the panel but creates no
+App, signs in nobody and sends no API traffic. Actions report unavailable.
+The local config requires a loopback HTTP page, same-origin `/api/member-sync`,
+project `gbf-meron-portal`, key `local-only`, and fixed localhost Auth/Firestore
+emulators. There is no production fallback. A later approved rollout must add
+production client configuration explicitly, alongside the production prerequisites
+above. Copying this local configuration into production cannot enable the UI.
+
+`tests/member-sync-browser.py` is an allowlisted local asset server plus the real
+pairing API; it never imports backend.main or uses ADC. It uses a random in-memory
+test secret, local Firebase SDK assets and no external fonts. Run manually:
+
+```text
+npx firebase emulators:exec --config firebase.member-sync-test.json --project gbf-meron-portal --only auth,firestore "python tests/member-sync-browser.py"
+```
+
+Open `http://127.0.0.1:18765/speed-calculator-folder/speed-calculator.html`.
+Use separate browser profiles/contexts for different devices.
+
+Automated checks (existing Emulator config, no new build system):
+
+```text
+node --test tests/member-sync.client.test.cjs
+npx firebase emulators:exec --config firebase.member-sync-test.json --project gbf-meron-portal --only auth,firestore "python -m pytest -q -p no:cacheprovider tests/test_member_sync_api.py && node tests/member-sync.browser.test.cjs"
+```
+
+The browser test uses the available Playwright runtime (`NODE_PATH` can point to
+the Codex bundled node_modules) and installed Edge headless. It starts/stops the
+fixture automatically, uses isolated 1440x1000 and 390x844 contexts, rejects
+non-local browser requests, and saves screenshots to a fresh temporary directory
+(or `MEMBER_SYNC_ARTIFACT_DIR`). Happy-flow console errors must be zero; explicit
+HTTP/network failure cases can emit the browser's expected failed-resource logs,
+but may not produce uncaught exceptions or break the calculator.
+
+Legacy Python files monkeypatch process-global SDKs and use different mock admin
+keys. Run each tracked root `test_*.py` in its own process, not in one pytest
+collection; `test_knowledge_api.py` and `test_integration.py` are script assertions.
+Keep the member API emulator tests in their own process as before.
+
+QR codes, device removal, HELL/interval settings sync and conflict handling are
+not implemented. No production Firebase/Cloud Run/Rules changes are required or
+performed for this block.

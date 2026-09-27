@@ -291,6 +291,10 @@ def claim_invite(body: ClaimInput, principal=Depends(authenticated)):
         update = {"status": "pending", "claimantUid": uid, "claimantDeviceId": device_id,
                   "claimedAt": stamp, "label": body.label}
         tx.update(invite_ref, update)
+        # The verified claimant can restore pending status after a browser reload.
+        # Never accept a UID or a profile ID from the client for this pointer.
+        tx.set(store.collection("memberSyncClaimants").document(uid),
+               {"requestId": invite["requestId"]})
         tx.set(pending_ref(store, invite), {"requestId": invite["requestId"], "claimedAt": stamp,
                                           "label": body.label, "expiresAt": invite["expiresAt"]})
         return {"status": "pending", "requestId": invite["requestId"]}
@@ -320,6 +324,30 @@ def resolve_invite(store, tx, request_id):
     if not invite:
         fail()
     return ref, invite
+
+
+@api.get("/status")
+def own_status(principal=Depends(authenticated)):
+    uid, store = principal
+
+    def status(tx):
+        identity = read(tx, store.collection("memberIdentities").document(uid))
+        if identity is not None:
+            membership(store, tx, uid)
+            return {"status": "ready"}
+        pointer = read(tx, store.collection("memberSyncClaimants").document(uid))
+        if not pointer:
+            return {"status": "unconfigured"}
+        _, invite = resolve_invite(store, tx, pointer["requestId"])
+        if invite.get("claimantUid") != uid:
+            fail()
+        state = invite["status"]
+        if state in ("pending", "issued") and invite["expiresAt"] <= now_utc():
+            state = "expired"
+        if state not in ("pending", "expired", "rejected", "revoked"):
+            fail()
+        return {"status": state}
+    return atomic(store, status)
 
 
 def finish_invite(request_id, action, principal):

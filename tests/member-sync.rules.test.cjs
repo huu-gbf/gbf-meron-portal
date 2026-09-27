@@ -93,7 +93,7 @@ test('member identity/profile/device isolation and client privilege escalation d
     });
     await t.test('pairing API collections deny every client read and write',async()=>{
       for (const db of [a,b,guest,env.authenticatedContext('wJRZibao8FgMDqDDQ3csPdVuGkx1').firestore()]) {
-        for (const collection of ['memberSyncInvites','memberSyncRequests','memberSyncIssuers','memberSyncLimits',
+        for (const collection of ['memberSyncInvites','memberSyncRequests','memberSyncIssuers','memberSyncLimits','memberSyncClaimants',
           'memberSyncPending/'+profileA+'/requests']) {
           const ref=db.collection(collection).doc('example');
           await env.withSecurityRulesDisabled(ctx=>ctx.firestore().doc(ref.path).set({status:'pending'}));
