@@ -112,7 +112,38 @@ service cloud.firestore {
         allow read: if memberOwnsProfile(profileId);
         allow write: if false;
       }
-      // Settings remain denied until a tool-specific schema is introduced.
+      match /settings/speedCalculator {
+        function hellSeconds(v) { return v is int && v >= 0 && v <= 3599; }
+        function validSpeedSettings(d) {
+          let fields = ['schemaVersion','hellTimesSec','intervalSec','revision','createdAt','updatedAt','updatedByDeviceId'];
+          let levels = ['90','95','100','150','200','250'];
+          return d.keys().hasAll(fields) && d.keys().hasOnly(fields)
+            && d.schemaVersion is int && d.schemaVersion == 1
+            && d.hellTimesSec is map
+            && d.hellTimesSec.keys().hasAll(levels) && d.hellTimesSec.keys().hasOnly(levels)
+            && hellSeconds(d.hellTimesSec['90']) && hellSeconds(d.hellTimesSec['95'])
+            && hellSeconds(d.hellTimesSec['100']) && hellSeconds(d.hellTimesSec['150'])
+            && hellSeconds(d.hellTimesSec['200']) && hellSeconds(d.hellTimesSec['250'])
+            && d.intervalSec is number && d.intervalSec >= 0 && d.intervalSec <= 15
+            // Compare with the canonical tenth, not an exact v * 10 remainder.
+            && d.intervalSec == int(d.intervalSec * 10 + 0.5) / 10.0
+            && d.revision is int && d.revision >= 1 && d.revision <= 9007199254740991
+            && d.createdAt is timestamp && d.updatedAt is timestamp
+            && d.updatedByDeviceId is string
+            && d.updatedByDeviceId == get(/databases/$(database)/documents/memberIdentities/$(request.auth.uid)).data.deviceId;
+        }
+        allow get: if memberOwnsProfile(profileId);
+        allow list, delete: if false;
+        allow create: if memberOwnsProfile(profileId) && validSpeedSettings(request.resource.data)
+          && request.resource.data.revision == 1
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if memberOwnsProfile(profileId) && validSpeedSettings(request.resource.data)
+          && request.resource.data.schemaVersion == resource.data.schemaVersion
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.revision == resource.data.revision + 1
+          && request.resource.data.updatedAt == request.time;
+      }
     }
     match /{document=**} {
       allow read, write: if false;

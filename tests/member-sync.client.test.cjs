@@ -115,3 +115,60 @@ test('calculator executable scripts and root calculator are unchanged from Block
   assert.equal(fs.readFileSync('speed-calculator.html','utf8').replace(/\r\n/g,'\n'),execFileSync('git',['show','b3b2ed6:speed-calculator.html'],{encoding:'utf8'}).replace(/\r\n/g,'\n'));
   assert(!fs.readFileSync('member-sync.js','utf8').includes('gbf_unf_speed_calc'));
 });
+
+function settingsFixture() {
+  const firebase=require('firebase/compat/app');require('firebase/compat/firestore');
+  const timestamp=firebase.firestore.Timestamp.fromMillis(1000);
+  let data={schemaVersion:1,hellTimesSec:{90:10,95:20,100:45,150:70,200:90,250:240},intervalSec:3,
+    revision:1,createdAt:timestamp,updatedAt:timestamp,updatedByDeviceId:'deviceA1'};
+  let reads=0,transactions=0;
+  const auth={currentUser:{uid:'memberA',isAnonymous:true},setPersistence:async()=>{},
+    onAuthStateChanged:callback=>{queueMicrotask(()=>callback(auth.currentUser));return ()=>{};}};
+  const db={doc:path=>({get:async options=>{
+    reads++;assert.deepEqual(options,{source:'server'});
+    return {exists:true,data:()=>path==='memberIdentities/memberA'?{active:true,profileId:'profileA',deviceId:'deviceA1'}:data};
+  }}),runTransaction:async()=>{transactions++;throw Error('unexpected transaction');}};
+  const sdk={apps:[],firestore:firebase.firestore,auth:{Auth:{Persistence:{LOCAL:'local'}}},initializeApp:()=>({auth:()=>auth,firestore:()=>db})};
+  return {api:createMemberSync(sdk,{}),set:value=>data=value,data:()=>data,reads:()=>reads,transactions:()=>transactions};
+}
+test('settings client rejects malformed stored documents before returning them',async()=>{
+  const f=settingsFixture();await f.api.restoreAuthentication();const valid=f.data();
+  const invalid=[null,[],{}, {...valid,extra:true}, {...valid,schemaVersion:'1'}, {...valid,schemaVersion:2},
+    {...valid,revision:0},{...valid,revision:1.5},{...valid,revision:NaN},{...valid,revision:Infinity},
+    {...valid,revision:Number.MAX_SAFE_INTEGER+1},{...valid,createdAt:new Date()},{...valid,updatedAt:null},
+    {...valid,updatedByDeviceId:''},{...valid,updatedByDeviceId:'other/path'}];
+  for(const key of Object.keys(valid)){const data={...valid};delete data[key];invalid.push(data);}
+  for(const level of Object.keys(valid.hellTimesSec)){
+    const hell={...valid.hellTimesSec};delete hell[level];invalid.push({...valid,hellTimesSec:hell});
+    for(const value of [-1,3600,1.5,'10',null,true,NaN,Infinity])invalid.push({...valid,hellTimesSec:{...valid.hellTimesSec,[level]:value}});
+  }
+  invalid.push({...valid,hellTimesSec:{...valid.hellTimesSec,300:10}});
+  for(const value of [-0.1,15.1,3.05,0.30000000000000004,NaN,Infinity,'3',null,true])invalid.push({...valid,intervalSec:value});
+  for(const data of invalid){f.set(data);await assert.rejects(f.api.getSpeedCalculatorSettings(),/INVALID_SETTINGS/);}
+});
+test('settings client accepts every canonical tenth and full HELL range boundaries',async()=>{
+  const f=settingsFixture();await f.api.restoreAuthentication();const valid=f.data();
+  for(let tenth=0;tenth<=150;tenth++){
+    f.set({...valid,intervalSec:tenth/10,hellTimesSec:{90:0,95:999,100:1000,150:3599,200:90,250:240}});
+    assert.equal((await f.api.getSpeedCalculatorSettings()).intervalSec,tenth/10);
+  }
+});
+test('settings update paths and initial payload are allowlisted before any Firestore access',async()=>{
+  const f=settingsFixture();const values={hellTimesSec:{...f.data().hellTimesSec},intervalSec:3};
+  for(const field of ['profileId','deviceId','revision','schemaVersion','hellTimesSec','hellTimesSec.300','hellTimesSec.90.extra','__proto__',null,{}]){
+    await assert.rejects(f.api.updateSpeedCalculatorField(field,1),/INVALID_SETTINGS/);
+  }
+  for(const value of [-1,3600,1.5,Infinity,NaN,'1',null])await assert.rejects(f.api.updateSpeedCalculatorField('hellTimesSec.90',value),/INVALID_SETTINGS/);
+  for(const value of [-1,16,3.05,Infinity,NaN,'3',null])await assert.rejects(f.api.updateSpeedCalculatorField('intervalSec',value),/INVALID_SETTINGS/);
+  for(const data of [null,{}, {...values,profileId:'forged'}, {...values,deviceId:'forged'}, {...values,intervalSec:3.05}]){
+    await assert.rejects(f.api.initializeSpeedCalculatorSettings(data),/INVALID_SETTINGS/);
+  }
+  assert.equal(f.reads(),0);assert.equal(f.transactions(),0);
+});
+test('Block 4A settings APIs are not connected to either calculator HTML or pairing mount',()=>{
+  for(const file of ['speed-calculator-folder/speed-calculator.html','speed-calculator.html']){
+    assert.equal(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n'),execFileSync('git',['show','dc52984:'+file],{encoding:'utf8'}).replace(/\r\n/g,'\n'));
+  }
+  const source=fs.readFileSync('member-sync.js','utf8');
+  assert(!source.slice(source.indexOf('function mount(')).includes('SpeedCalculatorSettings'));
+});

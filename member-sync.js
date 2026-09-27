@@ -1,10 +1,31 @@
 /* Member identity foundation. Load after Firebase 10 compat app/auth/firestore.
  * Restoration never creates an account. Only an explicit action signs in.
- * Calculator settings are never read or uploaded by this module.
+ * Cloud settings APIs are opt-in; calculator UI/localStorage are not connected.
  */
 (function (root) {
   'use strict';
   const APP_NAME = 'member-sync';
+  const HELL_LEVELS = Object.freeze(['90', '95', '100', '150', '200', '250']);
+  const SETTINGS_FIELDS = ['schemaVersion', 'hellTimesSec', 'intervalSec', 'revision', 'createdAt', 'updatedAt', 'updatedByDeviceId'];
+  const validId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
+  const exactKeys = (value, keys) => value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+  const validHellSeconds = value => Number.isInteger(value) && value >= 0 && value <= 3599;
+  const validInterval = value => typeof value === 'number' && Number.isFinite(value)
+    && value >= 0 && value <= 15 && value === Math.round(value * 10) / 10;
+  function validateSpeedValues(data) {
+    if (!exactKeys(data.hellTimesSec, HELL_LEVELS)
+        || !HELL_LEVELS.every(level => validHellSeconds(data.hellTimesSec[level]))
+        || !validInterval(data.intervalSec)) throw new Error('INVALID_SETTINGS');
+  }
+  function validateSpeedSettings(data, Timestamp) {
+    if (!exactKeys(data, SETTINGS_FIELDS) || data.schemaVersion !== 1
+        || !Number.isSafeInteger(data.revision) || data.revision < 1
+        || !(data.createdAt instanceof Timestamp) || !(data.updatedAt instanceof Timestamp)
+        || !validId(data.updatedByDeviceId)) throw new Error('INVALID_SETTINGS');
+    validateSpeedValues(data);
+    return Object.freeze({...data, hellTimesSec: Object.freeze({...data.hellTimesSec})});
+  }
 
   function createMemberSync(firebase, config, options = {}) {
     let connection;
@@ -92,7 +113,140 @@
       return snapshot.exists ? snapshot.data() : null;
     }
 
-    return Object.freeze({ startAuthentication, restoreAuthentication, getIdentity, request });
+    function assertSettingsUser(user) {
+      if (!user?.isAnonymous || connection?.auth.currentUser !== user) throw new Error('UNAUTHENTICATED');
+    }
+    function assertSettingsIdentity(identity, expected) {
+      if (!identity || identity.active !== true || !validId(identity.profileId) || !validId(identity.deviceId)
+          || (expected && (identity.profileId !== expected.profileId || identity.deviceId !== expected.deviceId))) {
+        throw new Error('MEMBERSHIP_REQUIRED');
+      }
+    }
+    async function settingsContext() {
+      const user = connection?.auth.currentUser;
+      assertSettingsUser(user);
+      const identity = await getIdentity();
+      assertSettingsUser(user);
+      assertSettingsIdentity(identity);
+      return {user, identity,
+        identityRef: connection.db.doc('memberIdentities/' + user.uid),
+        ref: connection.db.doc('memberProfiles/' + identity.profileId + '/settings/speedCalculator')};
+    }
+    const validatedSettings = snapshot => snapshot.exists
+      ? validateSpeedSettings(snapshot.data(), firebase.firestore.Timestamp) : null;
+
+    async function getSpeedCalculatorSettings() {
+      const context = await settingsContext();
+      const snapshot = await context.ref.get({source: 'server'});
+      assertSettingsUser(context.user);
+      return validatedSettings(snapshot);
+    }
+
+    async function initializeSpeedCalculatorSettings(initialSettings) {
+      if (!exactKeys(initialSettings, ['hellTimesSec', 'intervalSec'])) throw new Error('INVALID_SETTINGS');
+      validateSpeedValues(initialSettings);
+      // Copy before awaiting so callers cannot mutate transaction inputs.
+      const initial = {hellTimesSec: {...initialSettings.hellTimesSec}, intervalSec: initialSettings.intervalSec};
+      const context = await settingsContext();
+      const existing = await connection.db.runTransaction(async transaction => {
+        assertSettingsUser(context.user);
+        const identity = await transaction.get(context.identityRef);
+        assertSettingsIdentity(identity.data(), context.identity);
+        const snapshot = await transaction.get(context.ref);
+        assertSettingsUser(context.user);
+        if (snapshot.exists) return validatedSettings(snapshot);
+        transaction.set(context.ref, {schemaVersion: 1, ...initial, revision: 1,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedByDeviceId: context.identity.deviceId});
+        return null;
+      });
+      assertSettingsUser(context.user);
+      // Resolve server timestamps; never return an optimistic/pending document.
+      if (existing) return existing;
+      const snapshot = await context.ref.get({source: 'server'});
+      assertSettingsUser(context.user);
+      return validatedSettings(snapshot);
+    }
+
+    async function updateSpeedCalculatorField(field, value) {
+      if (field === 'intervalSec') {
+        if (!validInterval(value)) throw new Error('INVALID_SETTINGS');
+      } else if (!HELL_LEVELS.some(level => field === 'hellTimesSec.' + level) || !validHellSeconds(value)) {
+        throw new Error('INVALID_SETTINGS');
+      }
+      const context = await settingsContext();
+      const revision = await connection.db.runTransaction(async transaction => {
+        assertSettingsUser(context.user);
+        const identity = await transaction.get(context.identityRef);
+        assertSettingsIdentity(identity.data(), context.identity);
+        const snapshot = await transaction.get(context.ref);
+        const latest = validatedSettings(snapshot);
+        if (!latest) throw new Error('SETTINGS_NOT_INITIALIZED');
+        if (latest.revision === Number.MAX_SAFE_INTEGER) throw new Error('INVALID_SETTINGS');
+        assertSettingsUser(context.user);
+        const nextRevision = latest.revision + 1;
+        // The server-side transform also satisfies revision +1 during concurrent
+        // rule evaluation; the transaction read precondition still forces retry.
+        transaction.update(context.ref, {[field]: value, revision: firebase.firestore.FieldValue.increment(1),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedByDeviceId: context.identity.deviceId});
+        return nextRevision;
+      });
+      assertSettingsUser(context.user);
+      return revision;
+    }
+
+    // Returns unsubscribe immediately, including while identity lookup is pending.
+    // callback receives validated, server-confirmed data (or null for absence).
+    function subscribeSpeedCalculatorSettings(callback, onError = () => {}) {
+      if (typeof callback !== 'function' || typeof onError !== 'function') throw new TypeError('Callbacks required');
+      let stopped = false, watchingSettings = false;
+      const stops = [];
+      const unsubscribe = () => { if (!stopped) { stopped = true; stops.splice(0).forEach(stop => stop()); } };
+      const track = stop => { if (stopped) stop(); else stops.push(stop); };
+      const fail = error => {
+        if (stopped) return;
+        unsubscribe();
+        const code = ['UNAUTHENTICATED','MEMBERSHIP_REQUIRED','INVALID_SETTINGS'].includes(error?.message)
+          ? error.message : 'SETTINGS_UNAVAILABLE';
+        onError(new Error(code));
+      };
+      (async () => {
+        try {
+          const context = await settingsContext();
+          if (stopped) return;
+          track(connection.auth.onAuthStateChanged(user => {
+            if (user !== context.user || !user?.isAnonymous) fail(new Error('UNAUTHENTICATED'));
+          }, fail));
+          track(context.identityRef.onSnapshot({includeMetadataChanges: true}, snapshot => {
+            if (stopped) return;
+            try {
+              assertSettingsUser(context.user);
+              if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+              assertSettingsIdentity(snapshot.data(), context.identity);
+              if (watchingSettings) return;
+              watchingSettings = true;
+              track(context.ref.onSnapshot({includeMetadataChanges: true}, settings => {
+                if (stopped) return;
+                let data;
+                try {
+                  assertSettingsUser(context.user);
+                  if (settings.metadata.fromCache || settings.metadata.hasPendingWrites) return;
+                  data = validatedSettings(settings);
+                } catch (error) { fail(error); return; }
+                callback(data);
+              }, fail));
+            } catch (error) { fail(error); }
+          }, fail));
+        } catch (error) { fail(error); }
+      })();
+      return unsubscribe;
+    }
+
+    return Object.freeze({ startAuthentication, restoreAuthentication, getIdentity, request,
+      getSpeedCalculatorSettings, initializeSpeedCalculatorSettings, updateSpeedCalculatorField,
+      subscribeSpeedCalculatorSettings });
   }
 
   const messages = Object.freeze({

@@ -157,3 +157,49 @@ Keep the member API emulator tests in their own process as before.
 QR codes, device removal, HELL/interval settings sync and conflict handling are
 not implemented. No production Firebase/Cloud Run/Rules changes are required or
 performed for this block.
+
+## Block 4A-1: opt-in speed calculator storage (Emulator only)
+
+No calculator HTML, input handlers or localStorage reads/writes are connected.
+The following methods on `createMemberSync()` derive profile/device IDs from the
+current anonymous user's server-read identity; callers cannot select those IDs:
+
+- `getSpeedCalculatorSettings()` returns a validated frozen document or `null`.
+- `initializeSpeedCalculatorSettings({hellTimesSec, intervalSec})` creates only
+  if absent, in a transaction. An existing document is validated and returned
+  without any write. All six HELL values must be supplied by the caller.
+- `updateSpeedCalculatorField(path, value)` accepts only `hellTimesSec.90`, `.95`,
+  `.100`, `.150`, `.200`, `.250` (each with the full `hellTimesSec` prefix), or
+  `intervalSec`. It reads the latest document in a transaction, updates only that
+  field plus audit metadata, and returns its committed revision. It does not
+  initialize an absent document. Different-field concurrent updates survive;
+  same-field updates use the final successful commit, without device clocks.
+- `subscribeSpeedCalculatorSettings(onData, onError)` returns an unsubscribe
+  function immediately, even before async identity lookup completes. It emits
+  validated server-confirmed documents or `null`, skipping cached/pending writes.
+  Unsubscribe, Auth loss, identity revocation/rebinding, invalid documents or
+  listener errors detach the listeners. Errors use fixed categories only.
+
+The sole permitted settings document is
+`memberProfiles/{profileId}/settings/speedCalculator`. Exact V1 fields:
+`schemaVersion`, `hellTimesSec`, `intervalSec`, `revision`, `createdAt`,
+`updatedAt`, `updatedByDeviceId`. HELL values are integers 0–3599 for all six
+keys. Interval is 0–15 in canonical 0.1 increments; Rules and client compare to
+the rounded tenth divided by 10, avoiding a floating-point remainder check.
+Rules tests exercise every one of the 151 valid interval values.
+
+Revision starts at 1 and advances by exactly 1 (safe integer limit). Updates use
+`FieldValue.increment(1)` inside the transaction: concurrent rule evaluation
+still sees +1, and the read-version precondition triggers an SDK retry on a
+conflict. Rules also require server timestamps, immutable createdAt/schema,
+and the current identity's device ID. Collection listing, deletion and all
+other settings paths remain denied. No Rules are deployed by this block.
+
+Additional real Rules/transaction/subscription tests:
+
+```text
+npx firebase emulators:exec --config firebase.member-sync-test.json --project demo-gbf-meron-portal-rules --only firestore "node tests/member-sync.settings.test.cjs && node tests/member-sync.rules.test.cjs"
+```
+
+Block 4B must separately connect user edits and validated callbacks to the
+calculator, with initial local-data handling and prevention of remote-write loops.

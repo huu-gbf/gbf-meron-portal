@@ -74,11 +74,15 @@ test('member identity/profile/device isolation and client privilege escalation d
         await assertFails(db.doc(path(profileA)+'/devices/pc').get());
       }
     });
-    await t.test('settings and future paths are denied, including existing administrator',async()=>{
+    await t.test('only speedCalculator owner reads are allowed; other settings/future paths stay denied',async()=>{
       for (const db of [a,b,guest,env.authenticatedContext('wJRZibao8FgMDqDDQ3csPdVuGkx1').firestore()]) {
         const ref = db.doc(path(profileA)+'/settings/speedCalculator');
-        await assertFails(ref.get()); await assertFails(ref.set({schemaVersion:1}));
+        if (db === a) await assertSucceeds(ref.get()); else await assertFails(ref.get());
+        await assertFails(ref.set({schemaVersion:1}));
         await assertFails(ref.delete());
+        await assertFails(db.doc(path(profileA)+'/settings/other').get());
+        await assertFails(db.doc(path(profileA)+'/settings/other').set({schemaVersion:1}));
+        await assertFails(db.collection(path(profileA)+'/settings').get());
         await assertFails(db.doc(path(profileA)+'/presets/example').set({value:1}));
       }
     });
