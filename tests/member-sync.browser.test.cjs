@@ -378,4 +378,3 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     if(server.exitCode===null){server.kill();await once(server,'exit');}
   }
 });
-
