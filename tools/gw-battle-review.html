@@ -3666,6 +3666,7 @@ class BattleSync {
   }, 30000);
   const startAuth = () => { try {
     // Wait for legacy cache restoration before choosing the day-specific session.
+    updateDateInput();
     // Same named app and SESSION persistence as the existing predictor.
     const app = firebase.apps.find(app => app.name === 'yosen-shared') || firebase.initializeApp(globalThis.firebaseConfig, 'yosen-shared');
     auth = app.auth();

@@ -223,6 +223,7 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     await t.test('desktop and mobile remain editable without increased page overflow',async()=>{
       for(const [i,page] of [pc,phone].entries()){
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),widths[i]);
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth),true);
         assert(await page.locator('#inputSeconds').isEditable());
         assert(await page.locator(selector('add')).isEnabled());
         await page.screenshot({path:path.join(output,i?'phone-synced.png':'desktop-synced.png'),fullPage:true});
