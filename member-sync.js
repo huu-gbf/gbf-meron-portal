@@ -250,17 +250,26 @@
   }
 
   // One controller per calculator; only explicit input events queue writes.
-  function createSpeedCalculatorSync(client, readLocal, applyRemote) {
-    let cloudSyncReady = false, isApplyingRemoteSettings = false;
+  // pendingIO = { load: () => Object, save: (field, value) => void, remove: (field) => void }
+  // All pendingIO methods are optional; calculator manages the localStorage key.
+  function createSpeedCalculatorSync(client, readLocal, applyRemote, pendingIO = {}) {
+    const VALID_PENDING_FIELDS = new Set(
+      ['intervalSec', ...HELL_LEVELS.map(l => 'hellTimesSec.' + l)]
+    );
+    let cloudSyncReady = false, isApplyingRemoteSettings = false, isReplayingPending = false;
     let lastCloudSettings = null, cloudSubscription, starting = false, generation = 0;
     const pending = new Map(), inFlight = new Map(), acknowledged = new Map();
+    // persistedPending: field → value loaded from / saved to localStorage via pendingIO.
+    // It is NOT cleared on stop() so it survives temporary sync interruptions.
+    const persistedPending = new Map();
     const fieldValue = (settings, field) => field === 'intervalSec'
       ? settings?.intervalSec : settings?.hellTimesSec[field.split('.')[1]];
     function stop() {
-      generation++; starting = false; cloudSyncReady = false;
+      generation++; starting = false; cloudSyncReady = false; isReplayingPending = false;
       cloudSubscription?.(); cloudSubscription = null;
       pending.forEach(entry => clearTimeout(entry.timer)); pending.clear();
       inFlight.clear(); acknowledged.clear(); lastCloudSettings = null;
+      // persistedPending is intentionally preserved across stop().
     }
     function receive(settings) {
       if (!settings) { stop(); return; }
@@ -269,6 +278,14 @@
       try {
         // Keep unsubmitted edits visible when another field's snapshot arrives.
         const visible = {...settings, hellTimesSec: {...settings.hellTimesSec}};
+        // Overlay persisted pending (lower priority) for fields not in in-memory pending.
+        persistedPending.forEach((value, field) => {
+          if (!pending.has(field)) {
+            if (field === 'intervalSec') visible.intervalSec = value;
+            else visible.hellTimesSec[field.split('.')[1]] = value;
+          }
+        });
+        // Overlay in-memory pending (higher priority) — takes precedence over persistedPending.
         pending.forEach((entry, field) => {
           if (field === 'intervalSec') visible.intervalSec = entry.value;
           else visible.hellTimesSec[field.split('.')[1]] = entry.value;
@@ -280,21 +297,82 @@
         });
       } finally { isApplyingRemoteSettings = false; }
     }
+    // Load persisted pending from localStorage and populate persistedPending Map.
+    function loadPersistedPending() {
+      let loaded;
+      try { loaded = pendingIO.load?.(); } catch { return; }
+      if (!loaded || typeof loaded !== 'object' || Array.isArray(loaded)) return;
+      for (const [field, value] of Object.entries(loaded)) {
+        if (!VALID_PENDING_FIELDS.has(field)) continue;
+        const valid = field === 'intervalSec' ? validInterval(value) : validHellSeconds(value);
+        if (!valid) continue;
+        persistedPending.set(field, value);
+      }
+    }
+    // Replay all persistedPending fields to the cloud, field by field (section 17).
+    // Concurrent fields are submitted in parallel; same field is never replayed twice at once.
+    async function replayPending() {
+      if (!cloudSyncReady || isReplayingPending) return;
+      if (persistedPending.size === 0) return;
+      isReplayingPending = true;
+      const epoch = generation;
+      try {
+        const replays = [];
+        persistedPending.forEach((value, field) => {
+          // Skip fields that have an active in-flight write to avoid concurrent writes.
+          if (inFlight.has(field)) return;
+          replays.push((async () => {
+            let retries = 3;
+            while (retries > 0) {
+              if (epoch !== generation) return;
+              try {
+                await client.updateSpeedCalculatorField(field, value);
+                if (epoch !== generation) return;
+                // Delete only if persistedPending still holds the exact replayed value (section 19).
+                if (persistedPending.get(field) === value) {
+                  persistedPending.delete(field);
+                  try { pendingIO.remove?.(field); } catch {}
+                }
+                return;
+              } catch {
+                retries--;
+                if (retries === 0) return; // failure: keep field in persistedPending
+                await new Promise(r => setTimeout(r, 2000));
+              }
+            }
+          })());
+        });
+        await Promise.all(replays);
+      } finally {
+        if (epoch === generation) isReplayingPending = false;
+      }
+    }
     async function start() {
       if (starting || cloudSyncReady) return;
       starting = true;
       const epoch = generation;
+      // Load persisted pending from localStorage before fetching cloud settings.
+      loadPersistedPending();
       try {
         let settings = await client.getSpeedCalculatorSettings();
         if (epoch !== generation) return;
         if (!settings) settings = await client.initializeSpeedCalculatorSettings(readLocal());
         if (epoch !== generation) return;
+        // Remove persistedPending entries whose values already match the cloud (section 16).
+        persistedPending.forEach((value, field) => {
+          if (fieldValue(settings, field) === value) {
+            persistedPending.delete(field);
+            try { pendingIO.remove?.(field); } catch {}
+          }
+        });
         receive(settings);
         if (epoch !== generation) return;
         cloudSyncReady = true;
         cloudSubscription = client.subscribeSpeedCalculatorSettings(settings => {
           if (epoch === generation) receive(settings);
         }, () => { if (epoch === generation) stop(); });
+        // Replay any persisted pending after cloud sync is established (section 14).
+        replayPending();
       } catch { if (epoch === generation) stop(); }
       finally { if (epoch === generation) starting = false; }
     }
@@ -324,8 +402,22 @@
             committedRevision = revision;
             if (epoch !== generation) return;
             if (!lastCloudSettings || lastCloudSettings.revision < revision) acknowledged.set(field, {value, revision});
+            // Clear persistedPending on success (section 20):
+            // Safe to delete if this entry is still current (no newer write happened),
+            // or if persistedPending still has the same value we just committed.
+            const isCurrent = pending.get(field) === entry;
+            if (isCurrent || persistedPending.get(field) === value) {
+              if (persistedPending.has(field)) {
+                persistedPending.delete(field);
+                try { pendingIO.remove?.(field); } catch {}
+              }
+            }
           } catch {
-            // Local edits remain usable. A later input can retry; no offline replay.
+            // Write failed: save to persistedPending so it survives reload (section 7).
+            if (epoch === generation) {
+              persistedPending.set(field, value);
+              try { pendingIO.save?.(field, value); } catch {}
+            }
           } finally {
             if (epoch === generation) {
               inFlight.delete(field);
@@ -343,7 +435,7 @@
       }, 800);
     }
 
-    return Object.freeze({start, stop, change});
+    return Object.freeze({start, stop, change, replayPending});
   }
 
   const messages = Object.freeze({

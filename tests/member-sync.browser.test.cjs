@@ -82,8 +82,8 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
         return route.continue();
       });
       const page=await context.newPage();
-      page.on('console',msg=>{if(msg.type()==='error')consoleErrors.push({text:msg.text(),location:msg.location()});});
-      page.on('pageerror',error=>pageErrors.push(error.message));
+      page.on('console',msg=>{if(msg.type()==='error'){consoleErrors.push({text:msg.text(),location:msg.location()});console.log('CONSOLE ERROR:', msg.text());}});
+      page.on('pageerror',error=>{pageErrors.push(error.message);console.log('PAGE ERROR:', error.message);});
       page.on('response',response=>{
         if(response.status()>=400)failedResponses.push((async()=>{
           let body;try{body=await response.json();}catch{}
@@ -274,6 +274,103 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       assert.equal(await pc.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[200]),131);
       assert.deepEqual(pageErrors,[]);
     });
+    // ── Block 5A-1: offline pending / reconnect replay browser tests ──────────────────────
+    // Helper: read gbf_unf_speed_calc_sync_pending localStorage key from a page.
+    async function pendingLS(page) {
+      return page.evaluate(()=>{
+        const raw=localStorage.getItem('gbf_unf_speed_calc_sync_pending');
+        return raw?JSON.parse(raw):null;
+      });
+    }
+    // Block 5A-1 uses a fresh paired browser context.
+    const pc5=await device({width:1440,height:1000});
+    const stamp5=Date.now();
+    await admins(pc5,stamp5+'pc5');
+    await t.test('Block 5A-1 H: unpaired device — pending cloud mechanism must not activate',async()=>{
+      await editHell(pc5,90,50);
+      await pause(1800);
+      assert.equal(await identity(pc5),null,'no anonymous auth on unpaired device');
+      assert.equal(await pendingLS(pc5),null,'pending LS must not be created on unpaired device');
+    });
+    let pc5uid;
+    const pc5clone=await device({width:1440,height:1000});
+    await admins(pc5clone,stamp5+'pc5c');
+    await t.test('Block 5A-1 setup: pair pc5 for pending tests',async()=>{
+      await pc5.locator(selector('start')).click();await waitText(pc5,'status','接続済み');
+      pc5uid=await identity(pc5);assert(pc5uid);
+      await pc5.locator(selector('add')).click();await pc5.locator(selector('invite')).waitFor({state:'visible'});
+      const c5=await pc5.locator(selector('code')).textContent();
+      await pc5clone.locator(selector('join')).click();await pc5clone.locator(selector('input')).fill(c5);
+      await pc5clone.locator(selector('join-form')+' button').click();await waitText(pc5clone,'status','承認待ち');
+      await waitText(pc5,'notice','追加申請があります');
+      await pc5.getByRole('button',{name:'承認',exact:true}).click();await waitText(pc5,'message','端末を追加しました');
+      await waitText(pc5clone,'status','接続済み');
+    });
+    await t.test('Block 5A-1 A+F: offline change saves to pending LS; different field snapshot accepted',async()=>{
+      await editHell(pc5,90,10);await waitCloud(pc5,d=>d.hellTimesSec[90]===10);
+      assert.equal(await pendingLS(pc5),null,'no pending before going offline');
+      await pc5.context().setOffline(true);
+      await pc5.locator('.hell-card[data-level=\"90\"]').click();
+      await pc5.locator('#inputMinutes').fill('0');await pc5.locator('#inputSeconds').fill('12');
+      await pc5.locator('#inputSeconds').dispatchEvent('input');
+      await pause(1800);
+      assert.equal(await pc5.locator('#totalBattleSeconds').textContent(),'12','UI must keep pending value');
+      assert.equal(await pc5.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[90]),12,'normal LS must retain value');
+      const p=await pendingLS(pc5);assert(p&&p['hellTimesSec.90']===12,'pending LS must hold offline change');
+      await pc5.context().setOffline(false);
+      // Clone writes 250=220; pc5 snapshot: 90 stays 12 (pending), 250 becomes 220.
+      await editHell(pc5clone,250,220);await waitCloud(pc5clone,d=>d.hellTimesSec[250]===220);
+      await pause(1500);
+      assert.equal(await pc5.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[90]),12,'pending field must not be overwritten by snapshot');
+      assert.equal(await pc5.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[250]),220,'non-pending field must accept remote snapshot');
+    });
+    await t.test('Block 5A-1 B: reconnect replays pending to cloud and clears pending LS',async()=>{
+      await waitCloud(pc5,d=>d.hellTimesSec[90]===12);
+      await pc5.waitForFunction(()=>!localStorage.getItem('gbf_unf_speed_calc_sync_pending'));
+      assert.equal(await pendingLS(pc5),null,'pending LS must be empty after replay');
+    });
+    await t.test('Block 5A-1 E: same-field conflict — last commit wins (PC 12 beats phone 15)',async()=>{
+      await editHell(pc5clone,90,15);await waitCloud(pc5clone,d=>d.hellTimesSec[90]===15);
+      await pc5.context().setOffline(true);
+      await pc5.locator('.hell-card[data-level=\"90\"]').click();
+      await pc5.locator('#inputMinutes').fill('0');await pc5.locator('#inputSeconds').fill('12');
+      await pc5.locator('#inputSeconds').dispatchEvent('input');
+      await pause(1800);
+      const p2=await pendingLS(pc5);assert(p2&&p2['hellTimesSec.90']===12,'pending must hold 12');
+      await pc5.context().setOffline(false);
+      await waitCloud(pc5,d=>d.hellTimesSec[90]===12);
+      await pc5.waitForFunction(()=>!localStorage.getItem('gbf_unf_speed_calc_sync_pending'));
+    });
+    await t.test('Block 5A-1 C: offline + reload + reconnect replays pending',async()=>{
+      await editHell(pc5,90,10);await waitCloud(pc5,d=>d.hellTimesSec[90]===10);
+      await pc5.context().setOffline(true);
+      await pc5.locator('.hell-card[data-level=\"90\"]').click();
+      await pc5.locator('#inputMinutes').fill('0');await pc5.locator('#inputSeconds').fill('13');
+      await pc5.locator('#inputSeconds').dispatchEvent('input');
+      await pause(1800);
+      assert.equal((await pendingLS(pc5))?.['hellTimesSec.90'],13,'pending must be saved before reload');
+      await pc5.context().setOffline(false);
+      await pc5.reload();await waitText(pc5,'status','接続済み');
+      await waitCloud(pc5,d=>d.hellTimesSec[90]===13);
+      await pc5.waitForFunction(()=>!localStorage.getItem('gbf_unf_speed_calc_sync_pending'));
+      assert.equal(await pendingLS(pc5),null,'pending must be cleared after reload replay');
+    });
+    await t.test('Block 5A-1 G: multiple pending fields replayed; both cleared on success',async()=>{
+      await editHell(pc5,90,10);await pause(1200);
+      await pc5.context().setOffline(true);
+      await pc5.locator('.hell-card[data-level=\"90\"]').click();
+      await pc5.locator('#inputMinutes').fill('0');await pc5.locator('#inputSeconds').fill('14');
+      await pc5.locator('#inputSeconds').dispatchEvent('input');
+      await pc5.locator('#inputInterval').evaluate(input=>{input.value='7';input.dispatchEvent(new Event('input',{bubbles:true}));});
+      await pause(1800);
+      const p3=await pendingLS(pc5);
+      assert(p3&&p3['hellTimesSec.90']===14,'90 pending must exist');
+      assert(p3&&p3['intervalSec']===7,'intervalSec pending must exist');
+      await pc5.context().setOffline(false);
+      await waitCloud(pc5,d=>d.hellTimesSec[90]===14&&d.intervalSec===7);
+      await pc5.waitForFunction(()=>!localStorage.getItem('gbf_unf_speed_calc_sync_pending'));
+    });
+    console.log('Block 5A-1 browser tests complete');
     console.log('Browser artifacts: '+output);
     console.log('Uncaught errors: '+pageErrors.length+'; external requests: '+JSON.stringify(external)+'. Error cases use intentional failed requests.');
   } finally {
@@ -281,3 +378,4 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     if(server.exitCode===null){server.kill();await once(server,'exit');}
   }
 });
+

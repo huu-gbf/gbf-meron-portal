@@ -1470,6 +1470,7 @@ const elements = {
 
 const LS_KEY_HELL_TIMES = 'gbf_unf_speed_calc_times';
 const LS_KEY_INTERVAL = 'gbf_unf_speed_calc_interval';
+const LS_KEY_PENDING = 'gbf_unf_speed_calc_sync_pending';
 
 function loadSavedTimes() {
   try {
@@ -1519,6 +1520,38 @@ function saveInterval() {
   }
 }
 
+// pendingIO: manages gbf_unf_speed_calc_sync_pending for createSpeedCalculatorSync.
+// member-sync.js never touches this key directly (section 5 responsibility separation).
+const pendingIO = {
+  load() {
+    try {
+      const raw = localStorage.getItem(LS_KEY_PENDING);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      return parsed;
+    } catch { return {}; }
+  },
+  save(field, value) {
+    try {
+      const current = this.load();
+      current[field] = value;
+      localStorage.setItem(LS_KEY_PENDING, JSON.stringify(current));
+    } catch {}
+  },
+  remove(field) {
+    try {
+      const current = this.load();
+      delete current[field];
+      if (Object.keys(current).length === 0) {
+        localStorage.removeItem(LS_KEY_PENDING);
+      } else {
+        localStorage.setItem(LS_KEY_PENDING, JSON.stringify(current));
+      }
+    } catch {}
+  }
+};
+
 let speedCloudSync;
 window.addEventListener('member-sync-connection', event => {
   if (!event.detail.ready) { speedCloudSync?.stop(); return; }
@@ -1534,12 +1567,15 @@ window.addEventListener('member-sync-connection', event => {
       elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
       setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
       renderComparisonTable();
-    }
+    },
+    pendingIO
   );
   speedCloudSync.start();
 });
 window.addEventListener('pagehide', () => speedCloudSync?.stop());
 window.addEventListener('pageshow', event => { if (event.persisted) speedCloudSync?.start(); });
+// Replay persisted pending when the network is restored (section 14).
+window.addEventListener('online', () => speedCloudSync?.replayPending());
 function syncHellChange(level, before) {
   const value = state.comparisonTimes[level];
   if (value !== before) speedCloudSync?.change('hellTimesSec.' + level, value);

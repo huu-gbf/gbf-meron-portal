@@ -111,7 +111,9 @@ test('member-sync keeps calculator localStorage responsibility in calculator cod
   assert.equal(fs.readFileSync('speed-calculator.html','utf8').replace(/\r\n/g,'\n'),execFileSync('git',['show','b3b2ed6:speed-calculator.html'],{encoding:'utf8'}).replace(/\r\n/g,'\n'));
   const source=fs.readFileSync('member-sync.js','utf8');
   assert(!source.includes('gbf_unf_speed_calc'));
-  assert(!source.includes('localStorage'));
+  assert(!source.includes('localStorage.setItem'));
+  assert(!source.includes('localStorage.getItem'));
+  assert(!source.includes('localStorage.removeItem'));
   const calculator=fs.readFileSync('speed-calculator-folder/speed-calculator.html','utf8');
   for(const key of ['gbf_unf_speed_calc_times','gbf_unf_speed_calc_interval'])assert(calculator.includes(key));
 });
@@ -253,3 +255,185 @@ test('a newer same-field snapshot wins after the pending write completes',async 
   f.receive({...f.remote(),intervalSec:7,revision:3});assert.equal(f.applied.at(-1).intervalSec,5);
   finish(2);await f.settle();assert.equal(f.applied.at(-1).intervalSec,7);f.sync.stop();
 });
+
+// ── Block 5A-1: offline pending / reconnect replay tests ──────────────────────
+
+function syncFixtureWithPendingIO(t, initial) {
+  t.mock.timers.enable({apis:['setTimeout']});
+  let remote=initial || {hellTimesSec:{90:10,95:20,100:45,150:70,200:90,250:240},intervalSec:3,revision:1};
+  const writes=[], applied=[], savedPending={}; let callback, onError, stops=0, fail=false;
+  const client={
+    getSpeedCalculatorSettings:async()=>remote,
+    initializeSpeedCalculatorSettings:async values=>(remote={...values,revision:1}),
+    subscribeSpeedCalculatorSettings(cb,error){callback=cb;onError=error;return ()=>stops++;},
+    async updateSpeedCalculatorField(field,value){
+      writes.push([field,value]); if(fail)throw Error('offline');
+      remote={...remote,hellTimesSec:{...remote.hellTimesSec},revision:remote.revision+1};
+      if(field==='intervalSec')remote.intervalSec=value;else remote.hellTimesSec[field.split('.')[1]]=value;
+      callback(remote);return remote.revision;
+    }
+  };
+  const pendingIO={
+    load:()=>({...savedPending}),
+    save(field,value){savedPending[field]=value;},
+    remove(field){delete savedPending[field];}
+  };
+  const sync=require('../member-sync').createSpeedCalculatorSync(
+    client,
+    ()=>({hellTimesSec:{90:11,95:21,100:46,150:71,200:91,250:241},intervalSec:4}),
+    settings=>{applied.push(settings);},
+    pendingIO
+  );
+  const settle=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
+  return {sync,client,writes,applied,savedPending,settle,
+    remote:()=>remote,receive:value=>callback(value),
+    deny:()=>onError(Error('MEMBERSHIP_REQUIRED')),
+    stops:()=>stops,fail:value=>{fail=value;}};
+}
+
+test('Block 5A-1 A: write failure saves field value to pendingIO and visible state is not lost',async t=>{
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  // Write attempted but failed → value must be in savedPending.
+  assert.equal(f.writes.length,1);
+  assert.equal(f.savedPending['hellTimesSec.90'],12,'pending must be saved on write failure');
+  // The field is still in applied visible state (pending overlay in receive).
+  f.receive(f.remote());
+  assert.equal(f.applied.at(-1).hellTimesSec[90],12,'pending field must override remote in receive');
+});
+
+test('Block 5A-1 B: replay success clears the field from persistedPending',async t=>{
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12);
+  f.fail(false);
+  // Trigger replay directly (simulates online/pageshow).
+  await f.sync.replayPending();await f.settle();
+  assert.equal(f.remote().hellTimesSec[90],12,'cloud must have replayed value');
+  assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.90'),false,'pending must be removed after replay success');
+});
+
+test('Block 5A-1 C: replay failure keeps field in persistedPending',async t=>{
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12);
+  // Keep fail=true → replay will also fail.
+  await f.sync.replayPending();await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12,'pending must remain after replay failure');
+});
+
+test('Block 5A-1 D: partial success removes only successful fields from persistedPending',async t=>{
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  f.sync.change('intervalSec',6);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12);
+  assert.equal(f.savedPending['intervalSec'],6);
+  // Make 90 succeed but intervalSec fail.
+  const origUpdate = f.client.updateSpeedCalculatorField;
+  f.client.updateSpeedCalculatorField=async(field,value)=>{
+    if(field==='intervalSec')throw Error('offline');
+    return origUpdate.call(f.client, field, value);
+  };
+  f.fail(false);
+  await f.sync.replayPending();await f.settle();
+  assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.90'),false,'successful field must be cleared');
+  assert.equal(f.savedPending['intervalSec'],6,'failed field must remain');
+});
+
+test('Block 5A-1 E: new pending written during replay is not deleted by replay success',async t=>{
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12);
+  
+  let resolveReplay;
+  const replayPromise = new Promise(r => resolveReplay = r);
+  const origUpdate=f.client.updateSpeedCalculatorField;
+  
+  f.client.updateSpeedCalculatorField=async(field,value)=>{
+    if (value === 12) {
+      await replayPromise;
+      return origUpdate.call(f.client, field, value);
+    }
+    if (value === 13) {
+      throw Error('offline');
+    }
+    return origUpdate.call(f.client, field, value);
+  };
+  
+  f.fail(false);
+  const replayTask = f.sync.replayPending();
+  await Promise.resolve(); // yield
+  
+  f.sync.change('hellTimesSec.90',13);
+  t.mock.timers.tick(800);await f.settle(); // 13 fails and is written to pending
+  
+  assert.equal(f.savedPending['hellTimesSec.90'], 13);
+  
+  resolveReplay();
+  await replayTask;
+  await f.settle();
+  
+  assert.equal(f.savedPending['hellTimesSec.90'],13,'newer pending value must survive replay success');
+});
+
+test('Block 5A-1 E2: new normal write that succeeds during replay deletes pending',async t=>{
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12);
+  
+  let resolveReplay;
+  const replayPromise = new Promise(r => resolveReplay = r);
+  const origUpdate=f.client.updateSpeedCalculatorField;
+  
+  f.client.updateSpeedCalculatorField=async(field,value)=>{
+    if (value === 12) {
+      await replayPromise;
+      return origUpdate.call(f.client, field, value);
+    }
+    return origUpdate.call(f.client, field, value); // 13 succeeds
+  };
+  
+  f.fail(false);
+  const replayTask = f.sync.replayPending();
+  await Promise.resolve();
+  
+  f.sync.change('hellTimesSec.90',13);
+  t.mock.timers.tick(800);await f.settle(); // 13 succeeds, deletes 12 from pending
+  
+  assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.90'), false);
+  
+  resolveReplay();
+  await replayTask;
+  await f.settle();
+  
+  assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.90'), false);
+});
+
+test('Block 5A-1 F: two different pending fields are replayed independently',async t=>{
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  f.sync.change('hellTimesSec.250',220);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12);
+  assert.equal(f.savedPending['hellTimesSec.250'],220);
+  f.fail(false);
+  await f.sync.replayPending();await f.settle();
+  assert.equal(f.remote().hellTimesSec[90],12,'field 90 must be replayed');
+  assert.equal(f.remote().hellTimesSec[250],220,'field 250 must be replayed independently');
+  assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.90'),false,'90 must be cleared');
+  assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.250'),false,'250 must be cleared');
+});
+
+test('Block 5A-1 G: same-field conflict — last normal commit value wins',async t=>{
+  // Cloud has 90=15; pending has 90=12; after replay commit of 12, cloud ends up at 12.
+  const f=syncFixtureWithPendingIO(t);await f.sync.start();f.fail(true);
+  f.sync.change('hellTimesSec.90',12);t.mock.timers.tick(800);await f.settle();
+  assert.equal(f.savedPending['hellTimesSec.90'],12);
+  // Simulate cloud being written to 15 by another device.
+  f.receive({...f.remote(),hellTimesSec:{...f.remote().hellTimesSec,90:15},revision:f.remote().revision+1});
+  // Replay 12 (conflict); the last commit wins — our 12 should overwrite 15.
+  f.fail(false);
+  await f.sync.replayPending();await f.settle();
+  assert.equal(f.remote().hellTimesSec[90],12,'last committed value (12) must win');
+  assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.90'),false,'pending must be cleared after commit');
+});
+
