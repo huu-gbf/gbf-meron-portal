@@ -285,7 +285,7 @@ function syncFixtureWithPendingIO(t, initial) {
     pendingIO
   );
   const settle=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
-  return {sync,client,writes,applied,savedPending,settle,
+  return {sync,client,writes,applied,savedPending,pendingIO,settle,
     remote:()=>remote,receive:value=>callback(value),
     deny:()=>onError(Error('MEMBERSHIP_REQUIRED')),
     stops:()=>stops,fail:value=>{fail=value;}};
@@ -443,4 +443,60 @@ test('Block 5A-1 G: same-field conflict — last normal commit value wins',async
   await settleReplayWithTimers(f, t);await f.settle();
   assert.equal(f.remote().hellTimesSec[90],12,'last committed value (12) must win');
   assert.equal(Object.hasOwn(f.savedPending,'hellTimesSec.90'),false,'pending must be cleared after commit');
+});
+
+test('Block 5B-1 A: flushPending saves debounce pending to persistent pending', async t => {
+  const f = syncFixtureWithPendingIO(t); await f.sync.start();
+  f.sync.change('hellTimesSec.90', 12);
+  f.sync.flushPending();
+  assert.equal(f.savedPending['hellTimesSec.90'], 12);
+  t.mock.timers.tick(800); await f.settle();
+  assert.equal(f.remote().hellTimesSec[90], 12);
+  assert.equal(Object.hasOwn(f.savedPending, 'hellTimesSec.90'), false);
+});
+
+test('Block 5B-1 B: multiple fields flushed', async t => {
+  const f = syncFixtureWithPendingIO(t); await f.sync.start();
+  f.sync.change('hellTimesSec.90', 12);
+  f.sync.change('hellTimesSec.250', 220);
+  f.sync.change('intervalSec', 3.5);
+  f.sync.flushPending();
+  assert.equal(f.savedPending['hellTimesSec.90'], 12);
+  assert.equal(f.savedPending['hellTimesSec.250'], 220);
+  assert.equal(f.savedPending['intervalSec'], 3.5);
+});
+
+test('Block 5B-1 C & D: merge with existing persistent pending and overwrite same field', async t => {
+  const f = syncFixtureWithPendingIO(t);
+  f.savedPending['hellTimesSec.90'] = 10;
+  f.savedPending['hellTimesSec.95'] = 22; // intentionally different from cloud (20)
+  f.fail(true);
+  await f.sync.start();
+  f.sync.change('hellTimesSec.90', 13);
+  f.sync.change('intervalSec', 3.5);
+  f.sync.flushPending();
+  assert.equal(f.savedPending['hellTimesSec.95'], 22);
+  assert.equal(f.savedPending['intervalSec'], 3.5);
+  assert.equal(f.savedPending['hellTimesSec.90'], 13);
+});
+
+test('Block 5B-1 E & F & G: no pending, remoteApply, unready', async t => {
+  const f = syncFixtureWithPendingIO(t);
+  let saveCount = 0;
+  f.pendingIO.save = () => saveCount++;
+  f.sync.flushPending();
+  assert.equal(saveCount, 0);
+  await f.sync.start();
+  f.sync.flushPending();
+  assert.equal(saveCount, 0);
+  f.receive({...f.remote(), hellTimesSec: {...f.remote().hellTimesSec, 90: 55}, revision: f.remote().revision+1});
+  f.sync.flushPending();
+  assert.equal(saveCount, 0);
+});
+
+test('Block 5B-1 H: pendingIO.save error does not throw', async t => {
+  const f = syncFixtureWithPendingIO(t); await f.sync.start();
+  f.pendingIO.save = () => { throw new Error('Quota exceeded'); };
+  f.sync.change('hellTimesSec.90', 12);
+  assert.doesNotThrow(() => f.sync.flushPending());
 });

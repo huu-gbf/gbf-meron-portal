@@ -127,8 +127,8 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     await t.test('issue, copy, expiry text and reissue show only the latest code',async()=>{
       await pc.locator(selector('add')).click();await pc.locator(selector('invite')).waitFor({state:'visible'});
       oldCode=await pc.locator(selector('code')).textContent();assert.match(oldCode,/^[A-Z2-9]{4}(-[A-Z2-9]{4}){2}$/);
-      assert((await pc.locator(selector('invite')).textContent()).includes('10分間有効'));
-      await pc.locator(selector('copy')).click();await waitText(pc,'message','コピーしました');
+      assert((await pc.locator(selector('invite')).textContent()).includes('10刁E��有効'));
+      await pc.locator(selector('copy')).click();await waitText(pc,'message','コピ�Eしました');
       assert.equal(await pc.evaluate(()=>navigator.clipboard.readText()),oldCode);
       await pc.locator(selector('add')).click();await pc.locator(selector('invite')).waitFor({state:'visible'});
       code=await pc.locator(selector('code')).textContent();assert.notEqual(code,oldCode);
@@ -137,18 +137,18 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     });
     await t.test('phone claim has no membership; pending and UID survive reload',async()=>{
       await phone.locator(selector('join')).click();await phone.locator(selector('input')).fill(' '+code.toLowerCase()+' ');
-      await phone.locator(selector('join-form')+' button').click();await waitText(phone,'status','承認待ち');
+      await phone.locator(selector('join-form')+' button').click();await waitText(phone,'status','承認征E��');
       phoneUid=await identity(phone);assert(phoneUid);assert.notEqual(phoneUid,pcUid);
       assert.equal(await phone.evaluate(async()=> (await firebase.app('member-sync').firestore().doc('memberIdentities/'+firebase.app('member-sync').auth().currentUser.uid).get({source:'server'})).exists),false);
       await phone.screenshot({path:path.join(output,'phone-pending.png'),fullPage:true});
-      await phone.reload();await waitText(phone,'status','承認待ち');assert.equal(await identity(phone),phoneUid);
+      await phone.reload();await waitText(phone,'status','承認征E��');assert.equal(await identity(phone),phoneUid);
       await phone.locator('[data-member-sync] summary').click();
       assert.deepEqual(await admins(phone,stamp+'phone'),phoneAdmins);
     });
     await t.test('existing device detects pending automatically; one approve completes phone pairing',async()=>{
-      await waitText(pc,'notice','追加申請があります');
-      await pc.getByRole('button',{name:'承認',exact:true}).click();await waitText(pc,'message','端末を追加しました');
-      await waitText(phone,'status','接続済み');await waitText(phone,'message','同期設定が完了しました');
+      await waitText(pc,'notice','追加申請がありまぁE);
+      await pc.getByRole('button',{name:'承誁E,exact:true}).click();await waitText(pc,'message','端末を追加しました');
+      await waitText(phone,'status','接続済み');await waitText(phone,'message','同期設定が完亁E��ました');
       await waitLocal(phone,200,123);
       assert.equal(await phone.locator('#inputInterval').inputValue(),'4.2');
       await pause(1100);assert.equal((await cloud(pc)).revision,1);
@@ -235,9 +235,9 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       const box=await phone.locator(selector('code')).boundingBox();assert(box.x>=0&&box.x+box.width<=390);
       const third=await device({width:390,height:844});
       await third.locator(selector('join')).click();await third.locator(selector('input')).fill(phoneCode);
-      await third.locator(selector('join-form')+' button').click();await waitText(third,'status','承認待ち');
-      await waitText(phone,'notice','追加申請があります');
-      const approve=await phone.getByRole('button',{name:'承認',exact:true}).boundingBox();
+      await third.locator(selector('join-form')+' button').click();await waitText(third,'status','承認征E��');
+      await waitText(phone,'notice','追加申請がありまぁE);
+      const approve=await phone.getByRole('button',{name:'承誁E,exact:true}).boundingBox();
       const reject=await phone.getByRole('button',{name:'拒否',exact:true}).boundingBox();
       assert(approve.height>=44&&reject.height>=44&&reject.x-(approve.x+approve.width)>=16);
       await phone.screenshot({path:path.join(output,'phone-code-and-approval.png'),fullPage:true});
@@ -260,7 +260,7 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       await fourth.locator(selector('join-form')+' button').click();await waitText(fourth,'message','コードが正しくありません');
       assert.equal(await identity(fourth),null);
       await fourth.locator(selector('input')).fill(code);await fourth.locator(selector('join-form')+' button').click();
-      await waitText(fourth,'message','このコードは使用できません');
+      await waitText(fourth,'message','こ�Eコード�E使用できません');
       await pc.context().setOffline(true);
       await pc.route('**/api/member-sync/**',route=>route.abort('failed'));
       await pc.locator(selector('add')).click();await waitText(pc,'message','通信に失敗しました');
@@ -286,7 +286,7 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     const pc5=await device({width:1440,height:1000});
     const stamp5=Date.now();
     await admins(pc5,stamp5+'pc5');
-    await t.test('Block 5A-1 H: unpaired device — pending cloud mechanism must not activate',async()=>{
+    await t.test('Block 5A-1 H: unpaired device  Epending cloud mechanism must not activate',async()=>{
       await editHell(pc5,90,50);
       await pause(1800);
       assert.equal(await identity(pc5),null,'no anonymous auth on unpaired device');
@@ -301,9 +301,9 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       await pc5.locator(selector('add')).click();await pc5.locator(selector('invite')).waitFor({state:'visible'});
       const c5=await pc5.locator(selector('code')).textContent();
       await pc5clone.locator(selector('join')).click();await pc5clone.locator(selector('input')).fill(c5);
-      await pc5clone.locator(selector('join-form')+' button').click();await waitText(pc5clone,'status','承認待ち');
-      await waitText(pc5,'notice','追加申請があります');
-      await pc5.getByRole('button',{name:'承認',exact:true}).click();await waitText(pc5,'message','端末を追加しました');
+      await pc5clone.locator(selector('join-form')+' button').click();await waitText(pc5clone,'status','承認征E��');
+      await waitText(pc5,'notice','追加申請がありまぁE);
+      await pc5.getByRole('button',{name:'承誁E,exact:true}).click();await waitText(pc5,'message','端末を追加しました');
       await waitText(pc5clone,'status','接続済み');
     });
     await t.test('Block 5A-1 A+F: offline change saves to pending LS; different field snapshot accepted',async()=>{
@@ -329,7 +329,7 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       await pc5.waitForFunction(()=>!localStorage.getItem('gbf_unf_speed_calc_sync_pending'));
       assert.equal(await pendingLS(pc5),null,'pending LS must be empty after replay');
     });
-    await t.test('Block 5A-1 E: same-field conflict — last commit wins (PC 12 beats phone 15)',async()=>{
+    await t.test('Block 5A-1 E: same-field conflict  Elast commit wins (PC 12 beats phone 15)',async()=>{
       await editHell(pc5clone,90,15);await waitCloud(pc5clone,d=>d.hellTimesSec[90]===15);
       await pc5.context().setOffline(true);
       await pc5.locator('.hell-card[data-level=\"90\"]').click();
@@ -370,7 +370,36 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       await waitCloud(pc5,d=>d.hellTimesSec[90]===14&&d.intervalSec===7);
       await pc5.waitForFunction(()=>!localStorage.getItem('gbf_unf_speed_calc_sync_pending'));
     });
-    console.log('Block 5A-1 browser tests complete');
+
+    await t.test('Block 5B-1 A, B, C, D, E: flush pending on pagehide prevents data loss on quick reload', async () => {
+      await editHell(pc5, 90, 20); await pause(1200);
+      await waitCloud(pc5, d => d.hellTimesSec[90] === 20);
+
+      await editHell(pc5, 90, 25);
+      await pc5.locator('#inputInterval').evaluate(input => { input.value='5'; input.dispatchEvent(new Event('input',{bubbles:true})); });
+
+      await pc5.reload();
+      await waitText(pc5, 'status', '接続済み');
+
+      const pending = await pendingLS(pc5);
+      assert(pending && pending['hellTimesSec.90'] === 25, 'pending must contain 90=25 after reload during debounce');
+      assert(pending && pending['intervalSec'] === 5, 'pending must contain intervalSec=5 after reload during debounce');
+
+      await waitCloud(pc5, d => d.hellTimesSec[90] === 25 && d.intervalSec === 5);
+      await pc5.waitForFunction(() => !localStorage.getItem('gbf_unf_speed_calc_sync_pending'));
+    });
+
+    await t.test('Block 5B-1 F: Unpaired device does not create pending on pagehide', async () => {
+      const pcUnpaired = await device({width:1440,height:1000});
+      await pcUnpaired.locator('#inputMinutes').fill('0');
+      await pcUnpaired.locator('#inputSeconds').fill('29');
+      await pcUnpaired.locator('#inputSeconds').dispatchEvent('input');
+      await pcUnpaired.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+      const pending = await pendingLS(pcUnpaired);
+      assert.equal(pending, null, 'Unpaired device must not create sync_pending on pagehide');
+    });
+
+    console.log('Block 5A-1 and 5B-1 browser tests complete');
     console.log('Browser artifacts: '+output);
     console.log('Uncaught errors: '+pageErrors.length+'; external requests: '+JSON.stringify(external)+'. Error cases use intentional failed requests.');
   } finally {

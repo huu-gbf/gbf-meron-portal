@@ -1572,7 +1572,10 @@ window.addEventListener('member-sync-connection', event => {
   );
   speedCloudSync.start();
 });
-window.addEventListener('pagehide', () => speedCloudSync?.stop());
+window.addEventListener('pagehide', () => {
+  speedCloudSync?.flushPending();
+  speedCloudSync?.stop();
+});
 window.addEventListener('pageshow', event => { if (event.persisted) speedCloudSync?.start(); });
 // Replay persisted pending when the network is restored (section 14).
 window.addEventListener('online', () => speedCloudSync?.replayPending());

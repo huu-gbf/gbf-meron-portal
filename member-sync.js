@@ -435,7 +435,18 @@
       }, 800);
     }
 
-    return Object.freeze({start, stop, change, replayPending});
+    function flushPending() {
+      if (!cloudSyncReady || isApplyingRemoteSettings) return;
+      if (pending.size === 0) return;
+      pending.forEach((entry, field) => {
+        if (!inFlight.has(field)) {
+          persistedPending.set(field, entry.value);
+          try { pendingIO.save?.(field, entry.value); } catch {}
+        }
+      });
+    }
+
+    return Object.freeze({start, stop, change, replayPending, flushPending});
   }
 
   const messages = Object.freeze({
