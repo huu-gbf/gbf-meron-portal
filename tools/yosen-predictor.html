@@ -431,7 +431,7 @@
     const NOON_BACKTEST_ERRORS = Object.freeze([
       [66, 3.46], [67, -0.26], [69, 5.12], [70, -7.52], [72, 10.87],
       [74, 16.17], [75, 15.23], [77, 9.95], [78, 9.26], [80, -2.96],
-      [81, 9.57], [82, 4.62], [83, -4.77]
+      [81, 9.57], [82, 4.62], [83, -4.77], [84, 0.01]
     ]);
 
     function renderNoonErrorChart() {
@@ -444,14 +444,14 @@
       const rounds = NOON_BACKTEST_ERRORS.map(([round]) => `<span>${round}</span>`).join('');
       const values = NOON_BACKTEST_ERRORS.map(([round, error]) => `<li>第${round}回 ${signed(error)}</li>`).join('');
       document.getElementById('noonErrorChart').innerHTML = `
-        <div class="noon-error-plot" role="img" aria-label="第66回から第83回までの検証対象13開催の予測誤差棒グラフ。0%を中央、破線を±10%の目安として表示。">
+        <div class="noon-error-plot" role="img" aria-label="第66回から第84回までの検証対象14開催の予測誤差棒グラフ。0%を中央、破線を±10%の目安として表示。">
           <div class="noon-error-axis"><span style="top:40px">+10%</span><span style="top:80px">0%</span><span style="top:120px">−10%</span></div>
           <div class="noon-error-guide" style="top:40px"></div>
           <div class="noon-error-guide zero" style="top:80px"></div>
           <div class="noon-error-guide" style="top:120px"></div>
           <div class="noon-error-columns">${plot}</div>
         </div>
-        <div class="noon-error-rounds" aria-label="大会回数。左から第66回から第83回の検証対象開催">${rounds}</div>
+        <div class="noon-error-rounds" aria-label="大会回数。左から第66回から第84回の検証対象開催">${rounds}</div>
         <p style="margin:6px 0 0 40px;color:#94a3b8">横軸：大会回（第○回）　縦軸：予測誤差</p>
         <ul class="noon-error-values">${values}</ul>`;
     }
@@ -578,7 +578,8 @@
       { round: 80, dayType: "saturday", dayAvg: 5.3828, nightAvg: 9.2002, ratio: 1.7092, legacyDayAvg: 4.35, legacyNightAvg: 9.06, legacyRatio: 2.08, special: false, specialReason: "", includeInModel: true },
       { round: 81, dayType: "weekday", dayAvg: 4.6538, nightAvg: 9.9740, ratio: 2.1432, legacyDayAvg: 4.05, legacyNightAvg: 9.73, legacyRatio: 2.40, special: false, specialReason: "", includeInModel: true },
       { round: 82, dayType: "weekday", dayAvg: 5.6994, nightAvg: 13.6247, ratio: 2.3906, legacyDayAvg: 5.05, legacyNightAvg: 13.23, legacyRatio: 2.62, special: false, specialReason: "", includeInModel: true },
-      { round: 83, dayType: "weekday", dayAvg: 5.6539, nightAvg: 14.2627, ratio: 2.5226, legacyDayAvg: 4.95, legacyNightAvg: 13.90, legacyRatio: 2.81, special: false, specialReason: "", includeInModel: true }
+      { round: 83, dayType: "weekday", dayAvg: 5.6539, nightAvg: 14.2627, ratio: 2.5226, legacyDayAvg: 4.95, legacyNightAvg: 13.90, legacyRatio: 2.81, special: false, specialReason: "", includeInModel: true },
+      { round: 84, dayType: "holiday", dayAvg: 5.1125, nightAvg: 11.1893, ratio: 2.1886, legacyDayAvg: 5.11, legacyNightAvg: 11.19, legacyRatio: 2.19, special: false, specialReason: "", includeInModel: true }
     ];
 
     function renderHistoryStats() {
