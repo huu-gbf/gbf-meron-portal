@@ -218,10 +218,13 @@
         <!-- Section Header -->
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-slate-500/15 border border-slate-500/30 flex items-center justify-center text-lg">🔄</div>
-          <h2 class="text-xl font-bold text-white">更新履歴</h2>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            更新履歴
+            <span id="historyNewBadge" class="hidden text-[10px] px-1.5 py-0.5 bg-amber-500 text-white font-bold rounded shadow-sm shadow-amber-500/30">NEW</span>
+          </h2>
           <div class="flex-1 h-px bg-gradient-to-r from-slate-500/30 to-transparent"></div>
         </div>
-        <details name="portal-sections" class="glass-panel rounded-2xl group overflow-hidden">
+        <details id="historyDetails" name="portal-sections" class="glass-panel rounded-2xl group overflow-hidden">
           <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
             <span class="text-base transition-transform duration-200 group-open:rotate-90 text-slate-400">▶</span>
             <span>更新履歴詳細を表示</span>
@@ -236,7 +239,7 @@
           </div>
 
             <!-- Timeline list -->
-          <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800 max-h-96 overflow-y-auto pr-2">
+          <div id="historyTimeline" class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800 max-h-96 overflow-y-auto pr-2">
 
             <!-- Log Item 20 -->
             <div class="relative">
@@ -1140,6 +1143,7 @@
       document.getElementById('editRecruitBtn').hidden = !window.isAdmin;
       initNavObserver();
       initNavAccordionSync();
+      initHistoryUnread();
       // AI機能の一時休止中は登録済み情報を自動取得しない。
       // アクセス解析: 認証成功後にfire-and-forgetで記録
       // 失敗してもポータル本体へ影響しない
@@ -1808,6 +1812,93 @@
         });
       } catch {
         // visitorId生成エラー等も静かに無視する
+      }
+    }
+
+    // =========================================================
+    // 更新履歴 未読「NEW」バッジ管理
+    // =========================================================
+    const HISTORY_SEEN_KEY = 'gbf_portal_history_seen_v1';
+    let historyUnreadInitialized = false;
+
+    function getLatestHistoryId() {
+      try {
+        const timeline = document.getElementById('historyTimeline');
+        if (!timeline) return '';
+        const firstItem = timeline.firstElementChild;
+        if (!firstItem) return '';
+        
+        const dateSpan = firstItem.querySelector('span.font-mono');
+        const titleStrong = firstItem.querySelector('strong');
+        
+        if (dateSpan && titleStrong) {
+          return dateSpan.textContent.trim() + '|' + titleStrong.textContent.trim();
+        }
+        return '';
+      } catch (e) {
+        console.error('Error in getLatestHistoryId:', e);
+        return '';
+      }
+    }
+
+    function updateHistoryNewBadge() {
+      try {
+        const latestId = getLatestHistoryId();
+        if (!latestId) return;
+
+        let seenId = '';
+        try {
+          seenId = localStorage.getItem(HISTORY_SEEN_KEY) || '';
+        } catch (e) {
+          // ignore localStorage read error
+        }
+
+        const badge = document.getElementById('historyNewBadge');
+        if (badge) {
+          if (latestId !== seenId) {
+            badge.classList.remove('hidden');
+          } else {
+            badge.classList.add('hidden');
+          }
+        }
+      } catch (e) {
+        console.error('Error in updateHistoryNewBadge:', e);
+      }
+    }
+
+    function markHistorySeen() {
+      try {
+        const latestId = getLatestHistoryId();
+        if (!latestId) return;
+
+        try {
+          localStorage.setItem(HISTORY_SEEN_KEY, latestId);
+        } catch (e) {
+          // ignore localStorage write error
+        }
+
+        const badge = document.getElementById('historyNewBadge');
+        if (badge) {
+          badge.classList.add('hidden');
+        }
+      } catch (e) {
+        console.error('Error in markHistorySeen:', e);
+      }
+    }
+
+    function initHistoryUnread() {
+      updateHistoryNewBadge();
+
+      if (!historyUnreadInitialized) {
+        const details = document.getElementById('historyDetails');
+        if (details) {
+          details.addEventListener('toggle', () => {
+            if (details.open) {
+              markHistorySeen();
+            }
+          });
+        }
+        historyUnreadInitialized = true;
       }
     }
 
