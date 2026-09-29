@@ -54,11 +54,13 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
       assert.deepEqual(clone(now.calcRealtimeCorrection(...args)),clone(old.calcRealtimeCorrection(...args)));
       assert.equal(now.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1),old.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1));
     }
-    if((day!=='day1'||type!=='weekday') && day!=='day2') assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
+    if((day!=='day1'||type!=='weekday') && day!=='day2' && day!=='day3') assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
   }
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day1','weekday')),clone({low:95.85000000000001,high:109.33,config:{lowRate:-0.0415,highRate:0.0933,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day2','weekday')),clone({low:86.55,high:101.42,config:{lowRate:-0.1345,highRate:0.0142,sameConditionCount:4,rangeSourceCount:4,rangeSourceLabel:'4開催',rangeSourceNote:''}}));
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day2','weekend')),clone({low:86.55,high:101.42,config:{lowRate:-0.1345,highRate:0.0142,sameConditionCount:1,rangeSourceCount:5,rangeSourceLabel:'現行仕様の2戦目 5開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day3','weekday')),clone({low:98.14,high:104.34,config:{lowRate:-0.0186,highRate:0.0434,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day3','weekend')),clone({low:98.14,high:104.34,config:{lowRate:-0.0186,highRate:0.0434,sameConditionCount:1,rangeSourceCount:4,rangeSourceLabel:'現行仕様の3戦目 4開催',rangeSourceNote:''}}));
 });
 
 test('legacy storage shape and 06:59/07:00/08:00/11:59/12:00 recording boundaries',()=>{
