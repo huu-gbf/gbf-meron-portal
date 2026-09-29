@@ -1113,7 +1113,12 @@
 
     // Check Auth State on Load
     document.addEventListener('DOMContentLoaded', () => {
-      const savedHash = localStorage.getItem(STORAGE_KEY);
+      let savedHash = null;
+      try {
+        savedHash = localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        console.warn('localStorage読み込みエラー（認証チェック）:', e);
+      }
       // 保存されたハッシュ値が一致していれば認証済みにする
       if (savedHash === CORRECT_HASH || savedHash === ADMIN_HASH) {
         if (savedHash === ADMIN_HASH) window.isAdmin = true;
@@ -1146,7 +1151,11 @@
     }
 
     function handleLogout() {
-      localStorage.removeItem(STORAGE_KEY);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        console.warn('localStorage削除エラー（ログアウト）:', e);
+      }
       window.isAdmin = false;
       closeRecruitAdminUi();
       showAuth();
@@ -1162,8 +1171,13 @@
       // AI機能の一時休止中は登録済み情報を自動取得しない。
       // アクセス解析: 認証成功後にfire-and-forgetで記録
       // 失敗してもポータル本体へ影響しない
-      if (localStorage.getItem(STORAGE_KEY) !== ADMIN_HASH) {
-        recordVisit();
+      try {
+        if (localStorage.getItem(STORAGE_KEY) !== ADMIN_HASH) {
+          recordVisit();
+        }
+      } catch (e) {
+        // localStorage例外時はVisitor記録をスキップ（ポータル本体への影響なし）
+        console.warn('localStorage読み込みエラー（Visitor除外チェック）:', e);
       }
     }
 
