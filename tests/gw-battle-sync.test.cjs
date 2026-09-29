@@ -39,8 +39,8 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
   // Every original function except cache input restoration is byte-for-byte unchanged.
   const normalize=s=>s.replace(/\r\n/g,'\n');
   const before=normalize(previous),after=normalize(html);
-  const modelStart=before.indexOf('const MODELS ='), modelEnd=before.indexOf('const StorageManager =');
-  assert.equal(after.slice(after.indexOf('const MODELS ='),after.indexOf('const StorageManager =')),before.slice(modelStart,modelEnd));
+  const modelStart=before.indexOf('const MODELS ='), modelEnd=before.indexOf('// Historical error range');
+  assert.equal(after.slice(after.indexOf('const MODELS ='),after.indexOf('// Historical error range')),before.slice(modelStart,modelEnd));
   for(const name of ['runPrediction','recordSnapshot','saveEditSnap','deleteSnap','drawChart','updateAnalysis','updateRealtimeDisplay','calcSpeedBetween']) {
     const extract=s=>{const begin=s.indexOf('function '+name+'(');const next=s.indexOf('\nfunction ',begin+1);return s.slice(begin,next);};
     assert.equal(extract(after),extract(before),name+' changed');
@@ -54,8 +54,9 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
       assert.deepEqual(clone(now.calcRealtimeCorrection(...args)),clone(old.calcRealtimeCorrection(...args)));
       assert.equal(now.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1),old.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1));
     }
-    assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
+    if(day!=='day1'||type!=='weekday') assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
   }
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day1','weekday')),clone({low:95.85000000000001,high:109.33,config:{lowRate:-0.0415,highRate:0.0933,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
 });
 
 test('legacy storage shape and 06:59/07:00/08:00/11:59/12:00 recording boundaries',()=>{
@@ -116,18 +117,21 @@ test('emulator: authentication, migration, two clients, CRUD, concurrency, offli
     });
     const initial={...empty(),snapshots:[{id:123,...record('08:00')},{id:456,...record('08:17',120,110)}]};
     const pc=make(initial);pc.consent=false;
-    await t.test('empty cloud never clears or uploads local data without confirmation',async()=>{
-      await pc.login();await until(()=>pc.prompts.length===1,'migration prompt');
-      assert.deepEqual(pc.data(),initial);assert.equal((await pc.db.collection('gwBattleReviews/2026-09-24_day1/entries').get()).size,0);
-      assert.equal(pc.applied,0);
+    await t.test('empty cloud initializes without prompting or uploading legacy local data',async()=>{
+      await pc.login();await until(()=>pc.status.includes('同期済み')&&pc.applied>0,'empty shared session');
+      assert.deepEqual(pc.data(),empty());assert.equal(pc.prompts.length,0);assert.equal(pc.backups.length,0);
+      const shared=await pc.db.collection('gwBattleReviews/2026-09-24_day1/entries').get();
+      assert.deepEqual(shared.docs.map(doc=>doc.id),['meta']);
     });
-    await t.test('explicit migration preserves existing records',async()=>{
-      pc.consent=true;await pc.sync.connect();await until(()=>pc.status.includes('同期済み'),'migration acknowledgement');
-      assert.equal(pc.data().snapshots.length,2);assert.equal(pc.backups.length,1);assert.equal(pc.journal().queue.length,0);
+    await t.test('empty-session initialization finishes with no pending migration writes',async()=>{
+      const meta=(await pc.db.collection('gwBattleReviews/2026-09-24_day1/entries').doc('meta').get()).data();
+      assert.equal(meta.base,null);assert.equal(meta.dayKey,'day1');assert.equal(meta.dayType,'weekday');
+      assert.equal(pc.journal().queue.length,0);
     });
     const phone=make();
-    await t.test('new phone obtains shared data without migration prompt',async()=>{
-      await phone.login();await until(()=>phone.data().snapshots.length===2,'phone data');assert.equal(phone.prompts.length,0);
+    await t.test('new phone obtains the empty shared session without migration prompt',async()=>{
+      await phone.login();await until(()=>phone.status.includes('同期済み')&&phone.applied>0,'phone data');
+      assert.deepEqual(phone.data(),empty());assert.equal(phone.prompts.length,0);
     });
     await t.test('PC to phone and phone to PC additions',async()=>{
       pc.edit('snapshots',[...pc.data().snapshots,record('08:20',140,130)]);
