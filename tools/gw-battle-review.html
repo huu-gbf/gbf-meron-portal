@@ -1189,7 +1189,7 @@ input.error {
     <div class="help-text mt8">
       📌 <strong>警戒予測について：</strong>現在環境に近い直近の第80〜83回の実績を参考にした警戒用予測です。統計的な上限値ではなく、過去の強いケースより少し安全側に置いています。相手が現在遅い場合でも下げません。<br><br>
       📌 <strong>予測精度について：</strong>過去データでは良好な結果を確認していますが、現行仕様（第80回以降）の開催数が少ないため精度は参考値です。特に2・3戦目の土日祝は1開催のみの暫定モデルです。<br><br>
-      📌 参考レンジについて：現在環境に近い直近の第80〜83回を中心に、12時時点の標準予測と実際の最終結果にどのくらい差が出たかをもとにした参考範囲です。標準予測が過去にどの程度上振れ・下振れしたかを見るための目安であり、今回も必ずこの範囲に収まるという意味ではありません。
+      📌 参考レンジについて：現在環境に近い直近の第80〜84回を中心に、12時時点の標準予測と実際の最終結果にどのくらい差が出たかをもとにした参考範囲です。標準予測が過去にどの程度上振れ・下振れしたかを見るための目安であり、今回も必ずこの範囲に収まるという意味ではありません。
     </div>
   </section>
 
@@ -1432,11 +1432,11 @@ const MODELS = {
 const TIME_BLOCKS = { t12_17: 5, t17_19: 2, t19_23: 4, t23_24: 1 };
 
 // Historical error range of the standard model's 12:00-24:00 added amount.
-// Source definition: 300th-place data from rounds 80-83; overseas timestamps are
+// Source definition: 300th-place data from rounds 80-84; overseas timestamps are
 // JST-1, and each displayed speed is the hourly rate for the preceding 20 minutes.
 const REFERENCE_RANGES = Object.freeze({
   day1: Object.freeze({
-    weekday: Object.freeze({ lowRate: -0.0415, highRate: 0.0248, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' }),
+    weekday: Object.freeze({ lowRate: -0.0415, highRate: 0.0933, sameConditionCount: 3, rangeSourceCount: 3, rangeSourceLabel: '3開催', rangeSourceNote: '' }),
     weekend: Object.freeze({ lowRate: -0.0540, highRate: 0.0441, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' })
   }),
   day2: Object.freeze({
@@ -3230,7 +3230,7 @@ function selfTest() {
   }
 
   const EXPECTED_REFERENCES = {
-    day1: { weekday: [-0.0415, 0.0248, 2, 2], weekend: [-0.0540, 0.0441, 2, 2] },
+    day1: { weekday: [-0.0415, 0.0933, 3, 3], weekend: [-0.0540, 0.0441, 2, 2] },
     day2: { weekday: [-0.0129, 0.0142, 3, 3], weekend: [-0.0129, 0.0142, 1, 4] },
     day3: { weekday: [-0.0186, 0.0434, 3, 2], weekend: [-0.0186, 0.0434, 1, 3] },
     day4: { weekday: [-0.0162, 0.0181, 2, 2], weekend: [-0.0503, 0.0177, 2, 2] }
