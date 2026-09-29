@@ -1448,7 +1448,7 @@ const REFERENCE_RANGES = Object.freeze({
     weekend: Object.freeze({ lowRate: -0.0186, highRate: 0.0434, sameConditionCount: 1, rangeSourceCount: 4, rangeSourceLabel: '現行仕様の3戦目 4開催', rangeSourceNote: '' })
   }),
   day4: Object.freeze({
-    weekday: Object.freeze({ lowRate: -0.0162, highRate: 0.0181, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' }),
+    weekday: Object.freeze({ lowRate: -0.0965, highRate: 0.0181, sameConditionCount: 3, rangeSourceCount: 3, rangeSourceLabel: '3開催', rangeSourceNote: '' }),
     weekend: Object.freeze({ lowRate: -0.0503, highRate: 0.0177, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' })
   })
 });
@@ -3233,7 +3233,7 @@ function selfTest() {
     day1: { weekday: [-0.0415, 0.0933, 3, 3], weekend: [-0.0540, 0.0441, 2, 2] },
     day2: { weekday: [-0.1345, 0.0142, 4, 4], weekend: [-0.1345, 0.0142, 1, 5] },
     day3: { weekday: [-0.0186, 0.0434, 3, 3], weekend: [-0.0186, 0.0434, 1, 4] },
-    day4: { weekday: [-0.0162, 0.0181, 2, 2], weekend: [-0.0503, 0.0177, 2, 2] }
+    day4: { weekday: [-0.0965, 0.0181, 3, 3], weekend: [-0.0503, 0.0177, 2, 2] }
   };
   for (const [dayKey, dayTypes] of Object.entries(EXPECTED_REFERENCES)) {
     for (const [dayType, expected] of Object.entries(dayTypes)) {
