@@ -1052,7 +1052,7 @@ input[type=number] {
   <link rel="manifest" href="../manifest.webmanifest">
   <meta name="theme-color" content="#080b14">
   <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="../member-sync.css">
+  <link rel="stylesheet" href="../member-sync.css?v=6c1">
 </head>
 <body>
   <div class="stars-bg"></div>
@@ -1082,6 +1082,7 @@ input[type=number] {
       <summary>端末同期 <span data-sync="status" role="status">未設定</span> <span data-sync="notice" role="status"></span></summary>
       <div class="member-sync-body">
         <p class="member-sync-help">接続した端末間でHELL討伐時間と硬直時間を共有します。</p>
+        <p class="member-sync-help">すべての同期端末でブラウザデータを削除すると、現在の同期状態を復元できません。同期は最大5台までです（端末の解除は現在できません）。</p>
         <div data-sync="choices" class="member-sync-actions">
           <button type="button" data-sync="start" class="member-sync-primary">端末同期を開始</button>
           <button type="button" data-sync="join">既存の端末と同期</button>
@@ -1950,6 +1951,7 @@ function showToast(msg) {
   }, 2400);
 }
   </script>
-  <script src="../member-sync.js"></script>
+  <script src="../firebase-config.js"></script>
+  <script src="../member-sync.js?v=6c1"></script>
 </body>
 </html>

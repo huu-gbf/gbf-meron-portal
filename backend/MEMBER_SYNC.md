@@ -114,14 +114,25 @@ browser storage. Auth/membership loss clears privileged UI and stops polling.
 
 ### Browser fixture and checks
 
-The existing global `API_BASE_URL` points at production, so this UI deliberately
-does not use it. Without `MEMBER_SYNC_LOCAL` it displays the panel but creates no
-App, signs in nobody and sends no API traffic. Actions report unavailable.
+Block 6C-1 adds production configuration (not deployed). HTTPS pages reuse
+`firebase-config.js` and its `API_BASE_URL`, appending `/api/member-sync`.
+The SDK loader reuses existing compat components or loads the same 10.8.0
+gstatic SDK as the portal. It does not block calculator initialization.
+Page load restores LOCAL credentials in the `member-sync` named app only;
+no user means no API calls or anonymous sign-in. Existing credentials trigger
+status validation and the existing identity/settings restoration path.
+Only explicit start/claim actions may create anonymous authentication.
 The local config requires a loopback HTTP page, same-origin `/api/member-sync`,
 project `gbf-meron-portal`, key `local-only`, and fixed localhost Auth/Firestore
-emulators. There is no production fallback. A later approved rollout must add
-production client configuration explicitly, alongside the production prerequisites
-above. Copying this local configuration into production cannot enable the UI.
+emulators. Loopback pages never fall back to production. Non-loopback pages
+reject `MEMBER_SYNC_LOCAL`. The browser fixture removes the production config
+script; production-host tests fulfill/abort every network request and mock Auth,
+Firestore and API calls. Shared config contains public identifiers, not secrets.
+The member JS/CSS use `?v=6c1` in the calculator HTML. Bump both on future changes.
+Recovery requires one surviving browser session; max five devices, with no
+removal in V1. Both limits are stated in the existing sync panel.
+
+See [Block 6C-1 audit and rollout plan](MEMBER_SYNC_6C1.md) before deployment.
 
 `tests/member-sync-browser.py` is an allowlisted local asset server plus the real
 pairing API; it never imports backend.main or uses ADC. It uses a random in-memory

@@ -43,6 +43,7 @@ globalThis.MEMBER_SYNC_LOCAL={apiBase:'/api/member-sync',firebaseConfig:{
 def calculator():
     html = (ROOT / "speed-calculator-folder/speed-calculator.html").read_text(encoding="utf-8")
     html = re.sub(r'<link[^>]+href="https://fonts\.[^>]+>', '', html)
+    html = html.replace('<script src="../firebase-config.js"></script>', '')
     return HTMLResponse(html.replace('<head>', '<head>' + SETUP), headers={"Cache-Control": "no-store"})
 
 

@@ -465,7 +465,7 @@
     return code;
   }
 
-  // Block 3B intentionally has no production fallback, including API_BASE_URL.
+  // Loopback pages must explicitly opt into fixtures; never fall back to production.
   function localOptions(settings, location) {
     if (!settings || !['localhost', '127.0.0.1'].includes(location.hostname)) throw new Error('NOT_READY');
     const url = new URL(settings.apiBase, location.href);
@@ -481,6 +481,22 @@
         db.useEmulator('127.0.0.1', 8080);
       }
     };
+  }
+
+  function environmentOptions(scope) {
+    const local = ['localhost', '127.0.0.1'].includes(scope.location.hostname);
+    if (local) return {firebaseConfig: scope.MEMBER_SYNC_LOCAL?.firebaseConfig,
+      options: localOptions(scope.MEMBER_SYNC_LOCAL, scope.location), sdkBase: '/sdk/'};
+    const config = scope.firebaseConfig;
+    if (scope.location.protocol !== 'https:' || scope.MEMBER_SYNC_LOCAL
+        || config?.projectId !== 'gbf-meron-portal' || !config.apiKey
+        || config.apiKey === 'local-only' || !config.appId) throw new Error('NOT_READY');
+    let url;
+    try { url = new URL(scope.API_BASE_URL); } catch { throw new Error('NOT_READY'); }
+    if (url.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(url.hostname)
+        || url.pathname !== '/' || url.search || url.hash || url.username || url.password) throw new Error('NOT_READY');
+    return {firebaseConfig: config, options: {apiBase: url.origin + '/api/member-sync'},
+      sdkBase: 'https://www.gstatic.com/firebasejs/10.8.0/'};
   }
 
   function createPairing(client, publish, lifecycle = {}) {
@@ -615,18 +631,17 @@
       if (pairing) return pairing;
       if (loading) return loading;
       loading = (async () => {
-        const settings = root.MEMBER_SYNC_LOCAL;
-        const options = localOptions(settings, root.location);
+        const settings = environmentOptions(root);
         for (const part of ['app','auth','firestore']) {
           if (part === 'app' ? root.firebase?.initializeApp : root.firebase?.[part]) continue;
           await new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = '/sdk/firebase-' + part + '-compat.js';
+            script.src = settings.sdkBase + 'firebase-' + part + '-compat.js';
             script.onload = resolve; script.onerror = () => reject(new Error('NOT_READY'));
             document.head.append(script);
           });
         }
-        client = createMemberSync(root.firebase, settings.firebaseConfig, options);
+        client = createMemberSync(root.firebase, settings.firebaseConfig, settings.options);
         pairing = createPairing(client, render, {visible: () => !document.hidden});
         return pairing;
       })();
@@ -648,11 +663,11 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) pairing?.poll(); });
     root.addEventListener('pagehide', () => pairing?.dispose());
     root.addEventListener('pageshow', () => pairing?.resume());
-    // Restore only in the explicitly configured local fixture; never sign in here.
-    if (root.MEMBER_SYNC_LOCAL) invoke(p => p.restore());
+    // Persisted named-app credentials may restore; only start/claim can sign in.
+    invoke(p => p.restore());
   }
 
-  const api = Object.freeze({ APP_NAME, createMemberSync, createSpeedCalculatorSync, createPairing, normalizeCode, errorText, localOptions, mount });
+  const api = Object.freeze({ APP_NAME, createMemberSync, createSpeedCalculatorSync, createPairing, normalizeCode, errorText, localOptions, environmentOptions, mount });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
     root.MemberSync = api;
