@@ -1093,25 +1093,11 @@ input.error {
     <div class="section-title"><span class="icon">📈</span>24時終点予測</div>
     
     <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.5;">
-      ※24時終点予測は12時時点の実績をもとにした予測です。18時以降は状況が変化しやすいため、団チャットや下部の「現在の戦況」「戦況履歴」を重視して判断してください。
+      ※24時終点予測は12時時点の実績をもとにした予測です。団チャットや下部の「現在の戦況」「戦況履歴」を重視して判断してください。
     </div>
 
     <!-- Model info notice -->
     <div class="notice notice-info" id="model-notice"></div>
-
-    <!-- PRIMARY / REALTIME CORRECTED (shown >= 18:00 with snapshot) -->
-    <div id="pred-realtime-block" class="result-hidden">
-      <div class="pred-primary glass-bright animate-in" id="pred-realtime-card">
-        <div class="pred-label">🎯 現在補正予測（相手団）</div>
-        <div class="pred-value" id="pred-realtime-value">—</div>
-        <div class="pred-sub" id="pred-realtime-sub"></div>
-      </div>
-    </div>
-
-    <!-- Notice for before 18h -->
-    <div id="pred-early-notice" class="notice notice-info result-hidden">
-      まだ序盤のため統計予測を優先しています（18時以降に現在データがある場合、補正予測が表示されます）
-    </div>
 
     <!-- Standard + Caution -->
     <div class="pred-row">
@@ -1172,18 +1158,6 @@ input.error {
         <span class="lnb-val" id="lnb-ratio">—</span>
       </div>
       <div id="lnb-note" class="text-sm text-muted mt4"></div>
-    </div>
-
-    <!-- Pace info -->
-    <div id="pace-info-block" class="result-hidden">
-      <div class="info-row">
-        <span class="info-key">📊 現在までの実績ペース：12時予測比</span>
-        <span class="info-val" id="pace-ratio-val">—</span>
-      </div>
-      <div class="info-row" id="correction-clamp-row" style="display:none">
-        <span class="info-key">⚡ 補正上限適用</span>
-        <span class="info-val warning">±10%クリップ済み</span>
-      </div>
     </div>
 
     <div class="help-text mt8">
@@ -1700,31 +1674,7 @@ function calcModelAddedInRange(startMin, endMin, dayKey, dayType, modelType, bas
   return added;
 }
 
-/**
- * Calculate realtime correction factor.
- * actualAdded / expectedAdded, clamped to [0.90, 1.10].
- */
-function calcRealtimeCorrection(contrib12, currentContrib, currentMin, dayKey, dayType, baseSpeed) {
-  const startMin = 12 * 60;
-  const actualAdded = currentContrib - contrib12;
-  const expectedAdded = calcModelAddedInRange(startMin, currentMin, dayKey, dayType, 'standard', baseSpeed);
 
-  if (expectedAdded <= 0) return null;
-
-  const raw = actualAdded / expectedAdded;
-  const clamped = Math.max(0.90, Math.min(1.10, raw));
-  return { raw, clamped, wasClamped: raw !== clamped };
-}
-
-/**
- * Calculate realtime-corrected prediction.
- * = currentContrib + model(currentMin → 24:00) × correctionFactor
- */
-function calcRealtimePrediction(currentContrib, currentMin, dayKey, dayType, baseSpeed, corrFactor) {
-  const endMin = 24 * 60;
-  const remainingModelAdd = calcModelAddedInRange(currentMin, endMin, dayKey, dayType, 'standard', baseSpeed);
-  return currentContrib + remainingModelAdd * corrFactor;
-}
 
 /* ================================================
    SECTION 4: BATTLE ANALYSIS
@@ -2162,9 +2112,6 @@ function runPrediction() {
 function updateRealtimeDisplay() {
   if (!state.predictDone || state.enemyContrib12 == null) return;
 
-  const realtimeBlock = document.getElementById('pred-realtime-block');
-  const earlyNotice = document.getElementById('pred-early-notice');
-  const paceBlock = document.getElementById('pace-info-block');
   const lateNightBlock = document.getElementById('late-night-block');
 
   // Get latest snapshot with enemy data
@@ -2172,63 +2119,12 @@ function updateRealtimeDisplay() {
   const lastSnap = snapsWithEnemy.length > 0 ? snapsWithEnemy[snapsWithEnemy.length - 1] : null;
 
   if (!lastSnap) {
-    hide(realtimeBlock);
-    hide(earlyNotice);
-    hide(paceBlock);
     hide(lateNightBlock);
     return;
   }
 
   const currentMin = timeStrToMinutes(lastSnap.time);
   const currentHour = Math.floor(currentMin / 60);
-
-  // Correction
-  const corr = calcRealtimeCorrection(
-    state.enemyContrib12,
-    lastSnap.enemy,
-    currentMin,
-    state.dayKey,
-    state.dayType,
-    state.enemySpeed
-  );
-
-  if (corr == null) {
-    hide(realtimeBlock);
-    hide(paceBlock);
-    return;
-  }
-
-  const corrPred = calcRealtimePrediction(
-    lastSnap.enemy,
-    currentMin,
-    state.dayKey,
-    state.dayType,
-    state.enemySpeed,
-    corr.clamped
-  );
-
-  if (currentHour >= 18) {
-    // Show realtime as primary
-    document.getElementById('pred-realtime-value').textContent = fmt億(corrPred);
-    document.getElementById('pred-realtime-sub').textContent =
-      `現在までの実績を反映した24時予測（${lastSnap.time}時点 / 12時予測比: ${(corr.clamped * 100).toFixed(0)}%）`;
-    show(realtimeBlock);
-    hide(earlyNotice);
-  } else {
-    // Before 18h: hide realtime primary, show early notice
-    hide(realtimeBlock);
-    show(earlyNotice);
-  }
-
-  // Pace info
-  const paceVal = document.getElementById('pace-ratio-val');
-  paceVal.textContent = `${(corr.clamped * 100).toFixed(1)}%`;
-  paceVal.className = 'info-val ' + (corr.clamped >= 1.05 ? 'warning' : corr.clamped <= 0.95 ? 'positive' : '');
-
-  const clampRow = document.getElementById('correction-clamp-row');
-  clampRow.style.display = corr.wasClamped ? 'flex' : 'none';
-
-  show(paceBlock);
 
   // 23h block
   if (currentHour >= 23) {
@@ -2526,31 +2422,15 @@ function collectChartData() {
   }
 
   // Prediction targets at min=1440 (24:00)
-  let predStd = null, predCaut = null, predCorr = null;
+  let predStd = null, predCaut = null;
   if (state.predictDone && state.enemyContrib12 != null && state.enemySpeed != null) {
     const std  = calcPrediction(state.enemyContrib12, state.enemySpeed, state.dayKey, state.dayType, 'standard');
     const caut = calcPrediction(state.enemyContrib12, state.enemySpeed, state.dayKey, state.dayType, 'caution');
     predStd  = std.total;
     predCaut = caut.total;
-
-    // Realtime correction: use last snapshot with enemy data
-    const snapsWithEnemy = state.snapshots.filter(s => s.enemy != null);
-    if (snapsWithEnemy.length > 0) {
-      const last = snapsWithEnemy[snapsWithEnemy.length - 1];
-      const lastMin = timeStrToMinutes(last.time);
-      const corr = calcRealtimeCorrection(
-        state.enemyContrib12, last.enemy, lastMin,
-        state.dayKey, state.dayType, state.enemySpeed
-      );
-      if (corr != null) {
-        predCorr = calcRealtimePrediction(
-          last.enemy, lastMin, state.dayKey, state.dayType, state.enemySpeed, corr.clamped
-        );
-      }
-    }
   }
 
-  return { enemy, own, predStd, predCaut, predCorr };
+  return { enemy, own, predStd, predCaut };
 }
 
 function drawChart() {
@@ -2558,7 +2438,7 @@ function drawChart() {
   const emptyDiv = document.getElementById('chart-empty');
   if (!area) return;
 
-  const { enemy, own, predStd, predCaut, predCorr } = collectChartData();
+  const { enemy, own, predStd, predCaut } = collectChartData();
 
   const totalPoints = enemy.length + own.length;
 
@@ -2590,8 +2470,7 @@ function drawChart() {
     ...enemy.map(p => p.val),
     ...own.map(p => p.val),
     ...(predStd  != null ? [predStd]  : []),
-    ...(predCaut != null ? [predCaut] : []),
-    ...(predCorr != null ? [predCorr] : [])
+    ...(predCaut != null ? [predCaut] : [])
   ];
   if (allVals.length === 0) {
     area.innerHTML = '<div class="chart-empty" id="chart-empty">戦況を記録するとグラフが表示されます</div>';
@@ -2654,7 +2533,6 @@ function drawChart() {
     const items = [];
     if (predStd != null) items.push({ val: predStd, color: COL_STD, label: '12時予測' });
     if (predCaut != null) items.push({ val: predCaut, color: COL_CAUT, label: '12時警戒' });
-    if (predCorr != null) items.push({ val: predCorr, color: COL_CORR, label: '現在補正' });
 
     // Initial positions
     items.forEach(p => {
@@ -2755,7 +2633,7 @@ function drawChart() {
   }
 
   // Prediction lines: only draw if there are actual enemy points to connect from
-  const hasPred = enemy.length > 0 && (predStd != null || predCaut != null || predCorr != null);
+  const hasPred = enemy.length > 0 && (predStd != null || predCaut != null);
 
   const svgContent = [
     // background
@@ -2770,7 +2648,6 @@ function drawChart() {
     // prediction dashed lines (drawn under actual lines)
     hasPred ? predLine(enemy, predStd,  COL_STD,  '5,3') : '',
     hasPred ? predLine(enemy, predCaut, COL_CAUT, '3,3') : '',
-    hasPred ? predLine(enemy, predCorr, COL_CORR, '7,3') : '',
     // prediction endpoint markers and labels
     drawPredMarkers(),
     // actual lines (on top)
@@ -2793,11 +2670,10 @@ function drawChart() {
     own.length   > 0 ? legendItem(COL_OWN,   '自団',   false)  : '',
     predStd  != null ? legendItem(COL_STD,   '12時時点の24時予測', true)  : '',
     predCaut != null ? legendItem(COL_CAUT,  '12時時点の警戒予測', true)  : '',
-    predCorr != null ? legendItem(COL_CORR,  '現在補正予測', true)  : '',
   ].join('');
 
   const noteHtml = `<div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 10px; line-height: 1.5; padding: 0 4px;">
-    ※「12時警戒」は12時時点で強めの展開を想定した予測です。現在の実績次第では、「現在補正予測」が12時警戒を上回る場合があります。
+    ※「12時警戒」は12時時点で強めの展開を想定した予測です。統計的な上限値ではなく、安全側に倒した目安となります。
   </div>`;
 
   area.innerHTML = `<div class="chart-wrap">${svg}</div><div class="chart-legend">${legend}</div>${hasPred ? noteHtml : ''}`;

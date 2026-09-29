@@ -41,19 +41,14 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
   const before=normalize(previous),after=normalize(html);
   const modelStart=before.indexOf('const MODELS ='), modelEnd=before.indexOf('// Historical error range');
   assert.equal(after.slice(after.indexOf('const MODELS ='),after.indexOf('// Historical error range')),before.slice(modelStart,modelEnd));
-  for(const name of ['runPrediction','recordSnapshot','saveEditSnap','deleteSnap','drawChart','updateAnalysis','updateRealtimeDisplay','calcSpeedBetween']) {
+  for(const name of ['runPrediction','recordSnapshot','saveEditSnap','deleteSnap','updateAnalysis','calcSpeedBetween']) {
     const extract=s=>{const begin=s.indexOf('function '+name+'(');const next=s.indexOf('\nfunction ',begin+1);return s.slice(begin,next);};
     assert.equal(extract(after),extract(before),name+' changed');
   }
-  const model=source=>{const c={};vm.runInNewContext(source.slice(source.indexOf('const MODELS ='),source.indexOf('const StorageManager ='))+'\nglobalThis.api={calcPrediction,calcReferenceRange,calcRealtimeCorrection,calcRealtimePrediction,calcOvertake};',c);return c.api;};
+  const model=source=>{const c={};vm.runInNewContext(source.slice(source.indexOf('const MODELS ='),source.indexOf('const StorageManager ='))+'\nglobalThis.api={calcPrediction,calcReferenceRange,calcOvertake};',c);return c.api;};
   const old=model(before),now=model(after);
   for(const day of ['day1','day2','day3','day4'])for(const type of ['weekday','weekend'])for(const m of ['standard','caution']) {
     assert.deepEqual(clone(now.calcPrediction(57300123456,2507151234,day,type,m)),clone(old.calcPrediction(57300123456,2507151234,day,type,m)));
-    for(const minute of [720,721,1080,1200,1380,1417,1440]) {
-      const args=[57300123456,95000123456,minute,day,type,2507151234];
-      assert.deepEqual(clone(now.calcRealtimeCorrection(...args)),clone(old.calcRealtimeCorrection(...args)));
-      assert.equal(now.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1),old.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1));
-    }
     if((day!=='day1'||type!=='weekday') && day!=='day2' && day!=='day3' && day!=='day4') assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
   }
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day1','weekday')),clone({low:95.85000000000001,high:109.33,config:{lowRate:-0.0415,highRate:0.0933,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
