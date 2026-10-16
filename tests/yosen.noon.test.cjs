@@ -76,24 +76,25 @@ test('表示計算: カンマ入力、欠損、文字、逆転で結果を隠す
   assert.equal(ui.parseScore('10,000,000,000'), 100e8);
 });
 
-test('詳細エリアの過去誤差グラフに指定の13開催だけを表示する', () => {
+test('詳細エリアの過去誤差グラフに指定の14開催だけを表示する', () => {
   const expected = [[66,3.46],[67,-0.26],[69,5.12],[70,-7.52],[72,10.87],
     [74,16.17],[75,15.23],[77,9.95],[78,9.26],[80,-2.96],
-    [81,9.57],[82,4.62],[83,-4.77]];
+    [81,9.57],[82,4.62],[83,-4.77],[84,0.01]];
   const chart = { innerHTML: '' };
   const ui = { document: { getElementById: id => id === 'noonErrorChart' ? chart : null } };
   vm.runInNewContext(html.slice(begin, end)
     + '\nglobalThis.rows=NOON_BACKTEST_ERRORS;globalThis.render=renderNoonErrorChart;', ui);
   assert.deepEqual(Array.from(ui.rows, row => Array.from(row)), expected);
   ui.render();
-  assert.equal((chart.innerHTML.match(/class="noon-error-bar/g) || []).length, 13);
-  assert.equal((chart.innerHTML.match(/<li>第/g) || []).length, 13);
+  assert.equal((chart.innerHTML.match(/class="noon-error-bar/g) || []).length, 14);
+  assert.equal((chart.innerHTML.match(/<li>第/g) || []).length, 14);
   assert.match(chart.innerHTML, /第67回 -0\.26%/);
   assert.match(chart.innerHTML, /第74回 \+16\.17%/);
+  assert.match(chart.innerHTML, /第84回 \+0\.01%/);
   assert.match(chart.innerHTML, /top:40px/);
   assert.match(chart.innerHTML, /top:80px/);
   assert.match(chart.innerHTML, /top:120px/);
-  assert.equal(expected.filter(([, error]) => Math.abs(error) <= 10).length, 10);
+  assert.equal(expected.filter(([, error]) => Math.abs(error) <= 10).length, 11);
   assert.equal(expected.some(([, error]) => error < -10), false);
 });
 
@@ -104,7 +105,7 @@ test('予測結果が詳細グラフより先にあり、説明と免責は簡�
   assert.match(html, /今後の結果を保証するものではありません/);
   assert.match(html, /株式会社Cygamesおよび運営・関係各社とは関係ありません/);
   assert.doesNotMatch(html, /第三者サイトの記事、文章、表、デザイン等/);
-  assert.match(html, /\.noon-error-columns,.noon-error-rounds \{ display:grid; grid-template-columns:repeat\(13,minmax\(0,1fr\)\)/);
+  assert.match(html, /\.noon-error-columns,.noon-error-rounds \{ display:grid; grid-template-columns:repeat\(14,minmax\(0,1fr\)\)/);
 });
 
 test('参考要因は詳細グラフの下にあり、旧モデル表示は隠して保持する', () => {

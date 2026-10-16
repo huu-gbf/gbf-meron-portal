@@ -3,7 +3,16 @@ const jsdom = require('jsdom');
 const { JSDOM } = jsdom;
 
 const html = fs.readFileSync('./index.html', 'utf8');
-const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
+const dom = new JSDOM(html, {
+  runScripts: "dangerously",
+  url: "http://localhost/",
+  beforeParse(window) {
+    window.IntersectionObserver = class {
+      observe() {}
+      disconnect() {}
+    };
+  }
+});
 
 const window = dom.window;
 const document = window.document;
@@ -31,6 +40,10 @@ function runTests() {
   // Find badge
   const badge = document.getElementById('historyNewBadge');
   const details = document.getElementById('historyDetails');
+  const latestEntry = document.querySelector('#historyTimeline > .relative');
+  const latestDate = latestEntry.querySelector('.font-mono').textContent.trim();
+  const latestTitle = latestEntry.querySelector('strong').textContent.trim();
+  const latestId = `${latestDate}|${latestTitle}`;
 
   // test initialization
   window.initHistoryUnread();
@@ -43,7 +56,7 @@ function runTests() {
   details.dispatchEvent(new window.Event('toggle'));
   assert(badge.classList.contains('hidden'), "Case B: Badge should be hidden after opening details");
   let savedId = window.localStorage.getItem(HISTORY_SEEN_KEY);
-  assert(savedId === '2026/09/29|次回闇有利古戦場の日程を更新', "Case B: savedId should be correct: " + savedId);
+  assert(savedId === latestId, "Case B: savedId should be correct: " + savedId);
 
   // Case C: 同じ最新IDで再読み込み -> NEW非表示
   // Simulate reload
@@ -58,7 +71,7 @@ function runTests() {
 
   // Case E: 最新項目の説明本文だけ変わる -> NEW再表示しない
   // revert title, change body
-  titleStrong.textContent = "次回闇有利古戦場の日程を更新";
+  titleStrong.textContent = latestTitle;
   details.dispatchEvent(new window.Event('toggle')); // Mark seen again just in case
   const bodyText = document.querySelector('#historyTimeline p');
   bodyText.textContent = "説明が変わりました。";
