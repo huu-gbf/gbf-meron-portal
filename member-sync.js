@@ -395,6 +395,7 @@
         await inFlight.get(field);
         if (epoch !== generation || pending.get(field) !== entry) return;
         if (knownValue() === value) { pending.delete(field); return; }
+        entry.sending = true;
         const sending = (async () => {
           let committedRevision;
           try {
@@ -439,7 +440,8 @@
       if (!cloudSyncReady || isApplyingRemoteSettings) return;
       if (pending.size === 0) return;
       pending.forEach((entry, field) => {
-        if (!inFlight.has(field)) {
+        // An older entry may be in flight while this newer entry is still unsent.
+        if (!entry.sending) {
           persistedPending.set(field, entry.value);
           try { pendingIO.save?.(field, entry.value); } catch {}
         }
