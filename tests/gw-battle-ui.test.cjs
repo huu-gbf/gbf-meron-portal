@@ -22,8 +22,8 @@ test('portal excludes admin visits while retaining ordinary member tracking', ()
   assert(begin > 0 && end > begin);
   let visits = 0, stored = 'admin-fixture';
   const context = {
-    document:{getElementById:() => ({classList:{add(){},remove(){}},hidden:false})},
-    window:{isAdmin:true},initNavObserver(){},initNavAccordionSync(){},
+    document:{getElementById:() => ({classList:{add(){},remove(){},toggle(){}},hidden:false})},
+    window:{isAdmin:true},initNavObserver(){},initNavAccordionSync(){},initHistoryUnread(){},
     localStorage:{getItem:() => stored},STORAGE_KEY:'fixture',ADMIN_HASH:'admin-fixture',
     recordVisit:() => visits++
   };

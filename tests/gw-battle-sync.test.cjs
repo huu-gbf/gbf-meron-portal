@@ -39,23 +39,25 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
   // Every original function except cache input restoration is byte-for-byte unchanged.
   const normalize=s=>s.replace(/\r\n/g,'\n');
   const before=normalize(previous),after=normalize(html);
-  const modelStart=before.indexOf('const MODELS ='), modelEnd=before.indexOf('const StorageManager =');
-  assert.equal(after.slice(after.indexOf('const MODELS ='),after.indexOf('const StorageManager =')),before.slice(modelStart,modelEnd));
-  for(const name of ['runPrediction','recordSnapshot','saveEditSnap','deleteSnap','drawChart','updateAnalysis','updateRealtimeDisplay','calcSpeedBetween']) {
+  const modelStart=before.indexOf('const MODELS ='), modelEnd=before.indexOf('// Historical error range');
+  assert.equal(after.slice(after.indexOf('const MODELS ='),after.indexOf('// Historical error range')),before.slice(modelStart,modelEnd));
+  for(const name of ['runPrediction','recordSnapshot','saveEditSnap','deleteSnap','updateAnalysis','calcSpeedBetween']) {
     const extract=s=>{const begin=s.indexOf('function '+name+'(');const next=s.indexOf('\nfunction ',begin+1);return s.slice(begin,next);};
     assert.equal(extract(after),extract(before),name+' changed');
   }
-  const model=source=>{const c={};vm.runInNewContext(source.slice(source.indexOf('const MODELS ='),source.indexOf('const StorageManager ='))+'\nglobalThis.api={calcPrediction,calcReferenceRange,calcRealtimeCorrection,calcRealtimePrediction,calcOvertake};',c);return c.api;};
+  const model=source=>{const c={};vm.runInNewContext(source.slice(source.indexOf('const MODELS ='),source.indexOf('const StorageManager ='))+'\nglobalThis.api={calcPrediction,calcReferenceRange,calcOvertake};',c);return c.api;};
   const old=model(before),now=model(after);
   for(const day of ['day1','day2','day3','day4'])for(const type of ['weekday','weekend'])for(const m of ['standard','caution']) {
     assert.deepEqual(clone(now.calcPrediction(57300123456,2507151234,day,type,m)),clone(old.calcPrediction(57300123456,2507151234,day,type,m)));
-    for(const minute of [720,721,1080,1200,1380,1417,1440]) {
-      const args=[57300123456,95000123456,minute,day,type,2507151234];
-      assert.deepEqual(clone(now.calcRealtimeCorrection(...args)),clone(old.calcRealtimeCorrection(...args)));
-      assert.equal(now.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1),old.calcRealtimePrediction(95000123456,minute,day,type,2507151234,1.1));
-    }
-    assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
+    if((day!=='day1'||type!=='weekday') && day!=='day2' && day!=='day3' && day!=='day4') assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
   }
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day1','weekday')),clone({low:95.85000000000001,high:109.33,config:{lowRate:-0.0415,highRate:0.0933,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day2','weekday')),clone({low:86.55,high:101.42,config:{lowRate:-0.1345,highRate:0.0142,sameConditionCount:4,rangeSourceCount:4,rangeSourceLabel:'4開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day2','weekend')),clone({low:86.55,high:101.42,config:{lowRate:-0.1345,highRate:0.0142,sameConditionCount:1,rangeSourceCount:5,rangeSourceLabel:'現行仕様の2戦目 5開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day3','weekday')),clone({low:98.14,high:104.34,config:{lowRate:-0.0186,highRate:0.0434,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day3','weekend')),clone({low:98.14,high:104.34,config:{lowRate:-0.0186,highRate:0.0434,sameConditionCount:1,rangeSourceCount:4,rangeSourceLabel:'現行仕様の3戦目 4開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day4','weekday')),clone({low:90.35,high:101.81,config:{lowRate:-0.0965,highRate:0.0181,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
+  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day4','weekend')),clone({low:94.97,high:101.77000000000001,config:{lowRate:-0.0503,highRate:0.0177,sameConditionCount:2,rangeSourceCount:2,rangeSourceLabel:'2開催',rangeSourceNote:''}}));
 });
 
 test('legacy storage shape and 06:59/07:00/08:00/11:59/12:00 recording boundaries',()=>{

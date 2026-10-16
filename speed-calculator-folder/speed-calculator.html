@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta name="robots" content="noindex">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>古戦場 周回効率計算ツール | Granblue Fantasy UNF Calculator</title>
   <meta name="description" content="グランブルーファンタジー（グラブル）の決戦！星の古戦場におけるHELL難易度別貢献度時速・周回数・必要肉数・目標逆算を瞬時にシミュレーションできる高機能計算機。">
@@ -1567,7 +1568,7 @@ window.addEventListener('member-sync-connection', event => {
       elements.inputInterval.value = state.intervalSec;
       elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
       setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
-      renderComparisonTable();
+      renderComparisonTable(true);
     },
     pendingIO
   );
@@ -1806,16 +1807,79 @@ function updateGoalCalculation() {
 }
 
 // Render Comparison Matrix
-function renderComparisonTable() {
-  elements.comparisonTableBody.innerHTML = '';
+// 行(tr)と入力欄(input)は初回のみ生成し、以降は既存DOMの表示値だけを更新する。
+// (入力のたびにDOMを作り直すと、入力中のinputが破棄されてフォーカスが外れるため)
+function createComparisonRow(hell, time) {
+  const tr = document.createElement('tr');
 
+  tr.innerHTML = `
+    <td>
+      <span class="table-hell-name">${hell.name}</span>
+    </td>
+    <td>
+      <span class="table-speed-val" style="color: var(--cyan-primary);">${formatHonorJapanese(hell.pt).num}${formatHonorJapanese(hell.pt).unit}</span>
+    </td>
+    <td>
+      <span style="font-family: var(--font-numbers); color: var(--text-muted); font-size: 0.85rem;">肉 ${hell.meat}個</span>
+    </td>
+    <td>
+      <input type="number" min="0" max="3599" class="table-time-input" value="${time}" data-hell="${hell.level}">
+      <span style="font-size: 0.75rem; color: var(--text-muted);">秒 (+${state.intervalSec.toFixed(1)}秒)</span>
+    </td>
+    <td>
+      <span style="font-family: var(--font-numbers); font-weight: 700;"></span> <span style="font-size:0.75rem; color:var(--text-muted);">周/h</span>
+    </td>
+    <td>
+      <span class="table-speed-val"></span><span style="font-size:0.85rem; font-weight:700; color:var(--gold-light);"></span>
+    </td>
+    <td>
+      <div class="speed-bar-container">
+        <div class="speed-bar-track">
+          <div class="speed-bar-fill" style="width: 0%;"></div>
+        </div>
+        <span class="speed-pct"></span>
+      </div>
+    </td>
+  `;
+
+  // Row selection on click (except when typing in input)
+  tr.addEventListener('click', (e) => {
+    if (e.target.tagName !== 'INPUT') {
+      selectHell(hell.level);
+    }
+  });
+
+  // Input change
+  const input = tr.querySelector('.table-time-input');
+  input.addEventListener('input', (e) => {
+    const before = state.comparisonTimes[hell.level];
+    const val = parseInt(e.target.value, 10) || 0;
+    state.comparisonTimes[hell.level] = val;
+    saveTimes();
+    syncHellChange(hell.level, before);
+    if (hell.level === state.selectedHell) {
+      setTimeFromTotalSeconds(val);
+    } else {
+      renderComparisonTable();
+    }
+  });
+
+  return tr;
+}
+
+function renderComparisonTable(forceInputValues = false) {
   const hellLevels = [90, 95, 100, 150, 200, 250];
-  
+  const tbody = elements.comparisonTableBody;
+
+  // 初回(行が未生成)のときだけ行を作る。以降は既存の行を再利用する。
+  const needBuild = tbody.children.length !== hellLevels.length;
+  if (needBuild) tbody.innerHTML = '';
+
   // Calculate max speed for progress bar scaling
   let maxHonorPerHour = 0;
   const computedData = hellLevels.map(lvl => {
     const hell = HELL_DATA[lvl];
-    const time = state.comparisonTimes[lvl] || hell.defaultSec;
+    const time = state.comparisonTimes[lvl] ?? hell.defaultSec;
     const cycleTime = time + state.intervalSec;
     const clears = 3600 / cycleTime;
     const honorH = clears * hell.pt;
@@ -1824,70 +1888,38 @@ function renderComparisonTable() {
     return { hell, time, cycleTime, clears, honorH, meatH };
   });
 
-  computedData.forEach(item => {
+  computedData.forEach((item, idx) => {
     const { hell, time, cycleTime, clears, honorH, meatH } = item;
     const isCurrent = hell.level === state.selectedHell;
     const formattedHonor = formatHonorJapanese(honorH);
     const pct = maxHonorPerHour > 0 ? ((honorH / maxHonorPerHour) * 100).toFixed(0) : 0;
 
-    const tr = document.createElement('tr');
-    if (isCurrent) tr.classList.add('current-selected');
+    let tr;
+    if (needBuild) {
+      tr = createComparisonRow(hell, time);
+      tbody.appendChild(tr);
+    } else {
+      tr = tbody.children[idx];
+    }
 
-    tr.innerHTML = `
-      <td>
-        <span class="table-hell-name">${hell.name}</span>
-      </td>
-      <td>
-        <span class="table-speed-val" style="color: var(--cyan-primary);">${formatHonorJapanese(hell.pt).num}${formatHonorJapanese(hell.pt).unit}</span>
-      </td>
-      <td>
-        <span style="font-family: var(--font-numbers); color: var(--text-muted); font-size: 0.85rem;">肉 ${hell.meat}個</span>
-      </td>
-      <td>
-        <input type="number" min="0" max="3599" class="table-time-input" value="${state.comparisonTimes[hell.level] ?? time}" data-hell="${hell.level}">
-        <span style="font-size: 0.75rem; color: var(--text-muted);">秒 (+${state.intervalSec.toFixed(1)}秒)</span>
-      </td>
-      <td>
-        <span style="font-family: var(--font-numbers); font-weight: 700;">${clears.toFixed(1)}</span> <span style="font-size:0.75rem; color:var(--text-muted);">周/h</span>
-      </td>
-      <td>
-        <span class="table-speed-val">${formattedHonor.num}</span><span style="font-size:0.85rem; font-weight:700; color:var(--gold-light);">${formattedHonor.unit}</span>
-      </td>
-      <td>
-        <div class="speed-bar-container">
-          <div class="speed-bar-track">
-            <div class="speed-bar-fill" style="width: ${pct}%;"></div>
-          </div>
-          <span class="speed-pct">${pct}%</span>
-        </div>
-      </td>
-    `;
+    tr.classList.toggle('current-selected', isCurrent);
 
-    // Row selection on click (except when typing in input)
-    tr.addEventListener('click', (e) => {
-      if (e.target.tagName !== 'INPUT') {
-        selectHell(hell.level);
-      }
-    });
-
-    // Input change
-    const input = tr.querySelector('.table-time-input');
-    input.addEventListener('input', (e) => {
-      const before = state.comparisonTimes[hell.level];
-      const val = parseInt(e.target.value, 10) || 0;
-      state.comparisonTimes[hell.level] = val;
-      saveTimes();
-      syncHellChange(hell.level, before);
-      if (hell.level === state.selectedHell) {
-        setTimeFromTotalSeconds(val);
-      } else {
-        renderComparisonTable();
-      }
-    });
-
-    elements.comparisonTableBody.appendChild(tr);
+    const cells = tr.children;
+    // 入力欄: 入力中(フォーカス中)の欄にはvalueを書き戻さない
+    const input = cells[3].querySelector('.table-time-input');
+    if ((forceInputValues || document.activeElement !== input) && input.value !== String(time)) {
+      input.value = time;
+    }
+    cells[3].querySelector('span').textContent = `秒 (+${state.intervalSec.toFixed(1)}秒)`;
+    cells[4].querySelector('span').textContent = clears.toFixed(1);
+    const honorSpans = cells[5].querySelectorAll('span');
+    honorSpans[0].textContent = formattedHonor.num;
+    honorSpans[1].textContent = formattedHonor.unit;
+    cells[6].querySelector('.speed-bar-fill').style.width = `${pct}%`;
+    cells[6].querySelector('.speed-pct').textContent = `${pct}%`;
   });
 }
+
 
 function highlightComparisonRow() {
   const rows = elements.comparisonTableBody.querySelectorAll('tr');

@@ -64,47 +64,56 @@
   <!-- =========================================================
        1. パスワード認証画面（未認証時に表示）
   ========================================================= -->
-  <div id="authScreen" class="relative z-10 min-h-screen flex items-center justify-center p-4">
+  <div id="authScreen" class="hidden relative z-10 min-h-screen flex items-center justify-center p-4">
     <div class="glass-panel w-full max-w-md p-8 rounded-2xl glow-effect text-center relative overflow-hidden">
       <!-- Top Decorative Emblem -->
-      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 p-0.5 flex items-center justify-center shadow-lg shadow-amber-500/20">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-300 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-500/20">
         <div class="w-full h-full bg-[#0a0e1a] rounded-full flex items-center justify-center text-2xl">
-          ⚔️
+          👑
         </div>
       </div>
 
-      <span class="inline-block px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold rounded-full tracking-wider mb-2">
-        GRANBLUE FANTASY CREW
+      <span class="inline-block px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold rounded-full tracking-wider mb-2">
+        ADMIN AREA
       </span>
-      <h1 class="text-2xl font-bold text-white mb-2">騎空団ポータル</h1>
-      <p class="text-slate-400 text-sm mb-6">団員専用ページです。合言葉（パスワード）を入力して入場してください。</p>
+      <h1 class="text-2xl font-bold text-white mb-2">管理人ログイン</h1>
+      <p class="text-slate-400 text-sm mb-6">管理人専用の機能を利用するためのパスワードを入力してください。</p>
 
       <form id="authForm" class="space-y-4" onsubmit="handleAuth(event)">
         <div class="text-left">
-          <label for="crewPassword" class="block text-xs font-semibold text-slate-300 mb-1">合言葉 / 団員（または管理人）パスワード</label>
+          <label for="crewPassword" class="block text-xs font-semibold text-slate-300 mb-1">管理人パスワード</label>
           <div class="relative">
             <input
               type="password"
               id="crewPassword"
-              placeholder="合言葉 または 管理人パスワード..."
+              placeholder="管理人パスワード..."
               required
-              class="w-full bg-slate-900/90 border border-slate-700 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition"
+              class="w-full bg-slate-900/90 border border-slate-700 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 rounded-xl px-4 py-3 text-white placeholder-slate-500 outline-none transition"
             />
             <span class="absolute right-3 top-3.5 text-slate-500 text-sm">🔒</span>
           </div>
         </div>
 
         <div id="authError" class="hidden text-rose-400 text-xs bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5">
-          パスワードが正しくありません。団長にお問い合わせください。
+          パスワードが正しくありません。
         </div>
 
-        <button
-          type="submit"
-          class="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold py-3 px-4 rounded-xl shadow-lg shadow-amber-500/25 transition transform active:scale-95 flex items-center justify-center gap-2"
-        >
-          <span>団員認証して入室</span>
-          <span>→</span>
-        </button>
+        <div class="flex gap-3 pt-2">
+          <button
+            type="button"
+            onclick="showPortal()"
+            class="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 px-4 rounded-xl border border-slate-700 transition"
+          >
+            戻る
+          </button>
+          <button
+            type="submit"
+            class="w-2/3 bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/25 transition transform active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span>ログイン</span>
+            <span>→</span>
+          </button>
+        </div>
       </form>
     </div>
   </div>
@@ -112,7 +121,7 @@
   <!-- =========================================================
        2. メインポータル画面（認証後に表示）
   ========================================================= -->
-  <div id="portalScreen" class="hidden relative z-10">
+  <div id="portalScreen" class="relative z-10">
     <!-- Navigation Bar -->
     <header class="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
       <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -124,10 +133,18 @@
         </div>
 
         <!-- Right: Status and Logout -->
-        <div class="flex items-center gap-3">
+        <div class="hidden md:flex items-center gap-3">
           <button
+            id="adminLoginBtn"
+            onclick="showAuth()"
+            class="hidden min-h-[44px] px-4 text-sm sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
+          >
+            管理人ログイン
+          </button>
+          <button
+            id="logoutBtn"
             onclick="handleLogout()"
-            class="min-h-[44px] px-4 text-sm sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
+            class="hidden min-h-[44px] px-4 text-sm sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
           >
             ログアウト
           </button>
@@ -192,6 +209,13 @@
           <a href="#sec-formations" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
             <span>📸</span><span>編成共有</span>
           </a>
+          <!-- Mobile Admin Login / Logout -->
+          <button id="adminLoginBtnMobile" onclick="showAuth(); closeMobileMenu();" class="hidden w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all border-t border-slate-800/60 mt-1 pt-3">
+            <span>👑</span><span>管理人ログイン</span>
+          </button>
+          <button id="logoutBtnMobile" onclick="handleLogout(); closeMobileMenu();" class="hidden w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all border-t border-slate-800/60 mt-1 pt-3">
+            <span>🚪</span><span>ログアウト</span>
+          </button>
         </div>
       </div>
     </nav>
@@ -205,7 +229,7 @@
           <span class="inline-flex items-center gap-1.5 text-xs font-bold text-amber-400 mb-1">
             <span>👑</span> 騎空団基本情報
           </span>
-          <h2 class="text-xl sm:text-2xl font-black text-white">決戦！星の古戦場（光属性有利）開催中</h2>
+          <h2 class="text-xl sm:text-2xl font-black text-white">決戦！星の古戦場（闇属性有利）準備期間中</h2>
         </div>
       </div>
 
@@ -218,10 +242,13 @@
         <!-- Section Header -->
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-slate-500/15 border border-slate-500/30 flex items-center justify-center text-lg">🔄</div>
-          <h2 class="text-xl font-bold text-white">更新履歴</h2>
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            更新履歴
+            <span id="historyNewBadge" class="hidden text-xs font-black px-2.5 py-1 bg-rose-500 text-white border border-rose-300/70 rounded-full shadow-md shadow-rose-500/30 tracking-wide">NEW</span>
+          </h2>
           <div class="flex-1 h-px bg-gradient-to-r from-slate-500/30 to-transparent"></div>
         </div>
-        <details name="portal-sections" class="glass-panel rounded-2xl group overflow-hidden">
+        <details id="historyDetails" name="portal-sections" class="glass-panel rounded-2xl group overflow-hidden">
           <summary class="flex items-center gap-2 cursor-pointer p-5 sm:p-6 text-base font-bold text-white hover:bg-slate-800/30 transition select-none list-none [&::-webkit-details-marker]:hidden">
             <span class="text-base transition-transform duration-200 group-open:rotate-90 text-slate-400">▶</span>
             <span>更新履歴詳細を表示</span>
@@ -232,11 +259,86 @@
                 <span class="text-xl">🔄</span>
                 <h3 class="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
               </div>
-            <span class="text-xs text-slate-400">最終更新: 2026/09/24</span>
+            <span class="text-xs text-slate-400">最終更新: 2026/09/30</span>
           </div>
 
             <!-- Timeline list -->
-          <div class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800 max-h-96 overflow-y-auto pr-2">
+          <div id="historyTimeline" class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800 max-h-96 overflow-y-auto pr-2">
+
+            <!-- Log Item 25 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/10/16</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">不具合修正</span>
+                  <strong class="text-sm font-bold text-white">古戦場周回効率計算機を修正</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  タイム入力時に選択が外れる不具合を修正しました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 24 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/10/04</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">機能改善</span>
+                  <strong class="text-sm font-bold text-white">予選300位予測に参考傾向を追加</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  第84回の結果も踏まえ、予選2日目と翌日の曜日の組み合わせによる参考傾向を、予選300位予測ツールの12時予測結果付近に追加しました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 23 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/09/30</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">機能改善</span>
+                  <strong class="text-sm font-bold text-white">サイト閲覧時のパスワードを廃止</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  利便性を重視し、サイト閲覧時に必要だったパスワード入力を廃止しました。<br>これにより、パスワードを入力することなく、サイトへ直接アクセスできるようになりました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 22 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/09/30</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">機能改善</span>
+                  <strong class="text-sm font-bold text-white">古戦場 戦況分析ツールの予測表示を整理</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  第84回古戦場での実運用結果を踏まえ、「現在補正予測」を削除しました。12時時点の標準予測・警戒予測・参考レンジを中心に、着地予測を確認しやすい表示へ整理しました。
+                </p>
+              </div>
+            </div>
+
+            <!-- Log Item 21 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/09/29</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">更新</span>
+                  <strong class="text-sm font-bold text-white">次回闇有利古戦場の日程を更新</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  次回古戦場を闇属性有利へ切り替え、開催日程・HELL解禁スケジュールを更新しました。
+                </p>
+              </div>
+            </div>
 
             <!-- Log Item 20 -->
             <div class="relative">
@@ -653,10 +755,10 @@
           <div class="px-5 sm:px-6 pb-6 border-t border-slate-800">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 pb-3 border-b border-slate-800 pt-4">
               <h3 class="text-lg font-bold text-white flex items-center gap-2">
-              <span>⚔️</span> 次回「決戦！星の古戦場（光属性有利）」日程表
+              <span>⚔️</span> 次回「決戦！星の古戦場（闇属性有利）」日程表
             </h3>
             <span class="text-xs px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-full font-semibold font-mono">
-              全体期間: 09/21(月) 19:00 〜 09/28(月) 23:59
+              全体期間: 11/21(土) 19:00 〜 11/28(土) 23:59
             </span>
           </div>
 
@@ -670,7 +772,7 @@
                   <span class="text-xs text-amber-300 font-semibold block sm:inline sm:ml-2">※90HELL / 95HELL解禁</span>
                 </div>
               </div>
-              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">21日(月) 19:00 〜 22日(火) 23:59</span>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">21日(土) 19:00 〜 22日(日) 23:59</span>
             </div>
 
             <!-- 2. 予選集計 -->
@@ -682,7 +784,7 @@
                   <span class="text-xs text-slate-400 block sm:inline sm:ml-2">集計期間</span>
                 </div>
               </div>
-              <span class="text-xs text-slate-400 font-mono bg-slate-800/80 px-2.5 py-1 rounded">23日(水) 00:00 〜 23日(水) 06:59</span>
+              <span class="text-xs text-slate-400 font-mono bg-slate-800/80 px-2.5 py-1 rounded">23日(月) 00:00 〜 23日(月) 06:59</span>
             </div>
 
             <!-- 3. インターバル -->
@@ -694,7 +796,7 @@
                   <span class="text-xs text-slate-400 block sm:inline sm:ml-2">肉集め＆トリガー確保</span>
                 </div>
               </div>
-              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">23日(水) 07:00 〜 24日(木) 06:59</span>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">23日(月) 07:00 〜 24日(火) 06:59</span>
             </div>
 
             <!-- 4. 本戦 1戦目 -->
@@ -706,7 +808,7 @@
                   <span class="text-xs text-amber-300 font-semibold block sm:inline sm:ml-2">※100HELL / 150HELL解禁</span>
                 </div>
               </div>
-              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">24日(木) 07:00 〜 24日(木) 23:59</span>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">24日(火) 07:00 〜 24日(火) 23:59</span>
             </div>
 
             <!-- 5. 本戦 2戦目 -->
@@ -718,7 +820,7 @@
                   <span class="text-xs text-amber-300 font-semibold block sm:inline sm:ml-2">※200HELL解禁</span>
                 </div>
               </div>
-              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">25日(金) 07:00 〜 25日(金) 23:59</span>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">25日(水) 07:00 〜 25日(水) 23:59</span>
             </div>
 
             <!-- 6. 本戦 3戦目 -->
@@ -730,7 +832,7 @@
                   <span class="text-xs text-rose-300 font-semibold block sm:inline sm:ml-2">※250HELL解禁</span>
                 </div>
               </div>
-              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">26日(土) 07:00 〜 26日(土) 23:59</span>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">26日(木) 07:00 〜 26日(木) 23:59</span>
             </div>
 
             <!-- 7. 本戦 4戦目 -->
@@ -742,7 +844,7 @@
                   <span class="text-xs text-slate-400 block sm:inline sm:ml-2">最終決戦（250HELLノルマ日）</span>
                 </div>
               </div>
-              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">27日(日) 07:00 〜 27日(日) 23:59</span>
+              <span class="text-xs text-slate-200 font-mono bg-slate-800 px-2.5 py-1 rounded">27日(金) 07:00 〜 27日(金) 23:59</span>
             </div>
 
             <!-- 8. SPバトル -->
@@ -753,7 +855,7 @@
                   <strong class="text-white text-sm">スペシャルバトル</strong>
                 </div>
               </div>
-              <span class="text-xs text-purple-200 font-mono bg-slate-800 px-2.5 py-1 rounded">28日(月) 07:00 〜 28日(月) 23:59</span>
+              <span class="text-xs text-purple-200 font-mono bg-slate-800 px-2.5 py-1 rounded">28日(土) 07:00 〜 28日(土) 23:59</span>
             </div>
           </div>
         </div>
@@ -1074,9 +1176,6 @@
     };
     const FIREBASE_VAPID_KEY = "BEVMN9HhBl6aQkt-Xy-pnd549MOYLkKQf-sgW4Ktuvmu4vQ8ael1POpBThe7LkTq5VjhZnEVVmOj0Q-JeVGAyug";
 
-    // パスワードのSHA-256ハッシュ値
-    // 平文パスワードはコード内に持たせません
-    const CORRECT_HASH = 'cc1d9af0bb9ac07141c3c53cf5b2ced53876a1d1239756fbb77628424921ef0d';
     // 管理人用パスワードのハッシュ
     const ADMIN_HASH = 'a7ea8f2832251e800e040ae0373732dfa2623b954e774c26a74d5c55ccc2da38';
     const STORAGE_KEY = 'gbf_crew_auth_hash';
@@ -1095,14 +1194,17 @@
 
     // Check Auth State on Load
     document.addEventListener('DOMContentLoaded', () => {
-      const savedHash = localStorage.getItem(STORAGE_KEY);
-      // 保存されたハッシュ値が一致していれば認証済みにする
-      if (savedHash === CORRECT_HASH || savedHash === ADMIN_HASH) {
-        if (savedHash === ADMIN_HASH) window.isAdmin = true;
-        showPortal();
-      } else {
-        showAuth();
+      let savedHash = null;
+      try {
+        savedHash = localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        console.warn('localStorage読み込みエラー（認証チェック）:', e);
       }
+      // 保存されたハッシュ値が一致していれば管理者にする
+      if (savedHash === ADMIN_HASH) {
+        window.isAdmin = true;
+      }
+      showPortal();
     });
 
     async function handleAuth(e) {
@@ -1112,12 +1214,13 @@
 
       try {
         const inputHash = await sha256(input);
-        if (inputHash === CORRECT_HASH || inputHash === ADMIN_HASH) {
+        if (inputHash === ADMIN_HASH) {
           localStorage.setItem(STORAGE_KEY, inputHash);
-          if (inputHash === ADMIN_HASH) window.isAdmin = true;
+          window.isAdmin = true;
           errorDiv.classList.add('hidden');
           showPortal();
         } else {
+          errorDiv.textContent = 'パスワードが正しくありません。';
           errorDiv.classList.remove('hidden');
         }
       } catch (err) {
@@ -1128,23 +1231,44 @@
     }
 
     function handleLogout() {
-      localStorage.removeItem(STORAGE_KEY);
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        console.warn('localStorage削除エラー（ログアウト）:', e);
+      }
       window.isAdmin = false;
       closeRecruitAdminUi();
-      showAuth();
+      showPortal();
     }
 
     function showPortal() {
       document.getElementById('authScreen').classList.add('hidden');
       document.getElementById('portalScreen').classList.remove('hidden');
       document.getElementById('editRecruitBtn').hidden = !window.isAdmin;
+
+      const adminLoginBtn = document.getElementById('adminLoginBtn');
+      const logoutBtn = document.getElementById('logoutBtn');
+      if (adminLoginBtn) adminLoginBtn.classList.toggle('hidden', window.isAdmin);
+      if (logoutBtn) logoutBtn.classList.toggle('hidden', !window.isAdmin);
+
+      const adminLoginBtnMobile = document.getElementById('adminLoginBtnMobile');
+      const logoutBtnMobile = document.getElementById('logoutBtnMobile');
+      if (adminLoginBtnMobile) adminLoginBtnMobile.classList.toggle('hidden', window.isAdmin);
+      if (logoutBtnMobile) logoutBtnMobile.classList.toggle('hidden', !window.isAdmin);
+
       initNavObserver();
       initNavAccordionSync();
+      initHistoryUnread();
       // AI機能の一時休止中は登録済み情報を自動取得しない。
       // アクセス解析: 認証成功後にfire-and-forgetで記録
       // 失敗してもポータル本体へ影響しない
-      if (localStorage.getItem(STORAGE_KEY) !== ADMIN_HASH) {
-        recordVisit();
+      try {
+        if (!window.isAdmin) {
+          recordVisit();
+        }
+      } catch (e) {
+        // localStorage例外時はVisitor記録をスキップ（ポータル本体への影響なし）
+        console.warn('localStorage読み込みエラー（Visitor除外チェック）:', e);
       }
     }
 
@@ -1808,6 +1932,93 @@
         });
       } catch {
         // visitorId生成エラー等も静かに無視する
+      }
+    }
+
+    // =========================================================
+    // 更新履歴 未読「NEW」バッジ管理
+    // =========================================================
+    const HISTORY_SEEN_KEY = 'gbf_portal_history_seen_v1';
+    let historyUnreadInitialized = false;
+
+    function getLatestHistoryId() {
+      try {
+        const timeline = document.getElementById('historyTimeline');
+        if (!timeline) return '';
+        const firstItem = timeline.firstElementChild;
+        if (!firstItem) return '';
+
+        const dateSpan = firstItem.querySelector('span.font-mono');
+        const titleStrong = firstItem.querySelector('strong');
+
+        if (dateSpan && titleStrong) {
+          return dateSpan.textContent.trim() + '|' + titleStrong.textContent.trim();
+        }
+        return '';
+      } catch (e) {
+        console.error('Error in getLatestHistoryId:', e);
+        return '';
+      }
+    }
+
+    function updateHistoryNewBadge() {
+      try {
+        const latestId = getLatestHistoryId();
+        if (!latestId) return;
+
+        let seenId = '';
+        try {
+          seenId = localStorage.getItem(HISTORY_SEEN_KEY) || '';
+        } catch (e) {
+          // ignore localStorage read error
+        }
+
+        const badge = document.getElementById('historyNewBadge');
+        if (badge) {
+          if (latestId !== seenId) {
+            badge.classList.remove('hidden');
+          } else {
+            badge.classList.add('hidden');
+          }
+        }
+      } catch (e) {
+        console.error('Error in updateHistoryNewBadge:', e);
+      }
+    }
+
+    function markHistorySeen() {
+      try {
+        const latestId = getLatestHistoryId();
+        if (!latestId) return;
+
+        try {
+          localStorage.setItem(HISTORY_SEEN_KEY, latestId);
+        } catch (e) {
+          // ignore localStorage write error
+        }
+
+        const badge = document.getElementById('historyNewBadge');
+        if (badge) {
+          badge.classList.add('hidden');
+        }
+      } catch (e) {
+        console.error('Error in markHistorySeen:', e);
+      }
+    }
+
+    function initHistoryUnread() {
+      updateHistoryNewBadge();
+
+      if (!historyUnreadInitialized) {
+        const details = document.getElementById('historyDetails');
+        if (details) {
+          details.addEventListener('toggle', () => {
+            if (details.open) {
+              markHistorySeen();
+            }
+          });
+        }
+        historyUnreadInitialized = true;
       }
     }
 

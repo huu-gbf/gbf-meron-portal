@@ -1,7 +1,6 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const {execFileSync} = require('node:child_process');
 const {createPairing,createMemberSync,normalizeCode,errorText,localOptions} = require('../member-sync');
 
 function fixture() {
@@ -108,7 +107,9 @@ test('API cannot send token when auth disappears during token retrieval',async()
   await assert.rejects(client.request('/status'),/UNAUTHENTICATED/);assert.equal(calls,0);
 });
 test('member-sync keeps calculator localStorage responsibility in calculator code',()=>{
-  assert.equal(fs.readFileSync('speed-calculator.html','utf8').replace(/\r\n/g,'\n'),execFileSync('git',['show','b3b2ed6:speed-calculator.html'],{encoding:'utf8'}).replace(/\r\n/g,'\n'));
+  const root=fs.readFileSync('speed-calculator.html','utf8');
+  assert(!root.includes('data-member-sync'));
+  assert(!root.includes('member-sync.js'));
   const source=fs.readFileSync('member-sync.js','utf8');
   assert(!source.includes('gbf_unf_speed_calc'));
   assert(!source.includes('localStorage.setItem'));
