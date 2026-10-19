@@ -92,6 +92,33 @@ service cloud.firestore {
           || (entry.matches('^((0[7-9]|1[0-9]|2[0-3])[0-5][0-9]|2400)$') && validRecord(request.resource.data)));
       allow delete: if battleAdmin() && entry.matches('^((0[7-9]|1[0-9]|2[0-3])[0-5][0-9]|2400)$');
     }
+    // Portal feedback MVP: BEGIN
+    match /portalFeedback/{reportId} {
+      function feedbackAdmin() {
+        return request.auth != null
+          && request.auth.uid == 'wJRZibao8FgMDqDDQ3csPdVuGkx1';
+      }
+      function validFeedback() {
+        let d = request.resource.data;
+        return d.keys().hasAll(['schemaVersion', 'type', 'message', 'name', 'target', 'createdAt'])
+          && d.keys().hasOnly(['schemaVersion', 'type', 'message', 'name', 'target', 'createdAt'])
+          && d.schemaVersion is int && d.schemaVersion == 1
+          && d.type in ['bug', 'request', 'other']
+          && d.message is string
+          && d.message.matches('(?s)^.{1,1000}.{0,1000}.{0,1000}.{0,1000}$')
+          && !d.message.matches('(?s)^[\\x{0009}-\\x{000D}\\x{0020}\\x{00A0}\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}]*$')
+          && !d.message.matches('(?s).*[\\x{0000}-\\x{0008}\\x{000B}-\\x{001F}\\x{007F}-\\x{009F}].*')
+          && d.name is string
+          && d.name.matches('^[^\\x{0000}-\\x{0008}\\x{000A}-\\x{001F}\\x{007F}-\\x{009F}\\x{2028}\\x{2029}]{0,40}$')
+          && d.target is string
+          && d.target.matches('^[^\\x{0000}-\\x{0008}\\x{000A}-\\x{001F}\\x{007F}-\\x{009F}\\x{2028}\\x{2029}]{0,100}$')
+          && d.createdAt is timestamp && d.createdAt == request.time;
+      }
+      allow create: if validFeedback();
+      allow read, delete: if feedbackAdmin();
+      allow update: if false;
+    }
+    // Portal feedback MVP: END
     match /{document=**} {
       allow read, write: if false;
     }

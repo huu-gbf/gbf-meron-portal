@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>不具合・要望 管理 | めろ～ん王国</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="feedback.css">
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script defer src="firebase-config.js"></script>
+  <script defer src="portal-feedback.js"></script>
+  <script defer src="portal-feedback-admin.js"></script>
+</head>
+<body class="feedback-page">
+  <header class="feedback-header"><div class="feedback-shell">
+    <a class="feedback-link" href="index.html">← ポータルへ戻る</a>
+    <span>めろ～ん王国 / 管理者用</span>
+  </div></header>
+  <main class="feedback-shell">
+    <h1>不具合・要望の管理</h1>
+
+    <p id="feedback-admin-status" class="feedback-status" role="status" aria-live="polite">認証状態を確認しています…</p>
+    <noscript><p class="feedback-error">管理機能を使うにはJavaScriptを有効にしてください。</p></noscript>
+
+    <section id="feedback-admin-auth-panel" class="feedback-panel" aria-labelledby="feedback-admin-auth-title" hidden>
+      <h2 id="feedback-admin-auth-title">管理者ログイン</h2>
+      <p class="feedback-muted">管理者アカウントのメールアドレスとパスワードでログインしてください。</p>
+      <form id="feedback-admin-form">
+        <label class="feedback-field" for="feedback-admin-email">メールアドレス
+          <input id="feedback-admin-email" class="feedback-input" type="email" name="email" autocomplete="username" required>
+        </label>
+        <label class="feedback-field" for="feedback-admin-password">パスワード
+          <input id="feedback-admin-password" class="feedback-input" type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <div class="feedback-actions">
+          <button id="feedback-admin-login" class="feedback-button" type="submit">ログイン</button>
+        </div>
+      </form>
+    </section>
+
+    <div id="feedback-admin-account" class="feedback-admin-toolbar" hidden>
+      <p id="feedback-admin-user" class="feedback-muted"></p>
+      <button id="feedback-admin-logout" class="feedback-button feedback-button-secondary" type="button">ログアウト</button>
+    </div>
+
+    <section id="feedback-admin-panel" class="feedback-panel" aria-labelledby="feedback-admin-list-title" hidden>
+      <div class="feedback-admin-toolbar">
+        <div>
+          <h2 id="feedback-admin-list-title">届いた投稿</h2>
+          <p class="feedback-muted">新しい順に30件ずつ表示します。日時は日本時間（JST）です。</p>
+        </div>
+        <button id="feedback-admin-refresh" class="feedback-button feedback-button-secondary" type="button">再読み込み</button>
+      </div>
+      <p id="feedback-admin-empty" class="feedback-muted" hidden>投稿はまだありません。</p>
+      <div id="feedback-admin-list" class="feedback-list"></div>
+      <div class="feedback-actions">
+        <button id="feedback-admin-next" class="feedback-button feedback-button-secondary" type="button" hidden>次の30件を表示</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

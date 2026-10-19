@@ -1,0 +1,53 @@
+/* Styles belong only to the independent report pages. */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.feedback-page { margin: 0; min-height: 100vh; color: #f1f5f9; background: #080b14; font-family: 'Noto Sans JP', system-ui, sans-serif; line-height: 1.65; }
+.feedback-page::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: -1; background-image: radial-gradient(1px 1px at 20px 30px, #ffffff70, transparent), radial-gradient(1px 1px at 90px 120px, #fde04760, transparent); background-size: 300px 300px; }
+.feedback-shell { width: min(100%, 752px); margin: 0 auto; padding: 0 16px; min-width: 0; }
+.feedback-header { border-bottom: 1px solid #24304c; background: #080b14e6; }
+.feedback-header .feedback-shell { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding-top: 12px; padding-bottom: 12px; }
+.feedback-header span { color: #94a3b8; font-size: 14px; }
+.feedback-page main { padding-top: 30px; padding-bottom: 48px; }
+.feedback-page h1 { font-size: clamp(24px, 5vw, 30px); line-height: 1.4; margin: 0 0 12px; }
+.feedback-page h2 { margin: 0 0 16px; font-size: 20px; }
+.feedback-intro { color: #cbd5e1; margin: 0 0 24px; }
+.feedback-panel { border: 1px solid #d4af5533; background: #121829c7; border-radius: 16px; padding: 24px; box-shadow: 0 0 28px -6px #f5c84218; min-width: 0; }
+.feedback-privacy { margin: 0 0 24px; padding: 12px 14px; background: #8b5cf615; border: 1px solid #8b5cf650; border-radius: 10px; color: #ddd6fe; }
+.feedback-field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px; min-width: 0; }
+.feedback-field label { font-weight: 700; }
+.feedback-required, .feedback-muted { font-size: 13px; font-weight: 400; margin-left: 6px; }
+.feedback-required { color: #fcd34d; }
+.feedback-muted { color: #94a3b8; }
+.feedback-input { display: block; width: 100%; min-width: 0; min-height: 48px; padding: 12px 14px; font: inherit; font-size: 16px; line-height: 1.6; color: #f1f5f9; background: #0f1220e6; border: 1px solid #334155; border-radius: 10px; }
+textarea.feedback-input { min-height: 240px; resize: vertical; }
+.feedback-input::placeholder { color: #94a3b8; opacity: 1; }
+.feedback-input:focus, .feedback-button:focus-visible, .feedback-link:focus-visible { outline: 2px solid #a78bfa; outline-offset: 3px; }
+.feedback-input[aria-invalid="true"] { border-color: #fb7185; }
+.feedback-input[readonly] { color: #cbd5e1; }
+.feedback-count { align-self: flex-end; color: #94a3b8; font-size: 13px; }
+.feedback-button { min-height: 48px; padding: 12px 20px; font: inherit; font-weight: 700; font-size: 16px; line-height: 1.5; cursor: pointer; border: 1px solid #a78bfa; border-radius: 10px; background: #7c3aed; color: white; white-space: normal; overflow-wrap: anywhere; }
+.feedback-button:hover:not(:disabled) { background: #6d28d9; }
+.feedback-button:disabled { cursor: default; opacity: .6; }
+.feedback-button-secondary { background: #1e293b; border-color: #475569; }
+.feedback-button-secondary:hover:not(:disabled) { background: #334155; }
+.feedback-button-danger { background: #4c1425; border-color: #fb718580; color: #fecdd3; }
+.feedback-button-danger:hover:not(:disabled) { background: #701a32; }
+.feedback-submit { width: 100%; }
+.feedback-status { min-height: 1.65em; color: #a7f3d0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback-error { color: #fda4af; overflow-wrap: anywhere; }
+.feedback-status[data-state="error"] { color: #fda4af; }
+.feedback-footer { padding-top: 24px; text-align: right; }
+.feedback-link { color: #c4b5fd; text-underline-offset: 4px; overflow-wrap: anywhere; }
+.feedback-actions, .feedback-admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.feedback-admin-toolbar { justify-content: space-between; margin-bottom: 20px; }
+.feedback-list { display: flex; flex-direction: column; gap: 16px; }
+.feedback-card { padding: 18px; border: 1px solid #334155; border-radius: 12px; background: #0f1220b3; min-width: 0; overflow-wrap: anywhere; }
+.feedback-card-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: #cbd5e1; overflow-wrap: anywhere; }
+.feedback-message { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
+.feedback-tag { display: inline-block; padding: 2px 10px; border-radius: 6px; background: #8b5cf62e; color: #ddd6fe; }
+@media (max-width: 540px) {
+  .feedback-panel { padding: 18px 16px; }
+  .feedback-actions { width: 100%; }
+  .feedback-actions .feedback-button { flex: 1 1 auto; }
+  .feedback-admin-toolbar > * { max-width: 100%; }
+}

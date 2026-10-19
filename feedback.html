@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>不具合・要望 | めろ～ん王国</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./feedback.css">
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script defer src="./firebase-config.js"></script>
+  <script defer src="./portal-feedback.js"></script>
+</head>
+<body class="feedback-page">
+  <header class="feedback-header"><div class="feedback-shell">
+    <a class="feedback-link" href="./index.html">← ポータルへ戻る</a>
+    <span>めろ～ん王国</span>
+  </div></header>
+  <main class="feedback-shell">
+    <h1>不具合・要望</h1>
+    <p class="feedback-intro">サイトやツールで気づいたことを、気軽にお送りください。</p>
+    <section class="feedback-panel" aria-label="報告フォーム">
+      <p class="feedback-privacy">名前は任意です。送信内容は管理人だけが確認します。</p>
+      <form id="feedback-form" novalidate>
+        <div class="feedback-field">
+          <label for="feedback-type">種別 <span class="feedback-required">必須</span></label>
+          <select id="feedback-type" class="feedback-input" required aria-describedby="feedback-error">
+            <option value="">選んでください</option><option value="bug">不具合</option>
+            <option value="request">要望</option><option value="other">その他</option>
+          </select>
+        </div>
+        <div class="feedback-field">
+          <label for="feedback-message">内容 <span class="feedback-required">必須</span></label>
+          <textarea id="feedback-message" class="feedback-input" rows="10" required aria-describedby="feedback-message-count feedback-error"
+            placeholder="何が起きたか、どんな機能が欲しいかなど、自由にご記入ください。"></textarea>
+          <span id="feedback-message-count" class="feedback-count">0 / 4000</span>
+        </div>
+        <div class="feedback-field">
+          <label for="feedback-name">名前 <span class="feedback-muted">任意</span></label>
+          <input id="feedback-name" class="feedback-input" type="text" autocomplete="nickname" aria-describedby="feedback-name-count feedback-error" placeholder="匿名でも送信できます">
+          <span id="feedback-name-count" class="feedback-count">0 / 40</span>
+        </div>
+        <div class="feedback-field">
+          <label for="feedback-target">対象ページ・機能 <span class="feedback-muted">任意</span></label>
+          <input id="feedback-target" class="feedback-input" type="text" aria-describedby="feedback-target-count feedback-error" placeholder="例：古戦場 周回効率計算機、団員投稿">
+          <span id="feedback-target-count" class="feedback-count">0 / 100</span>
+        </div>
+        <p id="feedback-error" class="feedback-error" role="alert" hidden></p>
+        <p id="feedback-status" class="feedback-status" role="status" aria-live="polite"></p>
+        <button id="feedback-submit" class="feedback-button feedback-submit" type="submit">送信する</button>
+        <button id="feedback-new" class="feedback-button feedback-button-secondary feedback-submit" type="button" hidden>別の報告を送る</button>
+      </form>
+      <noscript><p class="feedback-error">送信するにはJavaScriptを有効にしてください。</p></noscript>
+    </section>
+    <footer class="feedback-footer"><a class="feedback-link" href="./feedback-admin.html">管理人用</a></footer>
+  </main>
+</body>
+</html>
