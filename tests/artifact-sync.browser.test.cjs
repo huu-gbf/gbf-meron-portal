@@ -19,6 +19,7 @@ const source = fs.readFileSync(path.join(ROOT, 'awakening-manager.html'), 'utf8'
 const baseline = execFileSync('git', ['show', BASE + ':awakening-manager.html'],
   {cwd: ROOT, encoding: 'utf8', maxBuffer: 1024 * 1024});
 const css = fs.readFileSync(path.join(ROOT, 'css/tailwind.min.css'), 'utf8');
+const catalogSource = fs.readFileSync(path.join(ROOT, 'artifact-catalog.js'), 'utf8');
 
 async function open(browser, html, viewport, seed = {}) {
   // Browser preconnects do not pass through Playwright request interception.
@@ -29,6 +30,9 @@ async function open(browser, html, viewport, seed = {}) {
     const url = new globalThis.URL(route.request().url());
     requests.push(url.href);
     if (url.href === URL) return route.fulfill({contentType: 'text/html', body: fixtureHtml});
+    if (url.origin === ORIGIN && url.pathname === '/artifact-catalog.js') {
+      return route.fulfill({contentType: 'application/javascript', body: catalogSource});
+    }
     if (url.origin === ORIGIN && url.pathname === '/css/tailwind.min.css') {
       return route.fulfill({contentType: 'text/css', body: css});
     }
@@ -66,7 +70,13 @@ async function open(browser, html, viewport, seed = {}) {
 async function state(page) {
   return page.evaluate(() => {
     const body = document.body.cloneNode(true);
-    body.querySelectorAll('script').forEach(script => script.remove());
+    body.querySelectorAll('script').forEach(script => {
+      // Ignore only inert script-separator whitespace when catalog moves to a
+      // shared script. All rendered controls and pixel comparisons stay exact.
+      const next = script.nextSibling;
+      if (next?.nodeType === Node.TEXT_NODE && next.textContent.trim() === '') next.remove();
+      script.remove();
+    });
     const settings = JSON.parse(JSON.stringify(userSettings));
     return {
       mode: currentMode,

@@ -4,17 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const html = fs.readFileSync(path.join(__dirname, '../awakening-manager.html'), 'utf8');
-const start = html.indexOf('    const ARTIFACT_CATALOG_VERSION =');
-const end = html.indexOf('    const STORAGE_KEY_GW =', start);
-assert(start >= 0 && end > start, 'catalog and projection must remain independently executable');
-const source = html.slice(start, end);
+const source = fs.readFileSync(path.join(__dirname, '../artifact-catalog.js'), 'utf8');
 const context = vm.createContext({});
 for (const name of ['document', 'window', 'localStorage', 'sessionStorage', 'firebase', 'fetch', 'XMLHttpRequest']) {
   Object.defineProperty(context, name, {get() { throw new Error(`pure adapter accessed ${name}`); }});
 }
-vm.runInContext(source + '\nthis.artifactTestApi = {dataSlot12, dataSlot3, dataSlot4, ARTIFACT_CATALOG_VERSION, ARTIFACT_LEGACY_EFFECT_IDS, projectArtifactSettings};', context);
-const api = context.artifactTestApi;
+vm.runInContext(source, context);
+const api = context.ArtifactCatalog;
 const catalog = [...api.dataSlot12, ...api.dataSlot3, ...api.dataSlot4];
 const mapping = api.ARTIFACT_LEGACY_EFFECT_IDS;
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -333,4 +329,20 @@ test('[projection] current UI defaults project from the actual catalog without w
       ? {needed: false, selectedValue: item.values[item.values.length - 1]} : {needed: false}, key);
   }
   assert.deepEqual(defaults, before);
+});
+
+test('[projection] shared default helper preserves all frozen catalog IDs and returns detached full states', () => {
+  assert(Object.isFrozen(api.ARTIFACT_CATALOG));
+  for (const item of api.ARTIFACT_CATALOG) {
+    assert(Object.isFrozen(item));
+    if (item.values) assert(Object.isFrozen(item.values));
+  }
+  const expected = {catalogVersion: 1, items: Object.fromEntries(golden.map(([, , allowed, effectId]) => [effectId, {
+    needed: false, ...(Array.isArray(allowed) ? {selectedValue: allowed[allowed.length - 1]} : {})
+  }]))};
+  const first = api.createDefaultArtifactProjection();
+  assert.deepEqual(plain(first), expected);
+  first.items[independentMap.s12_0].needed = true;
+  first.items[independentMap.s12_0].selectedValue = 'detached';
+  assert.deepEqual(plain(api.createDefaultArtifactProjection()), expected);
 });

@@ -45,6 +45,63 @@
     return Object.freeze({...data, seenIds: Object.freeze([...data.seenIds])});
   }
 
+  const ARTIFACT_SETTINGS_FIELDS = ['schemaVersion', 'catalogVersion', 'resetEpoch', 'items',
+    'revision', 'createdAt', 'updatedAt', 'updatedByDeviceId'];
+  function artifactCatalog() {
+    // Existing pages need not load the catalog until an Artifact API is used.
+    // Loading this member client never starts another script or network request.
+    const catalog = typeof module === 'object' && module.exports
+      ? require('./artifact-catalog') : root.ArtifactCatalog;
+    if (!catalog || catalog.ARTIFACT_CATALOG_VERSION !== 1
+        || !Array.isArray(catalog.ARTIFACT_CATALOG)) throw new Error('SETTINGS_UNAVAILABLE');
+    return catalog;
+  }
+  function artifactDocument(mode) {
+    if (mode === 'gw') return 'awakeningGw';
+    if (mode === 'high') return 'awakeningHigh';
+    throw new Error('INVALID_SETTINGS');
+  }
+  function copyArtifactItems(items, catalog) {
+    const definitions = catalog.ARTIFACT_CATALOG;
+    if (!exactKeys(items, definitions.map(item => item.effectId))) throw new Error('INVALID_SETTINGS');
+    return Object.fromEntries(definitions.map(item => {
+      const value = items[item.effectId];
+      const fields = item.values ? ['needed', 'selectedValue'] : ['needed'];
+      if (!exactKeys(value, fields) || typeof value.needed !== 'boolean'
+          || (item.values && (typeof value.selectedValue !== 'string'
+            || !item.values.includes(value.selectedValue)))) throw new Error('INVALID_SETTINGS');
+      return [item.effectId, item.values
+        ? {needed: value.needed, selectedValue: value.selectedValue} : {needed: value.needed}];
+    }));
+  }
+  function copyArtifactProjection(projection) {
+    const catalog = artifactCatalog();
+    if (!exactKeys(projection, ['catalogVersion', 'items'])
+        || projection.catalogVersion !== catalog.ARTIFACT_CATALOG_VERSION) throw new Error('INVALID_SETTINGS');
+    return {catalogVersion: catalog.ARTIFACT_CATALOG_VERSION, items: copyArtifactItems(projection.items, catalog)};
+  }
+  function copyArtifactTimestamp(value, Timestamp) {
+    if (!(value instanceof Timestamp) || !Number.isSafeInteger(value.seconds)
+        || !Number.isInteger(value.nanoseconds) || value.nanoseconds < 0 || value.nanoseconds >= 1000000000) {
+      throw new Error('INVALID_SETTINGS');
+    }
+    try { return Object.freeze(new Timestamp(value.seconds, value.nanoseconds)); }
+    catch (_) { throw new Error('INVALID_SETTINGS'); }
+  }
+  function validateArtifactSettings(data, Timestamp) {
+    const catalog = artifactCatalog();
+    if (!exactKeys(data, ARTIFACT_SETTINGS_FIELDS) || data.schemaVersion !== 1
+        || data.catalogVersion !== catalog.ARTIFACT_CATALOG_VERSION
+        || !Number.isSafeInteger(data.resetEpoch) || data.resetEpoch < 0
+        || !Number.isSafeInteger(data.revision) || data.revision < 1
+        || !validId(data.updatedByDeviceId)) throw new Error('INVALID_SETTINGS');
+    const items = copyArtifactItems(data.items, catalog);
+    Object.values(items).forEach(Object.freeze);
+    return Object.freeze({...data, items: Object.freeze(items),
+      createdAt: copyArtifactTimestamp(data.createdAt, Timestamp),
+      updatedAt: copyArtifactTimestamp(data.updatedAt, Timestamp)});
+  }
+
   function createMemberSync(firebase, config, options = {}) {
     let connection;
     let starting;
@@ -443,10 +500,175 @@
       return unsubscribe;
     }
 
+    async function artifactSettingsContext(mode, expected) {
+      const document = artifactDocument(mode);
+      // Reuse the same server-confirmed active membership as History without
+      // reading its settings document. Callers can select only these two modes.
+      const context = await historyReadContext(expected);
+      return {...context, artifactMode: mode,
+        ref: connection.db.doc('memberProfiles/' + context.identity.profileId + '/settings/' + document)};
+    }
+    const validatedArtifact = snapshot => snapshot.exists
+      ? validateArtifactSettings(snapshot.data(), firebase.firestore.Timestamp) : null;
+
+    async function artifactTransaction(context, operation) {
+      for (let attempt = 0; ; attempt++) {
+        let observedRevision;
+        try {
+          return await connection.db.runTransaction(async transaction => {
+            observedRevision = undefined;
+            await assertHistoryTransaction(transaction, context);
+            const snapshot = await transaction.get(context.ref);
+            assertSettingsUser(context.user);
+            const latest = validatedArtifact(snapshot);
+            observedRevision = latest?.revision ?? 0;
+            return operation(transaction, latest);
+          });
+        } catch (error) {
+          // Recover only a proven concurrent commit, never an actual denial.
+          if (error?.code !== 'permission-denied' || observedRevision === undefined || attempt >= 2) throw error;
+          const fresh = await artifactSettingsContext(context.artifactMode, context);
+          const snapshot = await fresh.ref.get({source: 'server'});
+          assertSettingsUser(context.user);
+          const latest = validatedArtifact(snapshot);
+          if (!latest || latest.revision <= observedRevision) throw error;
+        }
+      }
+    }
+
+    async function getArtifactSettings(mode) {
+      const context = await artifactSettingsContext(mode);
+      const snapshot = await context.ref.get({source: 'server'});
+      assertSettingsUser(context.user);
+      return validatedArtifact(snapshot);
+    }
+
+    async function initializeArtifactSettings(mode, projection) {
+      artifactDocument(mode);
+      // Validate and copy all caller input before authentication or any await.
+      const initial = copyArtifactProjection(projection);
+      const context = await artifactSettingsContext(mode);
+      const existing = await artifactTransaction(context, (transaction, latest) => {
+        if (latest) return latest;
+        transaction.set(context.ref, {schemaVersion: 1, ...initial, resetEpoch: 0, revision: 1,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedByDeviceId: context.identity.deviceId});
+        return null;
+      });
+      assertSettingsUser(context.user);
+      if (existing) return existing;
+      const snapshot = await context.ref.get({source: 'server'});
+      assertSettingsUser(context.user);
+      return validatedArtifact(snapshot);
+    }
+
+    async function updateArtifactSetting(mode, effectId, patch) {
+      artifactDocument(mode);
+      const item = artifactCatalog().ARTIFACT_CATALOG.find(item => item.effectId === effectId);
+      const fields = patch && typeof patch === 'object' && !Array.isArray(patch) ? Reflect.ownKeys(patch) : [];
+      const field = fields[0], value = patch?.[field];
+      if (!item || fields.length !== 1
+          || (field === 'needed' ? typeof value !== 'boolean'
+            : field !== 'selectedValue' || !item.values || typeof value !== 'string' || !item.values.includes(value))) {
+        throw new Error('INVALID_SETTINGS');
+      }
+      const context = await artifactSettingsContext(mode);
+      const revision = await artifactTransaction(context, (transaction, latest) => {
+        if (!latest) throw new Error('SETTINGS_NOT_INITIALIZED');
+        if (latest.items[effectId][field] === value) return latest.revision;
+        if (latest.revision === Number.MAX_SAFE_INTEGER) throw new Error('INVALID_SETTINGS');
+        transaction.update(context.ref, {['items.' + effectId + '.' + field]: value,
+          revision: firebase.firestore.FieldValue.increment(1),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedByDeviceId: context.identity.deviceId});
+        return latest.revision + 1;
+      });
+      assertSettingsUser(context.user);
+      return revision;
+    }
+
+    async function resetArtifactSettings(mode) {
+      artifactDocument(mode);
+      const defaults = copyArtifactProjection(artifactCatalog().createDefaultArtifactProjection());
+      const context = await artifactSettingsContext(mode);
+      const revision = await artifactTransaction(context, (transaction, latest) => {
+        if (!latest) throw new Error('SETTINGS_NOT_INITIALIZED');
+        if (latest.revision === Number.MAX_SAFE_INTEGER || latest.resetEpoch === Number.MAX_SAFE_INTEGER) {
+          throw new Error('INVALID_SETTINGS');
+        }
+        transaction.update(context.ref, {items: defaults.items,
+          resetEpoch: firebase.firestore.FieldValue.increment(1),
+          revision: firebase.firestore.FieldValue.increment(1),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedByDeviceId: context.identity.deviceId});
+        return latest.revision + 1;
+      });
+      assertSettingsUser(context.user);
+      return revision;
+    }
+
+    function subscribeArtifactSettings(mode, callback, onError = () => {}) {
+      artifactDocument(mode);
+      if (typeof callback !== 'function' || typeof onError !== 'function') throw new TypeError('Callbacks required');
+      let stopped = false, watchingSettings = false;
+      const stops = [], confirmed = new Set();
+      const unsubscribe = () => { if (!stopped) { stopped = true; stops.splice(0).forEach(stop => stop()); } };
+      const track = stop => { if (stopped) stop(); else stops.push(stop); };
+      const fail = error => {
+        if (stopped) return;
+        unsubscribe();
+        const code = ['UNAUTHENTICATED', 'MEMBERSHIP_REQUIRED', 'INVALID_SETTINGS'].includes(error?.message)
+          ? error.message : 'SETTINGS_UNAVAILABLE';
+        onError(new Error(code));
+      };
+      const dispatch = handler => value => queueMicrotask(() => { if (!stopped) handler(value); });
+      (async () => {
+        try {
+          const context = await artifactSettingsContext(mode);
+          if (stopped) return;
+          track(connection.auth.onAuthStateChanged(dispatch(user => {
+            if (user !== context.user || !user?.isAnonymous) fail(new Error('UNAUTHENTICATED'));
+          }), dispatch(fail)));
+          const watchMembership = (key, ref, validate) => {
+            track(ref.onSnapshot({includeMetadataChanges: true}, dispatch(snapshot => {
+              try {
+                assertSettingsUser(context.user);
+                if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+                validate(snapshot);
+              } catch (error) { fail(error); return; }
+              confirmed.add(key);
+              if (watchingSettings || confirmed.size !== 3) return;
+              watchingSettings = true;
+              try {
+                track(context.ref.onSnapshot({includeMetadataChanges: true}, dispatch(settings => {
+                  let data;
+                  try {
+                    assertSettingsUser(context.user);
+                    if (settings.metadata.fromCache || settings.metadata.hasPendingWrites) return;
+                    data = validatedArtifact(settings);
+                  } catch (error) { fail(error); return; }
+                  callback(data);
+                }), dispatch(fail)));
+              } catch (error) { fail(error); }
+            }), dispatch(fail)));
+          };
+          watchMembership('identity', context.identityRef, snapshot => assertSettingsIdentity(snapshot.data(), context.identity));
+          const active = snapshot => {
+            if (!snapshot.exists || snapshot.data()?.status !== 'active') throw new Error('MEMBERSHIP_REQUIRED');
+          };
+          watchMembership('profile', context.profileRef, active);
+          watchMembership('device', context.deviceRef, active);
+        } catch (error) { fail(error); }
+      })();
+      return unsubscribe;
+    }
+
     return Object.freeze({ startAuthentication, restoreAuthentication, getIdentity, request,
       getSpeedCalculatorSettings, initializeSpeedCalculatorSettings, updateSpeedCalculatorField,
       subscribeSpeedCalculatorSettings, getHistoryReadState, initializeHistoryReadState,
-      markHistorySeen, subscribeHistoryReadState });
+      markHistorySeen, subscribeHistoryReadState, getArtifactSettings, initializeArtifactSettings,
+      updateArtifactSetting, resetArtifactSettings, subscribeArtifactSettings });
   }
 
   // One controller per calculator; only explicit input events queue writes.
