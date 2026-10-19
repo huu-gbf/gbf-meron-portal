@@ -27,6 +27,24 @@
     return Object.freeze({...data, hellTimesSec: Object.freeze({...data.hellTimesSec})});
   }
 
+  const HISTORY_READ_FIELDS = ['schemaVersion', 'seenIds', 'revision', 'createdAt', 'updatedAt', 'updatedByDeviceId'];
+  // Match the Rules RE2 bound of 512 Unicode code points, including emoji.
+  const validHistoryId = value => typeof value === 'string' && value.length > 0 && [...value].length <= 512;
+  function validateHistoryIds(seenIds, maximum = 256) {
+    if (!Array.isArray(seenIds) || seenIds.length > maximum
+        || !Array.from(seenIds).every(validHistoryId) || new Set(seenIds).size !== seenIds.length) {
+      throw new Error('INVALID_SETTINGS');
+    }
+  }
+  function validateHistoryReadState(data, Timestamp) {
+    if (!exactKeys(data, HISTORY_READ_FIELDS) || data.schemaVersion !== 1
+        || !Number.isSafeInteger(data.revision) || data.revision < 1
+        || !(data.createdAt instanceof Timestamp) || !(data.updatedAt instanceof Timestamp)
+        || !validId(data.updatedByDeviceId)) throw new Error('INVALID_SETTINGS');
+    validateHistoryIds(data.seenIds);
+    return Object.freeze({...data, seenIds: Object.freeze([...data.seenIds])});
+  }
+
   function createMemberSync(firebase, config, options = {}) {
     let connection;
     let starting;
@@ -244,9 +262,181 @@
       return unsubscribe;
     }
 
+    function assertHistoryMembership(profile, device) {
+      if (!profile.exists || profile.data()?.status !== 'active'
+          || !device.exists || device.data()?.status !== 'active') throw new Error('MEMBERSHIP_REQUIRED');
+    }
+    async function historyReadContext(expected) {
+      const user = connection?.auth.currentUser;
+      assertSettingsUser(user);
+      if (expected) assertSettingsUser(expected.user);
+      const identity = await getIdentity();
+      assertSettingsUser(user);
+      assertSettingsIdentity(identity, expected?.identity);
+      const base = 'memberProfiles/' + identity.profileId;
+      const context = {user, identity,
+        identityRef: connection.db.doc('memberIdentities/' + user.uid),
+        profileRef: connection.db.doc(base),
+        deviceRef: connection.db.doc(base + '/devices/' + identity.deviceId),
+        ref: connection.db.doc(base + '/settings/historyReadState')};
+      const [profile, device] = await Promise.all([
+        context.profileRef.get({source: 'server'}), context.deviceRef.get({source: 'server'})
+      ]);
+      assertSettingsUser(user);
+      assertHistoryMembership(profile, device);
+      return context;
+    }
+    async function assertHistoryTransaction(transaction, context) {
+      assertSettingsUser(context.user);
+      const [identity, profile, device] = await Promise.all([
+        transaction.get(context.identityRef), transaction.get(context.profileRef), transaction.get(context.deviceRef)
+      ]);
+      assertSettingsUser(context.user);
+      assertSettingsIdentity(identity.data(), context.identity);
+      assertHistoryMembership(profile, device);
+    }
+    const validatedHistory = snapshot => snapshot.exists
+      ? validateHistoryReadState(snapshot.data(), firebase.firestore.Timestamp) : null;
+    const newHistoryReadState = (seenIds, deviceId) => ({schemaVersion: 1, seenIds, revision: 1,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedByDeviceId: deviceId});
+
+    async function historyTransaction(context, operation) {
+      // Rules can reject a stale transform before Firestore reports the read
+      // conflict. Retry only proven revision progress within this membership;
+      // genuine denials and offline failures must remain failures.
+      for (let attempt = 0; ; attempt++) {
+        let observedRevision;
+        try {
+          return await connection.db.runTransaction(async transaction => {
+            observedRevision = undefined;
+            await assertHistoryTransaction(transaction, context);
+            const snapshot = await transaction.get(context.ref);
+            assertSettingsUser(context.user);
+            const latest = validatedHistory(snapshot);
+            observedRevision = latest?.revision ?? 0;
+            return operation(transaction, latest);
+          });
+        } catch (error) {
+          if (error?.code !== 'permission-denied' || observedRevision === undefined || attempt >= 2) throw error;
+          const fresh = await historyReadContext(context);
+          const snapshot = await fresh.ref.get({source: 'server'});
+          assertSettingsUser(context.user);
+          const latest = validatedHistory(snapshot);
+          if (!latest || latest.revision <= observedRevision) throw error;
+        }
+      }
+    }
+
+    async function getHistoryReadState() {
+      const context = await historyReadContext();
+      const snapshot = await context.ref.get({source: 'server'});
+      assertSettingsUser(context.user);
+      return validatedHistory(snapshot);
+    }
+
+    async function initializeHistoryReadState(initialSeenIds) {
+      validateHistoryIds(initialSeenIds, 1);
+      const initial = [...initialSeenIds];
+      const context = await historyReadContext();
+      const existing = await historyTransaction(context, (transaction, latest) => {
+        if (latest) return latest;
+        transaction.set(context.ref, newHistoryReadState(initial, context.identity.deviceId));
+        return null;
+      });
+      assertSettingsUser(context.user);
+      if (existing) return existing;
+      // Resolve server timestamps rather than returning a pending local write.
+      const snapshot = await context.ref.get({source: 'server'});
+      assertSettingsUser(context.user);
+      return validatedHistory(snapshot);
+    }
+
+    async function markHistorySeen(historyId) {
+      if (!validHistoryId(historyId)) throw new Error('INVALID_SETTINGS');
+      const context = await historyReadContext();
+      const revision = await historyTransaction(context, (transaction, latest) => {
+        if (!latest) {
+          transaction.set(context.ref, newHistoryReadState([historyId], context.identity.deviceId));
+          return 1;
+        }
+        // An existing ID remains a complete no-op, even at either upper limit.
+        if (latest.seenIds.includes(historyId)) return latest.revision;
+        if (latest.seenIds.length === 256) throw new Error('HISTORY_READ_LIMIT');
+        if (latest.revision === Number.MAX_SAFE_INTEGER) throw new Error('INVALID_SETTINGS');
+        // Apply the union to the server's current array during Rules evaluation;
+        // the transaction read precondition still retries concurrent writers.
+        transaction.update(context.ref, {seenIds: firebase.firestore.FieldValue.arrayUnion(historyId),
+          revision: firebase.firestore.FieldValue.increment(1),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedByDeviceId: context.identity.deviceId});
+        return latest.revision + 1;
+      });
+      assertSettingsUser(context.user);
+      return revision;
+    }
+
+    function subscribeHistoryReadState(callback, onError = () => {}) {
+      if (typeof callback !== 'function' || typeof onError !== 'function') throw new TypeError('Callbacks required');
+      let stopped = false, watchingSettings = false;
+      const stops = [], confirmed = new Set();
+      const unsubscribe = () => { if (!stopped) { stopped = true; stops.splice(0).forEach(stop => stop()); } };
+      const track = stop => { if (stopped) stop(); else stops.push(stop); };
+      const fail = error => {
+        if (stopped) return;
+        unsubscribe();
+        const code = ['UNAUTHENTICATED', 'MEMBERSHIP_REQUIRED', 'INVALID_SETTINGS'].includes(error?.message)
+          ? error.message : 'SETTINGS_UNAVAILABLE';
+        onError(new Error(code));
+      };
+      // Dispatch outside listener registration and validation catches. Exceptions
+      // thrown by consumer callbacks must not be reported as malformed documents.
+      const dispatch = handler => value => queueMicrotask(() => { if (!stopped) handler(value); });
+      (async () => {
+        try {
+          const context = await historyReadContext();
+          if (stopped) return;
+          track(connection.auth.onAuthStateChanged(dispatch(user => {
+            if (user !== context.user || !user?.isAnonymous) fail(new Error('UNAUTHENTICATED'));
+          }), dispatch(fail)));
+          const watchMembership = (key, ref, validate) => {
+            track(ref.onSnapshot({includeMetadataChanges: true}, dispatch(snapshot => {
+              try {
+                assertSettingsUser(context.user);
+                if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+                validate(snapshot);
+              } catch (error) { fail(error); return; }
+              confirmed.add(key);
+              if (watchingSettings || confirmed.size !== 3) return;
+              watchingSettings = true;
+              try {
+                track(context.ref.onSnapshot({includeMetadataChanges: true}, dispatch(settings => {
+                  let data;
+                  try {
+                    assertSettingsUser(context.user);
+                    if (settings.metadata.fromCache || settings.metadata.hasPendingWrites) return;
+                    data = validatedHistory(settings);
+                  } catch (error) { fail(error); return; }
+                  callback(data);
+                }), dispatch(fail)));
+              } catch (error) { fail(error); }
+            }), dispatch(fail)));
+          };
+          watchMembership('identity', context.identityRef, snapshot => assertSettingsIdentity(snapshot.data(), context.identity));
+          const active = snapshot => {
+            if (!snapshot.exists || snapshot.data()?.status !== 'active') throw new Error('MEMBERSHIP_REQUIRED');
+          };
+          watchMembership('profile', context.profileRef, active);
+          watchMembership('device', context.deviceRef, active);
+        } catch (error) { fail(error); }
+      })();
+      return unsubscribe;
+    }
+
     return Object.freeze({ startAuthentication, restoreAuthentication, getIdentity, request,
       getSpeedCalculatorSettings, initializeSpeedCalculatorSettings, updateSpeedCalculatorField,
-      subscribeSpeedCalculatorSettings });
+      subscribeSpeedCalculatorSettings, getHistoryReadState, initializeHistoryReadState,
+      markHistorySeen, subscribeHistoryReadState });
   }
 
   // One controller per calculator; only explicit input events queue writes.

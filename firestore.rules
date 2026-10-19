@@ -144,6 +144,55 @@ service cloud.firestore {
           && request.resource.data.revision == resource.data.revision + 1
           && request.resource.data.updatedAt == request.time;
       }
+      match /settings/historyReadState {
+        // History additionally requires the identity's current device to be active.
+        // Keep this check local so existing speed/profile permissions do not change.
+        function historyOwnsProfile() {
+          return memberOwnsProfile(profileId)
+            && get(/databases/$(database)/documents/memberIdentities/$(request.auth.uid)).data.deviceId is string
+            && exists(/databases/$(database)/documents/memberProfiles/$(profileId)/devices/$(get(/databases/$(database)/documents/memberIdentities/$(request.auth.uid)).data.deviceId))
+            && get(/databases/$(database)/documents/memberProfiles/$(profileId)/devices/$(get(/databases/$(database)/documents/memberIdentities/$(request.auth.uid)).data.deviceId)).data.status == 'active';
+        }
+        function validHistoryId(id) {
+          // RE2 counts Unicode code points, including supplementary emoji;
+          // dot-all also permits any string content without imposing an ID format.
+          return id is string && id.matches('(?s)^.{1,512}$');
+        }
+        function validHistorySettings(d) {
+          let fields = ['schemaVersion','seenIds','revision','createdAt','updatedAt','updatedByDeviceId'];
+          return d.keys().hasAll(fields) && d.keys().hasOnly(fields)
+            && d.schemaVersion is int && d.schemaVersion == 1
+            && d.seenIds is list && d.seenIds.size() <= 256
+            && d.seenIds.toSet().size() == d.seenIds.size()
+            && d.revision is int && d.revision >= 1 && d.revision <= 9007199254740991
+            && d.createdAt is timestamp && d.updatedAt is timestamp
+            && d.updatedByDeviceId is string
+            && d.updatedByDeviceId == get(/databases/$(database)/documents/memberIdentities/$(request.auth.uid)).data.deviceId;
+        }
+        // Rules cannot iterate an arbitrary list. Validate every ID inductively:
+        // create permits at most one valid ID; update preserves the exact old list
+        // and appends exactly one valid ID. Reordering and zero-change writes fail.
+        function validHistoryAppend(d) {
+          return resource.data.seenIds is list
+            && d.seenIds.size() == resource.data.seenIds.size() + 1
+            && validHistoryId(d.seenIds[resource.data.seenIds.size()])
+            && d.seenIds == resource.data.seenIds.concat([d.seenIds[resource.data.seenIds.size()]]);
+        }
+        allow get: if historyOwnsProfile();
+        allow list, delete: if false;
+        allow create: if historyOwnsProfile() && validHistorySettings(request.resource.data)
+          && request.resource.data.seenIds.size() <= 1
+          && (request.resource.data.seenIds.size() == 0 || validHistoryId(request.resource.data.seenIds[0]))
+          && request.resource.data.revision == 1
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if historyOwnsProfile() && validHistorySettings(request.resource.data)
+          && request.resource.data.schemaVersion == resource.data.schemaVersion
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.revision == resource.data.revision + 1
+          && request.resource.data.updatedAt == request.time
+          && validHistoryAppend(request.resource.data);
+      }
     }
     match /{document=**} {
       allow read, write: if false;
