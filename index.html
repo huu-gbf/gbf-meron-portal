@@ -178,7 +178,7 @@
           <a href="#sec-formations" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
             <span>📸</span><span>編成共有</span>
           </a>
-          <a href="feedback.html" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
+          <a href="#sec-feedback" class="section-nav-link px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap text-slate-400 hover:text-amber-300 hover:bg-amber-500/10">
             <span>💬</span><span>不具合・要望</span>
           </a>
         </div>
@@ -212,7 +212,7 @@
           <a href="#sec-formations" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
             <span>📸</span><span>編成共有</span>
           </a>
-          <a href="feedback.html" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
+          <a href="#sec-feedback" onclick="closeMobileMenu()" class="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all">
             <span>💬</span><span>不具合・要望</span>
           </a>
           <!-- Mobile Admin Login / Logout -->
@@ -1172,13 +1172,15 @@
         </div>
       </section>
 
-      <a href="feedback.html" class="glass-panel rounded-2xl p-5 sm:p-6 flex items-center justify-between gap-4 hover:border-violet-400 transition">
-        <div>
-          <span class="font-bold text-white">不具合・要望</span>
-          <p class="text-sm text-slate-400 mt-1">サイトやツールで気づいたことを管理人へ送れます。名前は任意です。</p>
-        </div>
-        <span class="text-violet-300" aria-hidden="true">→</span>
-      </a>
+      <section id="sec-feedback" class="scroll-mt-32">
+        <a href="feedback.html" class="glass-panel rounded-2xl p-5 sm:p-6 flex items-center justify-between gap-4 hover:border-violet-400 transition">
+          <div>
+            <span class="font-bold text-white">不具合・要望</span>
+            <p class="text-sm text-slate-400 mt-1">サイトやツールで気づいたことを管理人へ送れます。名前は任意です。</p>
+          </div>
+          <span class="text-violet-300" aria-hidden="true">→</span>
+        </a>
+      </section>
 
       <!-- 画像拡大モーダル -->
       <div id="imageModal" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4" onclick="closeImageModal()">
