@@ -3,10 +3,15 @@ const jsdom = require('jsdom');
 const { JSDOM } = jsdom;
 
 const html = fs.readFileSync('./index.html', 'utf8');
-const dom = new JSDOM(html, { runScripts: "dangerously", url: "http://localhost/" });
+const dom = new JSDOM(html, { runScripts: "outside-only", url: "http://localhost/" });
 
 const window = dom.window;
 const document = window.document;
+// 対象の実装だけを評価し、他のページ初期化・外部サービスを起動しない。
+const begin = html.indexOf("const HISTORY_SEEN_KEY =");
+const end = html.indexOf('</script>', begin);
+if (begin < 0 || end <= begin) throw new Error('History unread implementation not found');
+window.eval(html.slice(begin, end));
 
 function runTests() {
   console.log("Starting tests...");
@@ -15,8 +20,14 @@ function runTests() {
   window.localStorage.clear();
   const HISTORY_SEEN_KEY = 'gbf_portal_history_seen_v1';
 
-  // Extract functions for testing
-  // They are in the global scope of the document since we runScripts: dangerously
+  // 期待値は対象関数を呼ばず、実際の先頭項目から組み立てる。
+  const timeline = document.getElementById('historyTimeline');
+  const firstItem = timeline.firstElementChild;
+  const firstDate = firstItem.querySelector('span.font-mono');
+  const titleStrong = firstItem.querySelector('strong');
+  const originalTitle = titleStrong.textContent;
+  const originalDate = firstDate.textContent;
+  const expectedId = originalDate.trim() + '|' + originalTitle.trim();
   
   // A helper to assert conditions
   function assert(condition, message) {
@@ -43,7 +54,7 @@ function runTests() {
   details.dispatchEvent(new window.Event('toggle'));
   assert(badge.classList.contains('hidden'), "Case B: Badge should be hidden after opening details");
   let savedId = window.localStorage.getItem(HISTORY_SEEN_KEY);
-  assert(savedId === '2026/09/29|次回闇有利古戦場の日程を更新', "Case B: savedId should be correct: " + savedId);
+  assert(savedId === expectedId, "Case B: savedId should match the current first entry: " + savedId);
 
   // Case C: 同じ最新IDで再読み込み -> NEW非表示
   // Simulate reload
@@ -51,14 +62,13 @@ function runTests() {
   assert(badge.classList.contains('hidden'), "Case C: Badge should remain hidden on reload");
 
   // Case D: 最新項目の日付またはタイトルが変わる -> NEW再表示
-  const titleStrong = document.querySelector('#historyTimeline strong');
   titleStrong.textContent = "新しい更新内容";
   window.updateHistoryNewBadge();
   assert(!badge.classList.contains('hidden'), "Case D: Badge should be visible again after title changes");
 
   // Case E: 最新項目の説明本文だけ変わる -> NEW再表示しない
   // revert title, change body
-  titleStrong.textContent = "次回闇有利古戦場の日程を更新";
+  titleStrong.textContent = originalTitle;
   details.dispatchEvent(new window.Event('toggle')); // Mark seen again just in case
   const bodyText = document.querySelector('#historyTimeline p');
   bodyText.textContent = "説明が変わりました。";
@@ -70,28 +80,50 @@ function runTests() {
   window.updateHistoryNewBadge();
   assert(!badge.classList.contains('hidden'), "Case F: Badge should be visible after new title same date");
 
+  // 日付だけの変更、および新しい先頭項目も、固定日付に依存せず検証する。
+  titleStrong.textContent = originalTitle;
+  firstDate.textContent = '2099/01/01';
+  window.updateHistoryNewBadge();
+  assert(!badge.classList.contains('hidden'), "Case F2: Date change should show badge");
+  assert(window.getLatestHistoryId() === '2099/01/01|' + originalTitle.trim(), "Case F2: ID should include the changed date");
+  firstDate.textContent = originalDate;
+  const added = firstItem.cloneNode(true);
+  added.querySelector('span.font-mono').textContent = '2099/02/02';
+  added.querySelector('strong').textContent = '先頭に追加したテスト履歴';
+  timeline.prepend(added);
+  details.dispatchEvent(new window.Event('toggle'));
+  assert(window.localStorage.getItem(HISTORY_SEEN_KEY) === '2099/02/02|先頭に追加したテスト履歴', "Case F3: Prepended first entry should be saved as latest");
+  added.remove();
+
   // Case G: showPortal相当の初期化を複数回実行 -> toggleイベントが重複登録されない
-  // Well, we can't easily assert event listener count, but we can call initHistoryUnread multiple times
-  // and ensure it doesn't crash or break behavior.
+  const storagePrototype = window.Storage.prototype;
+  const originalSetItem = storagePrototype.setItem;
+  let writes = 0;
+  storagePrototype.setItem = function(...args) { writes++; return originalSetItem.apply(this, args); };
   window.initHistoryUnread();
   window.initHistoryUnread();
-  assert(true, "Case G: initHistoryUnread can be called multiple times safely");
+  details.dispatchEvent(new window.Event('toggle'));
+  storagePrototype.setItem = originalSetItem;
+  assert(writes === 1, "Case G: Repeated initialization should register only one toggle listener");
 
   // Case H: localStorage読み込みエラー -> 例外終了しない
-  // Override localStorage getter
-  const originalGetItem = window.localStorage.getItem;
-  window.localStorage.getItem = function() { throw new Error("Storage get error"); };
+  const originalGetItem = storagePrototype.getItem;
+  let reads = 0;
+  storagePrototype.getItem = function() { reads++; throw new Error("Storage get error"); };
   window.updateHistoryNewBadge();
+  assert(reads === 1, "Case H: Read-error path should actually execute");
   assert(!badge.classList.contains('hidden'), "Case H: Should not crash on read error and show badge");
-  window.localStorage.getItem = originalGetItem; // restore
+  storagePrototype.getItem = originalGetItem;
 
   // Case I: localStorage書き込みエラー -> 例外終了しない
-  const originalSetItem = window.localStorage.setItem;
-  window.localStorage.setItem = function() { throw new Error("Storage set error"); };
+  writes = 0;
+  storagePrototype.setItem = function() { writes++; throw new Error("Storage set error"); };
   details.dispatchEvent(new window.Event('toggle'));
-  assert(true, "Case I: Should not crash on write error");
+  storagePrototype.setItem = originalSetItem;
+  assert(writes === 1, "Case I: Write-error path should actually execute");
+  assert(badge.classList.contains('hidden'), "Case I: Should hide badge without crashing on write error");
 
   console.log("All tests passed!");
 }
 
-runTests();
+try { runTests(); } finally { window.close(); }

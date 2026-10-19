@@ -76,25 +76,41 @@ test('表示計算: カンマ入力、欠損、文字、逆転で結果を隠す
   assert.equal(ui.parseScore('10,000,000,000'), 100e8);
 });
 
-test('詳細エリアの過去誤差グラフに指定の13開催だけを表示する', () => {
-  const expected = [[66,3.46],[67,-0.26],[69,5.12],[70,-7.52],[72,10.87],
+test('詳細エリアの過去誤差グラフは既知データを保持し、追加開催もすべて表示する', () => {
+  // 確認済みの過去値は固定して退行を検出する。正常な開催追加は許容する。
+  const verified = [[66,3.46],[67,-0.26],[69,5.12],[70,-7.52],[72,10.87],
     [74,16.17],[75,15.23],[77,9.95],[78,9.26],[80,-2.96],
-    [81,9.57],[82,4.62],[83,-4.77]];
+    [81,9.57],[82,4.62],[83,-4.77],[84,0.01]];
   const chart = { innerHTML: '' };
   const ui = { document: { getElementById: id => id === 'noonErrorChart' ? chart : null } };
   vm.runInNewContext(html.slice(begin, end)
     + '\nglobalThis.rows=NOON_BACKTEST_ERRORS;globalThis.render=renderNoonErrorChart;', ui);
-  assert.deepEqual(Array.from(ui.rows, row => Array.from(row)), expected);
+  const rows = Array.from(ui.rows, row => Array.from(row));
+  assert.deepEqual(rows.slice(0, verified.length), verified);
+  for (const [i, row] of rows.entries()) {
+    assert.equal(row.length, 2);
+    const [round, error] = row;
+    assert(Number.isSafeInteger(round) && round > 0);
+    assert(Number.isFinite(error));
+    if (i > 0) assert(round > rows[i - 1][0], '開催は重複なく昇順');
+  }
   ui.render();
-  assert.equal((chart.innerHTML.match(/class="noon-error-bar/g) || []).length, 13);
-  assert.equal((chart.innerHTML.match(/<li>第/g) || []).length, 13);
+  assert.equal((chart.innerHTML.match(/class="noon-error-bar/g) || []).length, rows.length);
+  const labels = rows.map(([round, error]) => `第${round}回 ${error > 0 ? '+' : ''}${error.toFixed(2)}%`);
+  assert.deepEqual(Array.from(chart.innerHTML.matchAll(/title="([^"]+)"/g), match => match[1]), labels);
+  assert.deepEqual(Array.from(chart.innerHTML.matchAll(/<li>([^<]+)<\/li>/g), match => match[1]), labels);
+  const rounds = chart.innerHTML.match(/class="noon-error-rounds"[^>]*>(.*?)<\/div>/s);
+  assert(rounds);
+  assert.deepEqual(Array.from(rounds[1].matchAll(/<span>(\d+)<\/span>/g), match => Number(match[1])), rows.map(([round]) => round));
   assert.match(chart.innerHTML, /第67回 -0\.26%/);
   assert.match(chart.innerHTML, /第74回 \+16\.17%/);
   assert.match(chart.innerHTML, /top:40px/);
   assert.match(chart.innerHTML, /top:80px/);
   assert.match(chart.innerHTML, /top:120px/);
-  assert.equal(expected.filter(([, error]) => Math.abs(error) <= 10).length, 10);
-  assert.equal(expected.some(([, error]) => error < -10), false);
+  // 元の13開催の集計も継続して保証する（将来分の精度を固定しない）。
+  const original = rows.slice(0, 13);
+  assert.equal(original.filter(([, error]) => Math.abs(error) <= 10).length, 10);
+  assert.equal(original.some(([, error]) => error < -10), false);
 });
 
 test('予測結果が詳細グラフより先にあり、説明と免責は簡潔', () => {
