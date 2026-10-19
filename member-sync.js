@@ -61,6 +61,20 @@
     if (mode === 'high') return 'awakeningHigh';
     throw new Error('INVALID_SETTINGS');
   }
+  function copyArtifactGuard(guard, allowed) {
+    if (guard === undefined) return undefined;
+    if (!guard || typeof guard !== 'object' || Array.isArray(guard)
+        || !Reflect.ownKeys(guard).every(key => allowed.includes(key))) throw new Error('INVALID_SETTINGS');
+    const copy = {};
+    for (const key of Reflect.ownKeys(guard)) {
+      const value = guard[key];
+      if (key === 'expectedProfileId' ? !validId(value)
+        : key === 'expectedResetEpoch' ? !Number.isSafeInteger(value) || value < 0
+          : typeof value !== 'boolean') throw new Error('INVALID_SETTINGS');
+      copy[key] = value;
+    }
+    return Object.freeze(copy);
+  }
   function copyArtifactItems(items, catalog) {
     const definitions = catalog.ARTIFACT_CATALOG;
     if (!exactKeys(items, definitions.map(item => item.effectId))) throw new Error('INVALID_SETTINGS');
@@ -500,12 +514,15 @@
       return unsubscribe;
     }
 
-    async function artifactSettingsContext(mode, expected) {
+    async function artifactSettingsContext(mode, expected, guard = expected?.artifactGuard) {
       const document = artifactDocument(mode);
       // Reuse the same server-confirmed active membership as History without
       // reading its settings document. Callers can select only these two modes.
       const context = await historyReadContext(expected);
-      return {...context, artifactMode: mode,
+      if (guard?.expectedProfileId !== undefined && context.identity.profileId !== guard.expectedProfileId) {
+        throw new Error('MEMBERSHIP_REQUIRED');
+      }
+      return {...context, artifactMode: mode, artifactGuard: guard,
         ref: connection.db.doc('memberProfiles/' + context.identity.profileId + '/settings/' + document)};
     }
     const validatedArtifact = snapshot => snapshot.exists
@@ -536,18 +553,21 @@
       }
     }
 
-    async function getArtifactSettings(mode) {
-      const context = await artifactSettingsContext(mode);
+    async function getArtifactSettings(mode, guard) {
+      artifactDocument(mode);
+      const expected = copyArtifactGuard(guard, ['expectedProfileId']);
+      const context = await artifactSettingsContext(mode, undefined, expected);
       const snapshot = await context.ref.get({source: 'server'});
       assertSettingsUser(context.user);
       return validatedArtifact(snapshot);
     }
 
-    async function initializeArtifactSettings(mode, projection) {
+    async function initializeArtifactSettings(mode, projection, guard) {
       artifactDocument(mode);
+      const expected = copyArtifactGuard(guard, ['expectedProfileId']);
       // Validate and copy all caller input before authentication or any await.
       const initial = copyArtifactProjection(projection);
-      const context = await artifactSettingsContext(mode);
+      const context = await artifactSettingsContext(mode, undefined, expected);
       const existing = await artifactTransaction(context, (transaction, latest) => {
         if (latest) return latest;
         transaction.set(context.ref, {schemaVersion: 1, ...initial, resetEpoch: 0, revision: 1,
@@ -563,8 +583,9 @@
       return validatedArtifact(snapshot);
     }
 
-    async function updateArtifactSetting(mode, effectId, patch) {
+    async function updateArtifactSetting(mode, effectId, patch, guard) {
       artifactDocument(mode);
+      const expected = copyArtifactGuard(guard, ['expectedProfileId', 'expectedResetEpoch']);
       const item = artifactCatalog().ARTIFACT_CATALOG.find(item => item.effectId === effectId);
       const fields = patch && typeof patch === 'object' && !Array.isArray(patch) ? Reflect.ownKeys(patch) : [];
       const field = fields[0], value = patch?.[field];
@@ -573,9 +594,13 @@
             : field !== 'selectedValue' || !item.values || typeof value !== 'string' || !item.values.includes(value))) {
         throw new Error('INVALID_SETTINGS');
       }
-      const context = await artifactSettingsContext(mode);
+      const context = await artifactSettingsContext(mode, undefined, expected);
       const revision = await artifactTransaction(context, (transaction, latest) => {
         if (!latest) throw new Error('SETTINGS_NOT_INITIALIZED');
+        // This comparison also runs on every transaction retry, before no-op.
+        if (expected?.expectedResetEpoch !== undefined && latest.resetEpoch !== expected.expectedResetEpoch) {
+          throw new Error('ARTIFACT_RESET_EPOCH_MISMATCH');
+        }
         if (latest.items[effectId][field] === value) return latest.revision;
         if (latest.revision === Number.MAX_SAFE_INTEGER) throw new Error('INVALID_SETTINGS');
         transaction.update(context.ref, {['items.' + effectId + '.' + field]: value,
@@ -588,11 +613,12 @@
       return revision;
     }
 
-    async function resetArtifactSettings(mode) {
+    async function resetArtifactSettings(mode, guard) {
       artifactDocument(mode);
+      const expected = copyArtifactGuard(guard, ['expectedProfileId', 'returnState']);
       const defaults = copyArtifactProjection(artifactCatalog().createDefaultArtifactProjection());
-      const context = await artifactSettingsContext(mode);
-      const revision = await artifactTransaction(context, (transaction, latest) => {
+      const context = await artifactSettingsContext(mode, undefined, expected);
+      const result = await artifactTransaction(context, (transaction, latest) => {
         if (!latest) throw new Error('SETTINGS_NOT_INITIALIZED');
         if (latest.revision === Number.MAX_SAFE_INTEGER || latest.resetEpoch === Number.MAX_SAFE_INTEGER) {
           throw new Error('INVALID_SETTINGS');
@@ -602,14 +628,17 @@
           revision: firebase.firestore.FieldValue.increment(1),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedByDeviceId: context.identity.deviceId});
-        return latest.revision + 1;
+        // Capture this reset's committed epoch, rather than a later get which
+        // could already contain another device's subsequent reset boundary.
+        return Object.freeze({revision: latest.revision + 1, resetEpoch: latest.resetEpoch + 1});
       });
       assertSettingsUser(context.user);
-      return revision;
+      return expected?.returnState ? result : result.revision;
     }
 
-    function subscribeArtifactSettings(mode, callback, onError = () => {}) {
+    function subscribeArtifactSettings(mode, callback, onError = () => {}, guard) {
       artifactDocument(mode);
+      const expected = copyArtifactGuard(guard, ['expectedProfileId']);
       if (typeof callback !== 'function' || typeof onError !== 'function') throw new TypeError('Callbacks required');
       let stopped = false, watchingSettings = false;
       const stops = [], confirmed = new Set();
@@ -625,7 +654,7 @@
       const dispatch = handler => value => queueMicrotask(() => { if (!stopped) handler(value); });
       (async () => {
         try {
-          const context = await artifactSettingsContext(mode);
+          const context = await artifactSettingsContext(mode, undefined, expected);
           if (stopped) return;
           track(connection.auth.onAuthStateChanged(dispatch(user => {
             if (user !== context.user || !user?.isAnonymous) fail(new Error('UNAUTHENTICATED'));

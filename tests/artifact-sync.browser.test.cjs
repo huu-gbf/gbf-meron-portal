@@ -1,4 +1,4 @@
-/* Offline browser regression against the S1-2 checkpoint. Run with the bundled
+/* Offline browser regression against the S1-4 checkpoint. Run with the bundled
  * Playwright NODE_PATH. No HTTP request is continued to a network transport. */
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,7 +9,7 @@ const {chromium} = require('playwright');
 const {PNG} = require('pngjs');
 
 const ROOT = path.resolve(__dirname, '..');
-const BASE = '1a300a6074b51a8cf33c92777b26981791f30345';
+const BASE = '67fe091199d6d4ac05ad9dc554c2dac293830211';
 const ORIGIN = 'http://127.0.0.1:18863';
 const URL = ORIGIN + '/awakening-manager.html';
 const GW = 'gbf_awakening_data_gw';
@@ -20,6 +20,11 @@ const baseline = execFileSync('git', ['show', BASE + ':awakening-manager.html'],
   {cwd: ROOT, encoding: 'utf8', maxBuffer: 1024 * 1024});
 const css = fs.readFileSync(path.join(ROOT, 'css/tailwind.min.css'), 'utf8');
 const catalogSource = fs.readFileSync(path.join(ROOT, 'artifact-catalog.js'), 'utf8');
+const localScripts = {
+  '/firebase-config.js': '', // No production config in the local-only comparison.
+  '/member-sync.js': fs.readFileSync(path.join(ROOT, 'member-sync.js'), 'utf8'),
+  '/artifact-sync.js': fs.readFileSync(path.join(ROOT, 'artifact-sync.js'), 'utf8')
+};
 
 async function open(browser, html, viewport, seed = {}) {
   // Browser preconnects do not pass through Playwright request interception.
@@ -32,6 +37,9 @@ async function open(browser, html, viewport, seed = {}) {
     if (url.href === URL) return route.fulfill({contentType: 'text/html', body: fixtureHtml});
     if (url.origin === ORIGIN && url.pathname === '/artifact-catalog.js') {
       return route.fulfill({contentType: 'application/javascript', body: catalogSource});
+    }
+    if (url.origin === ORIGIN && Object.hasOwn(localScripts, url.pathname)) {
+      return route.fulfill({contentType: 'application/javascript', body: localScripts[url.pathname]});
     }
     if (url.origin === ORIGIN && url.pathname === '/css/tailwind.min.css') {
       return route.fulfill({contentType: 'text/css', body: css});
@@ -335,9 +343,11 @@ test('artifact browser preserves legacy UI and storage without any service conne
               assert.deepEqual(device.exceptions, []);
               assert.deepEqual(device.consoleErrors, []);
               assert.deepEqual(device.unexpected, []);
-              assert.equal(device.requests.filter(url => /firebase|firestore|identitytoolkit|securetoken|member-sync|run\.app|cloudfunctions/i.test(url)).length, 0);
+              assert.equal(device.requests.filter(url => !Object.hasOwn(localScripts, new globalThis.URL(url).pathname)
+                && /firebase|firestore|identitytoolkit|securetoken|member-sync|run\.app|cloudfunctions/i.test(url)).length, 0);
               assert.equal(await device.page.evaluate(() => typeof firebase), 'undefined');
-              assert.equal(await device.page.evaluate(() => typeof MemberSync), 'undefined');
+              assert.equal(await device.page.evaluate(() => typeof MemberSync === 'undefined'
+                || typeof MemberSync.createMemberSync === 'function'), true);
             }
           });
         } finally {

@@ -609,6 +609,9 @@
   </main>
 
   <script src="artifact-catalog.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="member-sync.js"></script>
+  <script src="artifact-sync.js"></script>
   <script>
     // ==========================================
     // データ定義
@@ -625,6 +628,7 @@
     
     let currentMode = 'gw'; // 'gw' or 'high'
     let userSettings = {};
+    let artifactSync;
 
     // ==========================================
     // 初期化
@@ -632,6 +636,41 @@
     document.addEventListener('DOMContentLoaded', () => {
       loadData();
       renderAll();
+      if (globalThis.ArtifactSync && globalThis.MemberSync) {
+        artifactSync = ArtifactSync.mountArtifactSync({
+          storage: localStorage,
+          readLegacy(mode) {
+            if (mode === currentMode) return userSettings;
+            try { return JSON.parse(localStorage.getItem(mode === 'gw' ? STORAGE_KEY_GW : STORAGE_KEY_HIGH) || '{}'); }
+            catch (_) { return {}; }
+          },
+          writeLegacy(mode, value) {
+            try { localStorage.setItem(mode === 'gw' ? STORAGE_KEY_GW : STORAGE_KEY_HIGH, JSON.stringify(value)); }
+            catch (_) { return false; }
+            if (mode !== currentMode) return true;
+            userSettings = value;
+            // Update controls in place: remote settings never rebuild memo
+            // rows or change the user's tab, mode, focus or scroll position.
+            for (const [containerId, data, prefix] of [
+              ['list-slot12', dataSlot12, 's12'], ['list-slot3', dataSlot3, 's3'],
+              ['list-slot4', dataSlot4, 's4']
+            ]) {
+              const cards = document.getElementById(containerId).children;
+              data.forEach((item, index) => {
+                const setting = userSettings[prefix + '_' + index], card = cards[index];
+                if (!card) return;
+                card.classList.toggle('state-needed', setting.needed);
+                card.classList.toggle('state-unneeded', !setting.needed);
+                card.querySelector('input[type="checkbox"]').checked = setting.needed;
+                const select = card.querySelector('select');
+                if (select) select.value = setting.selectedValue;
+              });
+            }
+            renderSummary();
+            return true;
+          }
+        }, globalThis);
+      }
     });
 
     function getStorageKey() {
@@ -664,6 +703,7 @@
         userSettings = {};
         saveData();
         renderAll();
+        artifactSync?.reset(currentMode);
       }
     }
 
@@ -821,6 +861,7 @@
         if (containerId === 'list-slot12') renderValueItems('list-slot12', dataSlot12, 's12');
         else if (containerId === 'list-slot3') renderValueItems('list-slot3', dataSlot3, 's3');
         else if (containerId === 'list-slot4') renderFixedItems('list-slot4', dataSlot4, 's4');
+        artifactSync?.change(currentMode, ARTIFACT_LEGACY_EFFECT_IDS[key], 'needed', isChecked);
       }
     }
 
@@ -828,6 +869,7 @@
       if (userSettings[key]) {
         userSettings[key].selectedValue = newValue;
         saveData();
+        artifactSync?.change(currentMode, ARTIFACT_LEGACY_EFFECT_IDS[key], 'selectedValue', newValue);
       }
     }
 

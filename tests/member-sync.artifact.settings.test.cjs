@@ -288,6 +288,67 @@ test('artifact settings: real transactions, reset epochs and isolated subscripti
       assert.deepEqual(await a.api.getArtifactSettings('gw'), before);
     });
 
+    await t.test('guarded get initialize and update retain the fixed owner and reject another profile', async () => {
+      await f.clear();
+      const owner = {expectedProfileId: f.profileA}, other = {expectedProfileId: f.profileB};
+      assert.equal(await a.api.getArtifactSettings('gw', owner), null);
+      const initial = await a.api.initializeArtifactSettings('gw', defaults(), owner);
+      assert.equal(initial.resetEpoch, 0);
+      await assert.rejects(a.api.getArtifactSettings('gw', other), {message: 'MEMBERSHIP_REQUIRED'});
+      await assert.rejects(a.api.initializeArtifactSettings('high', defaults(), other), {message: 'MEMBERSHIP_REQUIRED'});
+      await assert.rejects(a.api.updateArtifactSetting('gw', X, {needed: true}, other), {message: 'MEMBERSHIP_REQUIRED'});
+      await assert.rejects(a.api.resetArtifactSettings('gw', other), {message: 'MEMBERSHIP_REQUIRED'});
+      assert.deepEqual(await a.api.getArtifactSettings('gw', owner), initial);
+      assert.equal(await a.api.getArtifactSettings('high', owner), null);
+    });
+
+    await t.test('expected epoch mismatch rejects writes and no-ops without metadata changes', async () => {
+      await f.seed(defaults(), {resetEpoch: 3, revision: 5});
+      const owner = {expectedProfileId: f.profileA}, before = await a.api.getArtifactSettings('gw', owner);
+      const writes = b.observed.writes;
+      for (const needed of [true, false]) {
+        await assert.rejects(b.api.updateArtifactSetting('gw', X, {needed}, {...owner, expectedResetEpoch: 2}),
+          {message: 'ARTIFACT_RESET_EPOCH_MISMATCH'});
+      }
+      assert.equal(b.observed.writes, writes);
+      assert.deepEqual(await a.api.getArtifactSettings('gw', owner), before);
+      assert.equal(await b.api.updateArtifactSetting('gw', X, {needed: true}, {...owner, expectedResetEpoch: 3}), 6);
+      assert.equal((await a.api.getArtifactSettings('gw', owner)).resetEpoch, 3);
+    });
+
+    await t.test('a guarded stale transaction cannot revive its field after a concurrent remote reset', async () => {
+      await f.seed();
+      const owner = {expectedProfileId: f.profileA}, hold = holdNextRead(b), attempts = b.observed.attempts;
+      const pending = observe(b.api.updateArtifactSetting('gw', X, {needed: true}, {...owner, expectedResetEpoch: 0}));
+      await Promise.race([hold.ready, pending]);
+      try {
+        const reset = await a.api.resetArtifactSettings('gw', {...owner, returnState: true});
+        assert.deepEqual(reset, {revision: 2, resetEpoch: 1});
+      } finally { hold.release(); }
+      await assert.rejects(pending, {message: 'ARTIFACT_RESET_EPOCH_MISMATCH'});
+      const after = await a.api.getArtifactSettings('gw', owner);
+      assert.deepEqual(after.items, defaults().items); assert.equal(after.resetEpoch, 1); assert.equal(after.revision, 2);
+      assert(b.observed.attempts - attempts >= 2, 'the epoch guard must also run after the stale read retries');
+    });
+
+    await t.test('concurrent guarded resets return their own committed epochs after a real retry', async () => {
+      await f.seed(defaults(), {resetEpoch: 5, revision: 8});
+      const guard = {expectedProfileId: f.profileA, returnState: true};
+      const hold = holdNextRead(b), attempts = b.observed.attempts;
+      const pending = observe(b.api.resetArtifactSettings('gw', guard));
+      await Promise.race([hold.ready, pending]);
+      let first;
+      try { first = await a.api.resetArtifactSettings('gw', guard); }
+      finally { hold.release(); }
+      const second = await pending;
+      assert.deepEqual(first, {revision: 9, resetEpoch: 6});
+      assert.deepEqual(second, {revision: 10, resetEpoch: 7});
+      assert(Object.isFrozen(first)); assert(Object.isFrozen(second));
+      const after = await a.api.getArtifactSettings('gw');
+      assert.equal(after.resetEpoch, 7); assert.equal(after.revision, 10);
+      assert(b.observed.attempts - attempts >= 2);
+    });
+
     await t.test('different effects merge after a forced real transaction retry', async () => {
       await f.seed();
       const hold = holdNextRead(b), attempts = b.observed.attempts;
