@@ -266,10 +266,19 @@
       if (!profile.exists || profile.data()?.status !== 'active'
           || !device.exists || device.data()?.status !== 'active') throw new Error('MEMBERSHIP_REQUIRED');
     }
+    // Controllers bind pending to one membership. A stale operation must never
+    // derive a different destination from credentials that changed meanwhile.
+    function expectedHistoryMembership(expectedIdentity) {
+      if (expectedIdentity === undefined) return undefined;
+      if (!expectedIdentity || !validId(expectedIdentity.profileId) || !validId(expectedIdentity.deviceId)) {
+        throw new Error('MEMBERSHIP_REQUIRED');
+      }
+      return {identity: Object.freeze({profileId: expectedIdentity.profileId, deviceId: expectedIdentity.deviceId})};
+    }
     async function historyReadContext(expected) {
       const user = connection?.auth.currentUser;
       assertSettingsUser(user);
-      if (expected) assertSettingsUser(expected.user);
+      if (expected?.user) assertSettingsUser(expected.user);
       const identity = await getIdentity();
       assertSettingsUser(user);
       assertSettingsIdentity(identity, expected?.identity);
@@ -328,17 +337,17 @@
       }
     }
 
-    async function getHistoryReadState() {
-      const context = await historyReadContext();
+    async function getHistoryReadState(expectedIdentity) {
+      const context = await historyReadContext(expectedHistoryMembership(expectedIdentity));
       const snapshot = await context.ref.get({source: 'server'});
       assertSettingsUser(context.user);
       return validatedHistory(snapshot);
     }
 
-    async function initializeHistoryReadState(initialSeenIds) {
+    async function initializeHistoryReadState(initialSeenIds, expectedIdentity) {
       validateHistoryIds(initialSeenIds, 1);
       const initial = [...initialSeenIds];
-      const context = await historyReadContext();
+      const context = await historyReadContext(expectedHistoryMembership(expectedIdentity));
       const existing = await historyTransaction(context, (transaction, latest) => {
         if (latest) return latest;
         transaction.set(context.ref, newHistoryReadState(initial, context.identity.deviceId));
@@ -352,9 +361,9 @@
       return validatedHistory(snapshot);
     }
 
-    async function markHistorySeen(historyId) {
+    async function markHistorySeen(historyId, expectedIdentity) {
       if (!validHistoryId(historyId)) throw new Error('INVALID_SETTINGS');
-      const context = await historyReadContext();
+      const context = await historyReadContext(expectedHistoryMembership(expectedIdentity));
       const revision = await historyTransaction(context, (transaction, latest) => {
         if (!latest) {
           transaction.set(context.ref, newHistoryReadState([historyId], context.identity.deviceId));
@@ -376,8 +385,9 @@
       return revision;
     }
 
-    function subscribeHistoryReadState(callback, onError = () => {}) {
+    function subscribeHistoryReadState(callback, onError = () => {}, expectedIdentity) {
       if (typeof callback !== 'function' || typeof onError !== 'function') throw new TypeError('Callbacks required');
+      const expected = expectedHistoryMembership(expectedIdentity);
       let stopped = false, watchingSettings = false;
       const stops = [], confirmed = new Set();
       const unsubscribe = () => { if (!stopped) { stopped = true; stops.splice(0).forEach(stop => stop()); } };
@@ -394,7 +404,7 @@
       const dispatch = handler => value => queueMicrotask(() => { if (!stopped) handler(value); });
       (async () => {
         try {
-          const context = await historyReadContext();
+          const context = await historyReadContext(expected);
           if (stopped) return;
           track(connection.auth.onAuthStateChanged(dispatch(user => {
             if (user !== context.user || !user?.isAnonymous) fail(new Error('UNAUTHENTICATED'));
@@ -641,6 +651,123 @@
     return Object.freeze({start, stop, change, replayPending, flushPending});
   }
 
+  // The page owns synchronous local-first persistence. This controller only
+  // transports its profile-bound pending IDs and consumes confirmed server IDs.
+  function createHistoryReadSync(client, io) {
+    let generation = 0, ready = false, membership, subscription, starting, replaying, replayRequested = false;
+    let remoteIds = new Set();
+    const current = epoch => epoch === generation;
+    const snapshot = () => {
+      const state = io.snapshot();
+      if (!state || state.profileId !== membership?.profileId
+          || !Array.isArray(state.pendingIds) || !Array.isArray(state.seenIds)
+          || !Array.isArray(state.limitedIds)) throw new Error('MEMBERSHIP_REQUIRED');
+      return state;
+    };
+    function stop() {
+      generation++; ready = false; membership = undefined;
+      starting = undefined; replaying = undefined; replayRequested = false; remoteIds = new Set();
+      const previous = subscription; subscription = undefined;
+      if (previous) previous();
+    }
+    function receive(settings, epoch) {
+      if (!current(epoch) || !settings) return;
+      validateHistoryIds(settings.seenIds);
+      remoteIds = new Set(settings.seenIds);
+      if (io.applyRemote(settings.seenIds, membership.profileId) === false) {
+        throw new Error('LOCAL_STORAGE_UNAVAILABLE');
+      }
+    }
+    function replayPending() {
+      if (!ready) return Promise.resolve(false);
+      if (replaying) { replayRequested = true; return replaying; }
+      replayRequested = false;
+      const epoch = generation, expected = membership;
+      const task = (async () => {
+        // An ID is never submitted unless local + pending are already durable.
+        if (io.flush() !== true) return false;
+        const attempted = new Set();
+        while (current(epoch) && ready) {
+          const local = snapshot();
+          const id = local.pendingIds.find(value => !attempted.has(value) && !local.limitedIds.includes(value));
+          if (id === undefined) return true;
+          if (!validHistoryId(id)) throw new Error('INVALID_SETTINGS');
+          attempted.add(id);
+          if (remoteIds.has(id)) {
+            if (io.ack(id, expected.profileId) === false) return false;
+            continue;
+          }
+          if (io.flush() !== true) return false;
+          try {
+            await client.markHistorySeen(id, expected);
+            if (!current(epoch)) return false;
+            // mark returns a revision, not a server document. Only a confirmed
+            // read/snapshot can ACK; an optimistic write must retain pending.
+            const confirmed = await client.getHistoryReadState(expected);
+            if (!current(epoch)) return false;
+            receive(confirmed, epoch);
+            if (!remoteIds.has(id)) return false;
+          } catch (error) {
+            if (!current(epoch)) return false;
+            if (error?.message === 'HISTORY_READ_LIMIT') {
+              // The set is monotonic, so a full document cannot gain capacity.
+              // Keep unsent local reads in a separate terminal local set.
+              for (const pendingId of snapshot().pendingIds) {
+                if (!remoteIds.has(pendingId)) io.limit(pendingId, expected.profileId);
+              }
+              io.flush();
+              return false;
+            }
+            throw error;
+          }
+        }
+        return false;
+      })().catch(() => { if (current(epoch)) stop(); return false; });
+      replaying = task;
+      task.finally(() => {
+        if (current(epoch) && replaying === task) {
+          replaying = undefined;
+          if (ready && replayRequested) queueMicrotask(replayPending);
+        }
+      });
+      return task;
+    }
+    function start() {
+      if (starting) return starting;
+      if (ready) return replayPending();
+      const epoch = generation;
+      const task = (async () => {
+        const identity = await client.getIdentity();
+        if (!current(epoch)) return false;
+        if (!identity || identity.active !== true || !validId(identity.profileId) || !validId(identity.deviceId)) return false;
+        membership = Object.freeze({profileId: identity.profileId, deviceId: identity.deviceId});
+        if (io.bindProfile(membership.profileId) !== true || io.flush() !== true) return false;
+        let settings = await client.getHistoryReadState(membership);
+        if (!current(epoch)) return false;
+        if (!settings) {
+          const local = snapshot();
+          const initial = local.pendingIds.find(validHistoryId) || local.seenIds.find(validHistoryId);
+          settings = await client.initializeHistoryReadState(initial === undefined ? [] : [initial], membership);
+          if (!current(epoch)) return false;
+        }
+        receive(settings, epoch);
+        ready = true;
+        subscription = client.subscribeHistoryReadState(settings => {
+          if (!current(epoch)) return;
+          try { receive(settings, epoch); }
+          catch { stop(); return; }
+          // Remote IDs are ACKed by applyRemote, never queued as local edits.
+          replayPending();
+        }, () => { if (current(epoch)) stop(); }, membership);
+        return await replayPending();
+      })().catch(() => { if (current(epoch)) stop(); return false; });
+      starting = task;
+      task.finally(() => { if (current(epoch) && starting === task) starting = undefined; });
+      return task;
+    }
+    return Object.freeze({start, stop, replayPending});
+  }
+
   const messages = Object.freeze({
     UNAUTHENTICATED: '認証を確認できません。再読み込みしてください',
     MEMBERSHIP_REQUIRED: 'この端末は接続されていません',
@@ -859,7 +986,84 @@
     invoke(p => p.restore());
   }
 
-  const api = Object.freeze({ APP_NAME, createMemberSync, createSpeedCalculatorSync, createPairing, normalizeCode, errorText, localOptions, environmentOptions, mount });
+  // Headless index integration. No account is created and no pairing/status API
+  // is requested; an absent persisted member login leaves the page local-only.
+  function mountHistoryReadSync(io, scope = root) {
+    let client, controller, loading, generation = 0, disposed = false, suspended = false, pendingResume = false;
+    const document = scope.document;
+    const stops = [];
+    const listen = (target, type, handler) => {
+      target?.addEventListener(type, handler);
+      stops.push(() => target?.removeEventListener(type, handler));
+    };
+    function stop() {
+      generation++; loading = undefined; pendingResume = false;
+      controller?.stop();
+    }
+    function start() {
+      if (disposed || suspended || scope.navigator?.onLine === false || document?.hidden) return Promise.resolve(false);
+      if (loading) return loading;
+      pendingResume = false;
+      const epoch = generation;
+      const task = (async () => {
+        if (!client) {
+          const settings = environmentOptions(scope);
+          for (const part of ['app', 'auth', 'firestore']) {
+            if (part === 'app' ? scope.firebase?.initializeApp : scope.firebase?.[part]) continue;
+            await new Promise((resolve, reject) => {
+              const script = document.createElement('script');
+              script.src = settings.sdkBase + 'firebase-' + part + '-compat.js';
+              script.onload = resolve; script.onerror = () => reject(new Error('NOT_READY'));
+              document.head.append(script);
+            });
+            if (disposed || epoch !== generation) return false;
+          }
+          client = createMemberSync(scope.firebase, settings.firebaseConfig, settings.options);
+        }
+        const user = await client.restoreAuthentication();
+        if (disposed || epoch !== generation || !user) return false;
+        if (!controller) controller = createHistoryReadSync(client, io);
+        return await controller.start();
+      })().catch(() => false);
+      loading = task;
+      task.finally(() => {
+        if (epoch === generation && loading === task) {
+          loading = undefined;
+          if (pendingResume) { pendingResume = false; start(); }
+        }
+      });
+      return task;
+    }
+    listen(scope, 'pagehide', () => { suspended = true; stop(); });
+    listen(scope, 'pageshow', () => { suspended = false; start(); });
+    listen(scope, 'offline', stop);
+    listen(scope, 'online', start);
+    listen(document, 'visibilitychange', () => { if (!document.hidden) start(); });
+    let observedPending = new Set(io.snapshot().pendingIds);
+    const unsubscribe = io.subscribe?.(() => {
+      const ids = io.snapshot().pendingIds;
+      const added = ids.some(id => !observedPending.has(id));
+      observedPending = new Set(ids);
+      // Retry after an explicit new read even if a previous transient failure
+      // stopped transport. Remote ACKs/removals cannot trigger a retry loop.
+      const epoch = generation;
+      if (added) queueMicrotask(() => {
+        if (disposed || suspended || epoch !== generation || scope.navigator?.onLine === false) return;
+        if (loading) pendingResume = true;
+        start();
+      });
+    });
+    if (typeof unsubscribe === 'function') stops.push(unsubscribe);
+    const handle = Object.freeze({start, stop,
+      replayPending: () => controller?.replayPending() || Promise.resolve(false),
+      dispose() { disposed = true; stop(); stops.splice(0).forEach(unsubscribe => unsubscribe()); }
+    });
+    start();
+    return handle;
+  }
+
+  const api = Object.freeze({ APP_NAME, createMemberSync, createSpeedCalculatorSync, createHistoryReadSync,
+    mountHistoryReadSync, createPairing, normalizeCode, errorText, localOptions, environmentOptions, mount });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
     root.MemberSync = api;

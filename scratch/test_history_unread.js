@@ -1,110 +1,68 @@
-const fs = require('fs');
-const jsdom = require('jsdom');
-const { JSDOM } = jsdom;
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const {JSDOM} = require('jsdom');
 
-const html = fs.readFileSync('./index.html', 'utf8');
-const dom = new JSDOM(html, {
-  runScripts: "dangerously",
-  url: "http://localhost/",
-  beforeParse(window) {
-    window.IntersectionObserver = class {
-      observe() {}
-      disconnect() {}
-    };
-  }
-});
+const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+const dom = new JSDOM(html, {runScripts: 'outside-only', url: 'http://localhost/'});
+const {window} = dom;
+const {document} = window;
+// Execute only the real history implementation. No Firebase, Visitor, or remote resources.
+window.eval(html.slice(html.indexOf('    const HISTORY_SEEN_KEY ='), html.lastIndexOf('  </script>')));
+const badge = document.getElementById('historyNewBadge');
+const details = document.getElementById('historyDetails');
+const title = document.querySelector('#historyTimeline strong');
+const originalTitle = title.textContent;
+const latestId = window.getLatestHistoryId();
+let checks = 0;
+function check(condition, label) { assert.ok(condition, label); checks++; console.log('PASS: ' + label); }
+function toggle() { details.open = true; details.dispatchEvent(new window.Event('toggle')); }
 
-const window = dom.window;
-const document = window.document;
-
-function runTests() {
-  console.log("Starting tests...");
-
-  // Setup globals that would normally be set by the actual app environment
-  window.localStorage.clear();
-  const HISTORY_SEEN_KEY = 'gbf_portal_history_seen_v1';
-
-  // Extract functions for testing
-  // They are in the global scope of the document since we runScripts: dangerously
-
-  // A helper to assert conditions
-  function assert(condition, message) {
-    if (!condition) {
-      console.error("FAIL: " + message);
-      throw new Error("Assertion failed");
-    } else {
-      console.log("PASS: " + message);
-    }
-  }
-
-  // Find badge
-  const badge = document.getElementById('historyNewBadge');
-  const details = document.getElementById('historyDetails');
-  const latestEntry = document.querySelector('#historyTimeline > .relative');
-  const latestDate = latestEntry.querySelector('.font-mono').textContent.trim();
-  const latestTitle = latestEntry.querySelector('strong').textContent.trim();
-  const latestId = `${latestDate}|${latestTitle}`;
-
-  // test initialization
+try {
   window.initHistoryUnread();
+  check(!badge.classList.contains('hidden'), 'missing local state shows NEW');
 
-  // Case A: localStorageに既読情報なし -> NEW表示
-  assert(!badge.classList.contains('hidden'), "Case A: Badge should be visible initially");
+  toggle();
+  check(badge.classList.contains('hidden'), 'opening details immediately hides NEW');
+  check(window.localStorage.getItem('gbf_portal_history_seen_v1') === latestId, 'rollback key remains a raw latest ID');
+  check(JSON.parse(window.localStorage.getItem('gbf_portal_history_seen_ids_v2')).includes(latestId), 'v2 contains the current latest ID');
+  check(JSON.parse(window.localStorage.getItem('gbf_portal_history_seen_sync_pending_v1')).includes(latestId), 'pending is already saved before any cloud work');
 
-  // Case B: 履歴詳細を開く -> 最新ID保存 -> NEW非表示
-  details.open = true;
-  details.dispatchEvent(new window.Event('toggle'));
-  assert(badge.classList.contains('hidden'), "Case B: Badge should be hidden after opening details");
-  let savedId = window.localStorage.getItem(HISTORY_SEEN_KEY);
-  assert(savedId === latestId, "Case B: savedId should be correct: " + savedId);
-
-  // Case C: 同じ最新IDで再読み込み -> NEW非表示
-  // Simulate reload
   window.updateHistoryNewBadge();
-  assert(badge.classList.contains('hidden'), "Case C: Badge should remain hidden on reload");
+  check(badge.classList.contains('hidden'), 'a repeated render keeps NEW hidden');
+  title.textContent = '新しい更新内容'; window.updateHistoryNewBadge();
+  check(!badge.classList.contains('hidden'), 'changing the latest title shows NEW');
 
-  // Case D: 最新項目の日付またはタイトルが変わる -> NEW再表示
-  const titleStrong = document.querySelector('#historyTimeline strong');
-  titleStrong.textContent = "新しい更新内容";
+  title.textContent = originalTitle;
+  document.querySelector('#historyTimeline p').textContent = '説明だけが変わりました。';
   window.updateHistoryNewBadge();
-  assert(!badge.classList.contains('hidden'), "Case D: Badge should be visible again after title changes");
+  check(badge.classList.contains('hidden'), 'changing only the body retains read state');
+  title.textContent = '同日の別の新しい更新'; window.updateHistoryNewBadge();
+  check(!badge.classList.contains('hidden'), 'same date with a distinct title shows NEW');
 
-  // Case E: 最新項目の説明本文だけ変わる -> NEW再表示しない
-  // revert title, change body
-  titleStrong.textContent = latestTitle;
-  details.dispatchEvent(new window.Event('toggle')); // Mark seen again just in case
-  const bodyText = document.querySelector('#historyTimeline p');
-  bodyText.textContent = "説明が変わりました。";
-  window.updateHistoryNewBadge();
-  assert(badge.classList.contains('hidden'), "Case E: Badge should remain hidden after body changes");
+  let marks = 0;
+  const originalMark = window.markHistorySeen;
+  window.markHistorySeen = () => { marks++; originalMark(); };
+  window.initHistoryUnread(); window.initHistoryUnread(); toggle();
+  check(marks === 1, 'repeated initialization registers only one toggle handler');
 
-  // Case F: 同じ日付でタイトルの違う新しい項目 -> NEW再表示
-  titleStrong.textContent = "別の新しい更新";
-  window.updateHistoryNewBadge();
-  assert(!badge.classList.contains('hidden'), "Case F: Badge should be visible after new title same date");
+  title.textContent = '保存できない時の新しい更新';
+  const storagePrototype = window.Storage.prototype;
+  const originalGet = storagePrototype.getItem;
+  storagePrototype.getItem = function () { throw new Error('Storage get failure'); };
+  try {
+    window.updateHistoryNewBadge();
+    check(!badge.classList.contains('hidden'), 'a real Storage prototype read failure keeps the unread badge usable');
+  } finally { storagePrototype.getItem = originalGet; }
 
-  // Case G: showPortal相当の初期化を複数回実行 -> toggleイベントが重複登録されない
-  // Well, we can't easily assert event listener count, but we can call initHistoryUnread multiple times
-  // and ensure it doesn't crash or break behavior.
-  window.initHistoryUnread();
-  window.initHistoryUnread();
-  assert(true, "Case G: initHistoryUnread can be called multiple times safely");
-
-  // Case H: localStorage読み込みエラー -> 例外終了しない
-  // Override localStorage getter
-  const originalGetItem = window.localStorage.getItem;
-  window.localStorage.getItem = function() { throw new Error("Storage get error"); };
-  window.updateHistoryNewBadge();
-  assert(!badge.classList.contains('hidden'), "Case H: Should not crash on read error and show badge");
-  window.localStorage.getItem = originalGetItem; // restore
-
-  // Case I: localStorage書き込みエラー -> 例外終了しない
-  const originalSetItem = window.localStorage.setItem;
-  window.localStorage.setItem = function() { throw new Error("Storage set error"); };
-  details.dispatchEvent(new window.Event('toggle'));
-  assert(true, "Case I: Should not crash on write error");
-
-  console.log("All tests passed!");
-}
-
-runTests();
+  const originalSet = storagePrototype.setItem;
+  storagePrototype.setItem = function () { throw new Error('Storage set failure'); };
+  try {
+    toggle();
+    check(badge.classList.contains('hidden'), 'a real Storage prototype write failure still immediately hides NEW');
+    check(window.historyReadLocalState.snapshot().seenIds.includes(window.getLatestHistoryId()), 'write failure retains the read ID in memory');
+    check(window.historyReadLocalState.flush() === false, 'cloud persistence fails closed when storage cannot be saved');
+  } finally { storagePrototype.setItem = originalSet; }
+  check(window.historyReadLocalState.flush() === true, 'restored storage persists the pending local read');
+  console.log(`All ${checks} history unread checks passed!`);
+} finally { dom.window.close(); }

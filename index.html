@@ -1939,7 +1939,286 @@
     // 更新履歴 未読「NEW」バッジ管理
     // =========================================================
     const HISTORY_SEEN_KEY = 'gbf_portal_history_seen_v1';
+    const HISTORY_SEEN_IDS_KEY = 'gbf_portal_history_seen_ids_v2';
+    const HISTORY_PENDING_KEY = 'gbf_portal_history_seen_sync_pending_v1';
+    const HISTORY_SYNC_STATE_KEY = 'gbf_portal_history_seen_sync_state_v1';
+    const HISTORY_SYNC_RECORD_PREFIX = 'gbf_portal_history_seen_sync_record_v1:';
     let historyUnreadInitialized = false;
+
+    // Local operation is independent of Firebase. Owner-labelled records hold
+    // each set; the two array keys remain mirrors for local/rollback use.
+    function createHistoryLocalState(storage, options = {}) {
+      const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 512;
+      const validProfile = id => id === null || (typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id));
+      const ids = value => Array.isArray(value) ? [...new Set(value.filter(validId))].sort() : [];
+      const parseIds = raw => {
+        try { const value = JSON.parse(raw); return Array.isArray(value) ? ids(value) : null; }
+        catch { return null; }
+      };
+      const union = (left, right) => [...new Set([...left, ...right])].sort();
+      const empty = profileId => ({profileId, seenIds: [], acknowledgedIds: [], limitedIds: []});
+      const records = new Map();
+      const listeners = new Set();
+      let profileId = null, claimed = false, externallySwitched = false, corruptJournal = false, ownerCommitted = false;
+      const read = key => { try { return {ok: true, value: storage.getItem(key)}; } catch { return {ok: false, value: null}; } };
+      const write = (key, value) => {
+        try {
+          if (storage.getItem(key) !== value) {
+            if (value === null) storage.removeItem(key); else storage.setItem(key, value);
+          }
+          return true;
+        } catch { return false; }
+      };
+      function decodeJournal(raw) {
+        if (raw === null) return null;
+        try {
+          const data = JSON.parse(raw);
+          if (data?.version !== 1 || !validProfile(data.profileId) || typeof data.claimed !== 'boolean'
+              || !Array.isArray(data.records) || !data.records.length) return false;
+          const decoded = new Map();
+          for (const record of data.records) {
+            if (!record || !validProfile(record.profileId) || decoded.has(record.profileId)
+                || !['seenIds', 'acknowledgedIds', 'limitedIds'].every(key => Array.isArray(record[key]))) return false;
+            const acknowledgedIds = ids(record.acknowledgedIds);
+            decoded.set(record.profileId, {profileId: record.profileId,
+              seenIds: union(ids(record.seenIds), acknowledgedIds), acknowledgedIds,
+              limitedIds: ids(record.limitedIds).filter(id => !acknowledgedIds.includes(id))});
+          }
+          if (!decoded.has(data.profileId)) return false;
+          return {profileId: data.profileId, claimed: data.claimed, records: decoded};
+        } catch { return false; }
+      }
+      function mergeRecords(incoming) {
+        for (const [owner, remote] of incoming) {
+          const local = records.get(owner) || empty(owner);
+          local.seenIds = union(local.seenIds, remote.seenIds);
+          local.acknowledgedIds = union(local.acknowledgedIds, remote.acknowledgedIds);
+          local.limitedIds = union(local.limitedIds, remote.limitedIds)
+            .filter(id => !local.acknowledgedIds.includes(id));
+          records.set(owner, local);
+        }
+      }
+      function current() {
+        if (!records.has(profileId)) records.set(profileId, empty(profileId));
+        return records.get(profileId);
+      }
+      function pending() {
+        const state = current();
+        return state.seenIds.filter(id => !state.acknowledgedIds.includes(id) && !state.limitedIds.includes(id));
+      }
+      function notify() {
+        options.onChange?.();
+        for (const listener of [...listeners]) {
+          try { listener(); } catch (error) { console.warn('History local listener failed:', error); }
+        }
+      }
+      const recordKey = owner => HISTORY_SYNC_RECORD_PREFIX + (owner === null ? 'unlinked' : 'profile:' + owner);
+      const sortedRecords = () => [...records.values()].sort((left, right) => {
+        const a = left.profileId === null ? '' : left.profileId;
+        const b = right.profileId === null ? '' : right.profileId;
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
+      function decodeOwnerRecord(raw, owner) {
+        if (raw === null) return null;
+        try {
+          const record = JSON.parse(raw);
+          if (record?.version !== 1 || record.profileId !== owner
+              || !['seenIds', 'acknowledgedIds', 'limitedIds'].every(key => Array.isArray(record[key]))) return false;
+          const acknowledgedIds = ids(record.acknowledgedIds);
+          return {profileId: owner, seenIds: union(ids(record.seenIds), acknowledgedIds),
+            acknowledgedIds, limitedIds: ids(record.limitedIds)};
+        } catch { return false; }
+      }
+      function loadOwnerRecord(owner) {
+        const raw = read(recordKey(owner));
+        if (!raw.ok) return false;
+        const record = decodeOwnerRecord(raw.value, owner);
+        if (record === false) return false;
+        if (record) mergeRecords(new Map([[owner, record]]));
+        return true;
+      }
+      function saveOwnerRecord(owner) {
+        if (!loadOwnerRecord(owner)) return false;
+        const state = records.get(owner) || empty(owner);
+        return write(recordKey(owner), JSON.stringify({version: 1, ...state}));
+      }
+      function refresh() {
+        const raw = read(HISTORY_SYNC_STATE_KEY);
+        if (!raw.ok) return false;
+        const journal = decodeJournal(raw.value);
+        if (journal === false) { corruptJournal = true; return false; }
+        if (journal) {
+          mergeRecords(journal.records);
+          claimed = claimed || journal.claimed;
+          if (journal.profileId !== profileId) {
+            profileId = journal.profileId;
+            externallySwitched = true;
+            loadOwnerRecord(profileId);
+            notify();
+            return false;
+          }
+        }
+        return !corruptJournal && loadOwnerRecord(profileId);
+      }
+      function persist(changeOwner = false, expectedOwner = profileId) {
+        if (corruptJournal) return false;
+        const raw = read(HISTORY_SYNC_STATE_KEY);
+        if (!raw.ok) return false;
+        const journal = decodeJournal(raw.value);
+        if (journal === false) { corruptJournal = true; return false; }
+        if (journal) {
+          mergeRecords(journal.records);
+          if (journal.profileId !== (changeOwner ? expectedOwner : profileId)) {
+            profileId = journal.profileId;
+            externallySwitched = true;
+            loadOwnerRecord(profileId);
+            notify();
+            return false;
+          }
+        }
+        // Ordinary edits write only their owner-specific record, never the
+        // binding marker. A suspended old tab cannot claim a newer owner.
+        if (!saveOwnerRecord(profileId)) return false;
+        if (changeOwner || !journal) {
+          const encoded = JSON.stringify({version: 1, profileId, claimed, records: sortedRecords()});
+          if (!write(HISTORY_SYNC_STATE_KEY, encoded)) return false;
+          if (changeOwner) ownerCommitted = true;
+        }
+        const state = current();
+        const savedSeen = write(HISTORY_SEEN_IDS_KEY, JSON.stringify(state.seenIds));
+        const queued = pending();
+        const savedPending = write(HISTORY_PENDING_KEY, queued.length ? JSON.stringify(queued) : null);
+        return savedSeen && savedPending;
+      }
+      const initialJournal = read(HISTORY_SYNC_STATE_KEY);
+      const decoded = initialJournal.ok ? decodeJournal(initialJournal.value) : false;
+      if (decoded) {
+        profileId = decoded.profileId; claimed = decoded.claimed;
+        mergeRecords(decoded.records);
+        // Once ownership exists, bare array mirrors have no owner information
+        // and cannot safely recover state. Only matching durable records can.
+        for (const owner of records.keys()) loadOwnerRecord(owner);
+      } else {
+        corruptJournal = decoded === false;
+        const rawSeen = read(HISTORY_SEEN_IDS_KEY);
+        let seen = rawSeen.ok && rawSeen.value !== null ? parseIds(rawSeen.value) : null;
+        if (seen === null) {
+          const legacy = read(HISTORY_SEEN_KEY);
+          seen = legacy.ok && validId(legacy.value) ? [legacy.value] : [];
+        }
+        const rawPending = read(HISTORY_PENDING_KEY);
+        const queued = rawPending.ok ? parseIds(rawPending.value) || [] : [];
+        records.set(null, {...empty(null), seenIds: union(seen, queued)});
+        if (!corruptJournal) loadOwnerRecord(null);
+      }
+      current();
+      // Migration is idempotent and never deletes or changes the raw v1 value.
+      persist();
+      const api = {
+        snapshot() {
+          const state = current();
+          return {profileId, seenIds: [...state.seenIds], pendingIds: pending(), limitedIds: [...state.limitedIds]};
+        },
+        bindProfile(nextProfile) {
+          if (!validProfile(nextProfile) || !refresh()) return false;
+          if (nextProfile === profileId) return persist();
+          if (externallySwitched) return false;
+          const previous = profileId;
+          const previouslyClaimed = claimed;
+          if (!loadOwnerRecord(nextProfile)) return false;
+          const state = records.get(nextProfile) || empty(nextProfile);
+          if (!claimed && previous === null && nextProfile !== null) {
+            const unlinked = current();
+            state.seenIds = union(state.seenIds, unlinked.seenIds);
+            state.acknowledgedIds = union(state.acknowledgedIds, unlinked.acknowledgedIds);
+            state.limitedIds = union(state.limitedIds, unlinked.limitedIds);
+          }
+          records.set(nextProfile, state); profileId = nextProfile;
+          if (nextProfile !== null) claimed = true;
+          ownerCommitted = false;
+          if (!persist(true, previous)) {
+            if (!ownerCommitted) { profileId = previous; claimed = previouslyClaimed; }
+            notify(); return false;
+          }
+          notify();
+          return true;
+        },
+        mark(id) {
+          if (!validId(id)) return false;
+          refresh();
+          const owner = profileId;
+          const state = current();
+          state.seenIds = union(state.seenIds, [id]);
+          // This owner-labelled durable copy precedes the bare array mirrors.
+          // If another tab switches profile during the writes, the read stays
+          // archived under its original owner rather than entering the new one.
+          saveOwnerRecord(owner);
+          // Keep local + rollback writes ahead of the immediate badge update.
+          write(HISTORY_SEEN_IDS_KEY, JSON.stringify(state.seenIds));
+          if (id === options.getLatestId?.()) write(HISTORY_SEEN_KEY, id);
+          options.onChange?.();
+          // Every listener (and therefore network work) runs after pending is saved.
+          persist();
+          notify();
+          return true;
+        },
+        applyRemote(remoteIds, expectedProfile) {
+          if (!Array.isArray(remoteIds) || !remoteIds.every(validId) || !refresh() || profileId !== expectedProfile) return false;
+          const state = current();
+          state.seenIds = union(state.seenIds, remoteIds);
+          state.acknowledgedIds = union(state.acknowledgedIds, remoteIds);
+          state.limitedIds = state.limitedIds.filter(id => !state.acknowledgedIds.includes(id));
+          const latest = options.getLatestId?.();
+          if (remoteIds.includes(latest)) write(HISTORY_SEEN_KEY, latest);
+          const saved = persist(); notify(); return saved;
+        },
+        ack(id, expectedProfile) {
+          if (!validId(id) || !refresh() || profileId !== expectedProfile) return false;
+          const state = current();
+          state.seenIds = union(state.seenIds, [id]);
+          state.acknowledgedIds = union(state.acknowledgedIds, [id]);
+          state.limitedIds = state.limitedIds.filter(value => value !== id);
+          const saved = persist(); notify(); return saved;
+        },
+        limit(id, expectedProfile) {
+          if (!validId(id) || !refresh() || profileId !== expectedProfile) return false;
+          const state = current();
+          if (!state.acknowledgedIds.includes(id)) state.limitedIds = union(state.limitedIds, [id]);
+          const saved = persist(); notify(); return saved;
+        },
+        flush() { return refresh() && persist(); },
+        subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }
+      };
+      options.eventTarget?.addEventListener('storage', event => {
+        if (![HISTORY_SEEN_IDS_KEY, HISTORY_PENDING_KEY, HISTORY_SYNC_STATE_KEY].includes(event.key)
+            && !(typeof event.key === 'string' && event.key.startsWith(HISTORY_SYNC_RECORD_PREFIX))) return;
+        if (event.storageArea && event.storageArea !== storage) return;
+        if (event.key.startsWith(HISTORY_SYNC_RECORD_PREFIX)) {
+          const suffix = event.key.slice(HISTORY_SYNC_RECORD_PREFIX.length);
+          const owner = suffix === 'unlinked' ? null : suffix.startsWith('profile:') ? suffix.slice(8) : undefined;
+          if (owner === undefined || !validProfile(owner)) return;
+          const record = decodeOwnerRecord(event.newValue, owner);
+          if (record) {
+            // Recover a simultaneous write even after its source tab closes.
+            // The key and payload identify one owner; older-owner events can
+            // only extend that archive, never the current owner's set.
+            mergeRecords(new Map([[owner, record]]));
+            saveOwnerRecord(owner);
+          }
+        }
+        if (!refresh()) { options.onChange?.(); return; }
+        // Bare array payloads have no owner and are never merged.
+        persist(); notify();
+      });
+      return Object.freeze(api);
+    }
+
+    let historyStorage;
+    try { historyStorage = window.localStorage; } catch { historyStorage = null; }
+    const historyReadLocalState = createHistoryLocalState(historyStorage, {
+      getLatestId: getLatestHistoryId, onChange: updateHistoryNewBadge, eventTarget: window
+    });
+    window.historyReadLocalState = historyReadLocalState;
 
     function getLatestHistoryId() {
       try {
@@ -1966,16 +2245,9 @@
         const latestId = getLatestHistoryId();
         if (!latestId) return;
 
-        let seenId = '';
-        try {
-          seenId = localStorage.getItem(HISTORY_SEEN_KEY) || '';
-        } catch (e) {
-          // ignore localStorage read error
-        }
-
         const badge = document.getElementById('historyNewBadge');
         if (badge) {
-          if (latestId !== seenId) {
+          if (!historyReadLocalState.snapshot().seenIds.includes(latestId)) {
             badge.classList.remove('hidden');
           } else {
             badge.classList.add('hidden');
@@ -1991,16 +2263,7 @@
         const latestId = getLatestHistoryId();
         if (!latestId) return;
 
-        try {
-          localStorage.setItem(HISTORY_SEEN_KEY, latestId);
-        } catch (e) {
-          // ignore localStorage write error
-        }
-
-        const badge = document.getElementById('historyNewBadge');
-        if (badge) {
-          badge.classList.add('hidden');
-        }
+        historyReadLocalState.mark(latestId);
       } catch (e) {
         console.error('Error in markHistorySeen:', e);
       }
@@ -2022,7 +2285,20 @@
       }
     }
 
+    function loadHistoryReadSync() {
+      const mount = () => {
+        if (!window.historyReadSync && window.MemberSync?.mountHistoryReadSync) {
+          window.historyReadSync = window.MemberSync.mountHistoryReadSync(historyReadLocalState, globalThis);
+        }
+      };
+      // Existing portal listeners initialize the default Firebase app first.
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, {once: true});
+      else mount();
+    }
+
   </script>
+  <script src="firebase-config.js"></script>
+  <script src="member-sync.js?v=history-ui-1" onload="loadHistoryReadSync()"></script>
 </body>
 </html>
 
