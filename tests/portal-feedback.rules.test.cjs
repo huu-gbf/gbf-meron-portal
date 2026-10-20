@@ -29,7 +29,8 @@ const canonicalLf = (value) => value.replace(/\r\n/g, '\n');
 const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 
 test('existing Firestore rules and Storage rules retain their baseline contents', () => {
-  // Baseline: main e8e411b. Allow checkout line-ending differences only.
+  // Baselines: sync 0d9842e plus unchanged feedback from main 75e2876.
+  // Allow checkout line-ending differences only; neither Rules block may drift.
   const begin = '    // Portal feedback MVP: BEGIN\n';
   const end = '    // Portal feedback MVP: END\n';
   const current = canonicalLf(rules);
@@ -38,8 +39,9 @@ test('existing Firestore rules and Storage rules retain their baseline contents'
   const start = current.indexOf(begin);
   const finish = current.indexOf(end) + end.length;
   assert.ok(finish > start);
+  assert.equal(sha256(current.slice(start, finish)), '5de0713b8f393f318eba15b529c58476ef2ec068a22cd85d1cb5b2fc16688566', 'feedback Rules remain identical to published main');
   const original = current.slice(0, start) + current.slice(finish);
-  assert.equal(sha256(original), '64f8595704ddf2ee0d2e2ca2bfce44820ce4e44480b4ca2d4d4f7fb92a351d17');
+  assert.equal(sha256(original), '1424ce3dd38319f5cd9128a2c72c7b4713038f7189ce85c5f3c1a432c42b5645');
   assert.equal(
     sha256(canonicalLf(fs.readFileSync(path.join(root, 'storage.rules'), 'utf8'))),
     '5223bdd146fead827cce89f6bbf0d9cbb836d8b815ca30c1192faff34351b507',

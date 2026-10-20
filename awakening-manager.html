@@ -608,87 +608,27 @@
 
   </main>
 
+  <script src="artifact-catalog.js?v=member-sync-rc1"></script>
+  <script src="firebase-config.js"></script>
+  <script src="member-sync.js?v=member-sync-rc1"></script>
+  <script src="artifact-sync.js?v=member-sync-rc1"></script>
   <script>
     // ==========================================
     // データ定義
     // ==========================================
-    const dataSlot12 = [
-      { name: "攻撃力", values: ["1320", "1440", "1560", "1680", "1800"] },
-      { name: "自属性攻撃力", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
-      { name: "奥義ダメ", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
-      { name: "アビダメ", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
-      { name: "TA率", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
-      { name: "DA率", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
-      { name: "HP", values: ["660", "720", "780", "840", "900"] },
-      { name: "防御力", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
-      { name: "回復性能", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
-      { name: "クリティカル確率", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
-      { name: "有利属性軽減", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
-      { name: "弱体成功率", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
-      { name: "弱体耐性", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
-      { name: "回避率", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] }
-    ];
+    const {dataSlot12, dataSlot3, dataSlot4, ARTIFACT_CATALOG_VERSION,
+      ARTIFACT_LEGACY_EFFECT_IDS} = ArtifactCatalog;
 
-    const dataSlot3 = [
-      { name: "HP100%時与ダメUP", values: ["2.2%", "2.4%", "2.6%", "2.8%", "3%"] },
-      { name: "クリ発動時ダメ上限", values: ["2.2%", "2.4%", "2.6%", "2.8%", "3%"] },
-      { name: "通常与ダメ上昇", values: ["8800", "9600", "10400", "11200", "12000"] },
-      { name: "通常ダメ上限", values: ["2.2%", "2.4%", "2.6%", "2.8%", "3%"] },
-      { name: "通常上限UP/アビ-80%/奥義-60%", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
-      { name: "アビ与ダメ上昇", values: ["11000", "12000", "13000", "14000", "15000"] },
-      { name: "アビ上限", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
-      { name: "アビ上限UP/通常-20%/奥義-60%", values: ["17.6%", "19.2%", "20.8%", "22.4%", "24%"] },
-      { name: "奥義与ダメ上昇", values: ["110000", "120000", "130000", "140000", "150000"] },
-      { name: "奥義上限", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
-      { name: "奥義特殊上限", values: ["4.4%", "4.8%", "5.2%", "5.6%", "6%"] },
-      { name: "奥義上限UP/通常-20%/アビ-80%", values: ["13.2%", "14.4%", "15.6%", "16.8%", "18%"] },
-      { name: "HP50%以上時TA率UP", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
-      { name: "チェイン与ダメ", values: ["6.6%", "7.2%", "7.8%", "8.4%", "9%"] },
-      { name: "ターンダメ軽減", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
-      { name: "再生", values: ["440", "480", "520", "560", "600"] },
-      { name: "HP50%以下時ダメ軽減", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
-      { name: "最大HP上昇/防御-70%", values: ["8.8%", "9.6%", "10.4%", "11.2%", "12%"] },
-      { name: "確率で強化効果が無効化されない", values: ["20%"] },
-      { name: "確率で攻撃開始時に弱体効果1つ回復", values: ["20%"] }
-    ];
-
-    const dataSlot4 = [
-      { name: "バトル登場時、一度だけ自分の与ダメUP", value: "3%" },
-      { name: "使用間隔10T以上のアビ使用時、自分に与ダメUP", value: "4%" },
-      { name: "バトル開始時に最大HP20%消費/3T後自分ダメ上限UP", value: "10%" },
-      { name: "一定回数敵のタゲになった場合、一度だけ自属性追撃", value: "7回" },
-      { name: "アビを一定回数使用する度に、自分ダメ上限UP(累積)", value: "5回" },
-      { name: "アビダメを一定量与える毎に、アビ与ダメ上昇(累積)", value: "4000万" },
-      { name: "T終了時、T中消費奥義ゲージに応じて与ダメ上昇", value: "5000" },
-      { name: "弱体アビ使用時、敵に被ダメUP(2回)", value: "4%" },
-      { name: "キュアポかオルポ使用時にFCゲージUP", value: "3%" },
-      { name: "回復アビ使用時、次の配置キャラに自属性追撃(1回)", value: "4%" },
-      { name: "T終了時、T中消費HPに応じて無属性ダメ", value: "10倍" },
-      { name: "T終了時にHP50%以下の敵がいる時、一度だけHP回復", value: "2000" },
-      { name: "戦闘不能時、一度だけ味方全体に一定個数ランダム強化", value: "1個" },
-      { name: "1回攻撃発動時、自分に一定個数ランダム強化", value: "1個" },
-      { name: "攻撃行動を行わなかった場合T終了時、ランダム強化", value: "1個" },
-      { name: "バトル開始時に、自分に一定個数ランダム強化", value: "1個" },
-      { name: "敵に一定回数攻撃を与えた時、一度だけ乱撃3hit", value: "200回" },
-      { name: "攻撃開始時、確率で自分に乱撃(6hit/1回)", value: "1%" },
-      { name: "サブ時、一定T毎に敵全体にランダムな弱体効果", value: "7ターン" },
-      { name: "ターン終了時、確率で敵の強化効果を全て無効化", value: "1%" },
-      { name: "攻撃開始時に敵の弱体効果が3個以下の時、ブロック", value: "5%" },
-      { name: "バトル開始時、1T被ダメ減少", value: "1000" },
-      { name: "バトル開始時と5T毎に自分にバリア効果", value: "1000" },
-      { name: "リンクアビ一定回数使用時、リンクアビ再使用1T短縮", value: "8回" },
-      { name: "1アビ使用時にHPを一定消費するが1アビ使用間隔1T短縮", value: "30%" },
-      { name: "確率でターン進行時に、経過ターンを5T進める", value: "0.2%" },
-      { name: "獲得経験値UP(重複不可)", value: "1%" },
-      { name: "アイテムドロップ率UP(重複不可)", value: "0.5%" },
-      { name: "バトル終了時にランダムな耳飾りを入手", value: "-" }
-    ];
+    function projectArtifactSettings(legacySettings, catalog) {
+      return ArtifactCatalog.projectArtifactSettings(legacySettings, catalog);
+    }
 
     const STORAGE_KEY_GW = 'gbf_awakening_data_gw';
     const STORAGE_KEY_HIGH = 'gbf_awakening_data_high';
     
     let currentMode = 'gw'; // 'gw' or 'high'
     let userSettings = {};
+    let artifactSync;
 
     // ==========================================
     // 初期化
@@ -696,6 +636,41 @@
     document.addEventListener('DOMContentLoaded', () => {
       loadData();
       renderAll();
+      if (globalThis.ArtifactSync && globalThis.MemberSync) {
+        artifactSync = ArtifactSync.mountArtifactSync({
+          storage: localStorage,
+          readLegacy(mode) {
+            if (mode === currentMode) return userSettings;
+            try { return JSON.parse(localStorage.getItem(mode === 'gw' ? STORAGE_KEY_GW : STORAGE_KEY_HIGH) || '{}'); }
+            catch (_) { return {}; }
+          },
+          writeLegacy(mode, value) {
+            try { localStorage.setItem(mode === 'gw' ? STORAGE_KEY_GW : STORAGE_KEY_HIGH, JSON.stringify(value)); }
+            catch (_) { return false; }
+            if (mode !== currentMode) return true;
+            userSettings = value;
+            // Update controls in place: remote settings never rebuild memo
+            // rows or change the user's tab, mode, focus or scroll position.
+            for (const [containerId, data, prefix] of [
+              ['list-slot12', dataSlot12, 's12'], ['list-slot3', dataSlot3, 's3'],
+              ['list-slot4', dataSlot4, 's4']
+            ]) {
+              const cards = document.getElementById(containerId).children;
+              data.forEach((item, index) => {
+                const setting = userSettings[prefix + '_' + index], card = cards[index];
+                if (!card) return;
+                card.classList.toggle('state-needed', setting.needed);
+                card.classList.toggle('state-unneeded', !setting.needed);
+                card.querySelector('input[type="checkbox"]').checked = setting.needed;
+                const select = card.querySelector('select');
+                if (select) select.value = setting.selectedValue;
+              });
+            }
+            renderSummary();
+            return true;
+          }
+        }, globalThis);
+      }
     });
 
     function getStorageKey() {
@@ -728,6 +703,7 @@
         userSettings = {};
         saveData();
         renderAll();
+        artifactSync?.reset(currentMode);
       }
     }
 
@@ -885,6 +861,7 @@
         if (containerId === 'list-slot12') renderValueItems('list-slot12', dataSlot12, 's12');
         else if (containerId === 'list-slot3') renderValueItems('list-slot3', dataSlot3, 's3');
         else if (containerId === 'list-slot4') renderFixedItems('list-slot4', dataSlot4, 's4');
+        artifactSync?.change(currentMode, ARTIFACT_LEGACY_EFFECT_IDS[key], 'needed', isChecked);
       }
     }
 
@@ -892,6 +869,7 @@
       if (userSettings[key]) {
         userSettings[key].selectedValue = newValue;
         saveData();
+        artifactSync?.change(currentMode, ARTIFACT_LEGACY_EFFECT_IDS[key], 'selectedValue', newValue);
       }
     }
 

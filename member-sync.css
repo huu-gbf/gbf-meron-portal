@@ -1,0 +1,20 @@
+.member-sync { margin: 0 0 20px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--card-bg); font-size: 14px; }
+.member-sync summary { cursor: pointer; padding: 12px 16px; }
+.member-sync summary span { margin-left: 10px; color: var(--cyan-primary); font-size: 12px; }
+.member-sync-body { padding: 0 16px 16px; }
+.member-sync p { margin: 10px 0; }
+.member-sync-help { color: var(--text-muted); }
+.member-sync [hidden] { display: none !important; }
+.member-sync-actions { display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0; }
+.member-sync button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-secondary); color: var(--text-main); font: inherit; cursor: pointer; max-width: 100%; }
+.member-sync button.member-sync-primary { border-color: var(--gold-primary); color: var(--gold-light); }
+.member-sync button:disabled { opacity: .5; cursor: wait; }
+.member-sync :focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; }
+.member-sync form { margin: 16px 0; }
+.member-sync label { display: block; margin-bottom: 6px; }
+.member-sync input { display: block; width: 100%; max-width: 340px; min-height: 48px; margin-bottom: 12px; padding: 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--bg-primary); color: var(--text-main); font-size: 18px; }
+.member-sync-code { display: block; font-family: monospace; font-size: clamp(19px, 5.5vw, 28px); letter-spacing: .04em; user-select: all; overflow-wrap: anywhere; }
+.member-sync [data-sync="invite"] { margin-bottom: 16px; }
+.member-sync-request { border-top: 1px solid var(--card-border); margin-top: 16px; padding-top: 8px; }
+.member-sync-request button { min-width: 96px; }
+.member-sync [data-sync="message"]:empty { display: none; }

@@ -244,7 +244,7 @@ body {
 
 @media (max-width: 960px) {
   .main-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1053,6 +1053,7 @@ input[type=number] {
   <link rel="manifest" href="../manifest.webmanifest">
   <meta name="theme-color" content="#080b14">
   <link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="../member-sync.css?v=member-sync-rc1">
 </head>
 <body>
   <div class="stars-bg"></div>
@@ -1078,6 +1079,31 @@ input[type=number] {
       <h1 class="app-title">古戦場 周回効率・時速計算ツール</h1>
       <p class="app-subtitle">HELL難易度と討伐秒数から、貢献度時速・周回数・消費肉・目標達成時間をリアルタイム算出</p>
     </header>
+    <details class="member-sync" data-member-sync>
+      <summary>端末同期 <span data-sync="status" role="status">未設定</span> <span data-sync="notice" role="status"></span></summary>
+      <div class="member-sync-body">
+        <p class="member-sync-help">接続した端末間でHELL討伐時間と硬直時間を共有します。</p>
+        <p class="member-sync-help">すべての同期端末でブラウザデータを削除すると、現在の同期状態を復元できません。同期は最大5台までです（端末の解除は現在できません）。</p>
+        <div data-sync="choices" class="member-sync-actions">
+          <button type="button" data-sync="start" class="member-sync-primary">端末同期を開始</button>
+          <button type="button" data-sync="join">既存の端末と同期</button>
+        </div>
+        <form data-sync="join-form" hidden>
+          <label for="member-sync-code-input">同期コード</label>
+          <input id="member-sync-code-input" data-sync="input" type="text" maxlength="32" placeholder="ABCD-EFGH-JKLM" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+          <button type="submit" class="member-sync-primary">同期を申請</button>
+        </form>
+        <p data-sync="waiting" hidden>既存の端末で承認してください</p>
+        <div data-sync="invite" hidden>
+          <output data-sync="code" class="member-sync-code" aria-label="同期コード"></output>
+          <p>10分間有効 · 新しい端末で入力してください</p>
+          <button type="button" data-sync="copy">コードをコピー</button>
+        </div>
+        <button type="button" data-sync="add" hidden>別の端末を追加</button>
+        <div data-sync="requests"></div>
+        <p data-sync="message" role="status" aria-live="polite"></p>
+      </div>
+    </details>
 
     <!-- Main Grid -->
     <main class="main-layout">
@@ -1446,6 +1472,7 @@ const elements = {
 
 const LS_KEY_HELL_TIMES = 'gbf_unf_speed_calc_times';
 const LS_KEY_INTERVAL = 'gbf_unf_speed_calc_interval';
+const LS_KEY_PENDING = 'gbf_unf_speed_calc_sync_pending';
 
 function loadSavedTimes() {
   try {
@@ -1495,12 +1522,76 @@ function saveInterval() {
   }
 }
 
+// pendingIO: manages gbf_unf_speed_calc_sync_pending for createSpeedCalculatorSync.
+// member-sync.js never touches this key directly (section 5 responsibility separation).
+const pendingIO = {
+  load() {
+    try {
+      const raw = localStorage.getItem(LS_KEY_PENDING);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      return parsed;
+    } catch { return {}; }
+  },
+  save(field, value) {
+    try {
+      const current = this.load();
+      current[field] = value;
+      localStorage.setItem(LS_KEY_PENDING, JSON.stringify(current));
+    } catch {}
+  },
+  remove(field) {
+    try {
+      const current = this.load();
+      delete current[field];
+      if (Object.keys(current).length === 0) {
+        localStorage.removeItem(LS_KEY_PENDING);
+      } else {
+        localStorage.setItem(LS_KEY_PENDING, JSON.stringify(current));
+      }
+    } catch {}
+  }
+};
+
+let speedCloudSync;
+window.addEventListener('member-sync-connection', event => {
+  if (!event.detail.ready) { speedCloudSync?.stop(); return; }
+  if (!speedCloudSync) speedCloudSync = MemberSync.createSpeedCalculatorSync(
+    event.detail.client,
+    () => ({hellTimesSec: {...state.comparisonTimes}, intervalSec: state.intervalSec}),
+    settings => {
+      state.comparisonTimes = {...settings.hellTimesSec};
+      state.intervalSec = settings.intervalSec;
+      saveTimes();
+      saveInterval();
+      elements.inputInterval.value = state.intervalSec;
+      elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
+      setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
+      renderComparisonTable(true);
+    },
+    pendingIO
+  );
+  speedCloudSync.start();
+});
+window.addEventListener('pagehide', () => {
+  speedCloudSync?.flushPending();
+  speedCloudSync?.stop();
+});
+window.addEventListener('pageshow', event => { if (event.persisted) speedCloudSync?.start(); });
+// Replay persisted pending when the network is restored (section 14).
+window.addEventListener('online', () => speedCloudSync?.replayPending());
+function syncHellChange(level, before) {
+  const value = state.comparisonTimes[level];
+  if (value !== before) speedCloudSync?.change('hellTimesSec.' + level, value);
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   loadSavedTimes();
   loadSavedInterval();
   
-  if (state.comparisonTimes[state.selectedHell]) {
+  if (state.comparisonTimes[state.selectedHell] !== undefined) {
     const initialSec = state.comparisonTimes[state.selectedHell];
     state.minutes = Math.floor(initialSec / 60);
     state.seconds = initialSec % 60;
@@ -1532,9 +1623,11 @@ function setupEventListeners() {
 
   // Interval Slider
   elements.inputInterval.addEventListener('input', (e) => {
+    const before = state.intervalSec;
     state.intervalSec = parseFloat(e.target.value) || 0;
     elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
     saveInterval();
+    if (state.intervalSec !== before) speedCloudSync?.change('intervalSec', state.intervalSec);
     updateCalculation();
     renderComparisonTable();
   });
@@ -1543,7 +1636,9 @@ function setupEventListeners() {
   elements.presetChips.forEach(chip => {
     chip.addEventListener('click', () => {
       const totalSec = parseInt(chip.dataset.time, 10);
+      const before = state.comparisonTimes[state.selectedHell];
       setTimeFromTotalSeconds(totalSec);
+      syncHellChange(state.selectedHell, before);
       
       elements.presetChips.forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
@@ -1575,6 +1670,7 @@ function setupEventListeners() {
 
 // Time input handlers
 function handleTimeInput() {
+  const before = state.comparisonTimes[state.selectedHell];
   let min = parseInt(elements.inputMinutes.value, 10);
   let sec = parseInt(elements.inputSeconds.value, 10);
 
@@ -1597,6 +1693,7 @@ function handleTimeInput() {
   });
 
   updateCalculation();
+  syncHellChange(state.selectedHell, before);
 }
 
 function setTimeFromTotalSeconds(totalSec) {
@@ -1666,7 +1763,7 @@ function updateCalculation() {
   elements.halfElixirHourly.textContent = Math.round(halfElixirPerHour).toLocaleString();
 
   // Also update comparison state for current Hell
-  state.comparisonTimes[state.selectedHell] = battleSec;
+  state.comparisonTimes[state.selectedHell] = state.minutes * 60 + state.seconds;
   saveTimes();
   renderComparisonTable();
 
@@ -1726,7 +1823,7 @@ function createComparisonRow(hell, time) {
       <span style="font-family: var(--font-numbers); color: var(--text-muted); font-size: 0.85rem;">肉 ${hell.meat}個</span>
     </td>
     <td>
-      <input type="number" min="1" max="999" class="table-time-input" value="${time}" data-hell="${hell.level}">
+      <input type="number" min="0" max="3599" class="table-time-input" value="${time}" data-hell="${hell.level}">
       <span style="font-size: 0.75rem; color: var(--text-muted);">秒 (+${state.intervalSec.toFixed(1)}秒)</span>
     </td>
     <td>
@@ -1755,9 +1852,11 @@ function createComparisonRow(hell, time) {
   // Input change
   const input = tr.querySelector('.table-time-input');
   input.addEventListener('input', (e) => {
-    const val = parseInt(e.target.value, 10) || 1;
+    const before = state.comparisonTimes[hell.level];
+    const val = parseInt(e.target.value, 10) || 0;
     state.comparisonTimes[hell.level] = val;
     saveTimes();
+    syncHellChange(hell.level, before);
     if (hell.level === state.selectedHell) {
       setTimeFromTotalSeconds(val);
     } else {
@@ -1768,7 +1867,7 @@ function createComparisonRow(hell, time) {
   return tr;
 }
 
-function renderComparisonTable() {
+function renderComparisonTable(forceInputValues = false) {
   const hellLevels = [90, 95, 100, 150, 200, 250];
   const tbody = elements.comparisonTableBody;
 
@@ -1780,7 +1879,7 @@ function renderComparisonTable() {
   let maxHonorPerHour = 0;
   const computedData = hellLevels.map(lvl => {
     const hell = HELL_DATA[lvl];
-    const time = state.comparisonTimes[lvl] || hell.defaultSec;
+    const time = state.comparisonTimes[lvl] ?? hell.defaultSec;
     const cycleTime = time + state.intervalSec;
     const clears = 3600 / cycleTime;
     const honorH = clears * hell.pt;
@@ -1808,7 +1907,7 @@ function renderComparisonTable() {
     const cells = tr.children;
     // 入力欄: 入力中(フォーカス中)の欄にはvalueを書き戻さない
     const input = cells[3].querySelector('.table-time-input');
-    if (document.activeElement !== input && input.value !== String(time)) {
+    if ((forceInputValues || document.activeElement !== input) && input.value !== String(time)) {
       input.value = time;
     }
     cells[3].querySelector('span').textContent = `秒 (+${state.intervalSec.toFixed(1)}秒)`;
@@ -1843,7 +1942,7 @@ function selectHell(level) {
       card.classList.remove('active');
     }
   });
-  if (state.comparisonTimes[level]) {
+  if (state.comparisonTimes[level] !== undefined) {
     setTimeFromTotalSeconds(state.comparisonTimes[level]);
   } else {
     updateCalculation();
@@ -1884,5 +1983,7 @@ function showToast(msg) {
   }, 2400);
 }
   </script>
+  <script src="../firebase-config.js"></script>
+  <script src="../member-sync.js?v=member-sync-rc1"></script>
 </body>
 </html>

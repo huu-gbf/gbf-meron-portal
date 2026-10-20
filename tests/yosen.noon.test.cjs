@@ -94,6 +94,9 @@ test('詳細エリアの過去誤差グラフは既知データを保持し、�
     assert(Number.isFinite(error));
     if (i > 0) assert(round > rows[i - 1][0], '開催は重複なく昇順');
   }
+  const columns = html.match(/\.noon-error-columns,.noon-error-rounds \{[^}]*grid-template-columns:repeat\((\d+),/);
+  assert(columns, 'bar and round-label grids share a column definition');
+  assert.equal(Number(columns[1]), rows.length, 'each current round has an aligned column');
   ui.render();
   assert.equal((chart.innerHTML.match(/class="noon-error-bar/g) || []).length, rows.length);
   const labels = rows.map(([round, error]) => `第${round}回 ${error > 0 ? '+' : ''}${error.toFixed(2)}%`);
@@ -104,9 +107,11 @@ test('詳細エリアの過去誤差グラフは既知データを保持し、�
   assert.deepEqual(Array.from(rounds[1].matchAll(/<span>(\d+)<\/span>/g), match => Number(match[1])), rows.map(([round]) => round));
   assert.match(chart.innerHTML, /第67回 -0\.26%/);
   assert.match(chart.innerHTML, /第74回 \+16\.17%/);
+  assert.match(chart.innerHTML, /第84回 \+0\.01%/);
   assert.match(chart.innerHTML, /top:40px/);
   assert.match(chart.innerHTML, /top:80px/);
   assert.match(chart.innerHTML, /top:120px/);
+  assert.equal(rows.slice(0, verified.length).filter(([, error]) => Math.abs(error) <= 10).length, 11);
   // 元の13開催の集計も継続して保証する（将来分の精度を固定しない）。
   const original = rows.slice(0, 13);
   assert.equal(original.filter(([, error]) => Math.abs(error) <= 10).length, 10);
@@ -120,7 +125,6 @@ test('予測結果が詳細グラフより先にあり、説明と免責は簡�
   assert.match(html, /今後の結果を保証するものではありません/);
   assert.match(html, /株式会社Cygamesおよび運営・関係各社とは関係ありません/);
   assert.doesNotMatch(html, /第三者サイトの記事、文章、表、デザイン等/);
-  assert.match(html, /\.noon-error-columns,.noon-error-rounds \{ display:grid; grid-template-columns:repeat\(13,minmax\(0,1fr\)\)/);
 });
 
 test('参考要因は詳細グラフの下にあり、旧モデル表示は隠して保持する', () => {

@@ -447,6 +447,13 @@ app = FastAPI(
         "めろ～ん王国 AI Assistant API"
 )
 
+# Isolated member pairing app: no access to this module's AI/portal/FCM clients.
+if __package__:
+    from .member_sync import api as member_sync_api
+else:
+    from member_sync import api as member_sync_api
+app.mount("/api/member-sync", member_sync_api)
+
 
 # =========================================================
 # CORS

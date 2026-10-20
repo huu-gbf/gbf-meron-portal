@@ -116,23 +116,34 @@ test('emulator: authentication, migration, two clients, CRUD, concurrency, offli
         const c=client(db);await c.sync.authorize(null,db);assert.equal(c.applied,0);assert.notEqual(c.sync.unsubscribe,null);
       }
     });
-    const initial={...empty(),snapshots:[{id:123,...record('08:00')},{id:456,...record('08:17',120,110)}]};
+    const initial={...empty(),base:{enemyContrib12:1000,enemySpeed:100,ownContrib12:1100,ownSpeed:110},
+      conditions:{dayKey:'day1',dayType:'weekend'},snapshots:[{id:123,...record('08:00')},{id:456,...record('08:17',120,110)}]};
     const pc=make(initial);pc.consent=false;
-    await t.test('empty cloud initializes without prompting or uploading legacy local data',async()=>{
-      await pc.login();await until(()=>pc.status.includes('同期済み')&&pc.applied>0,'empty shared session');
-      assert.deepEqual(pc.data(),empty());assert.equal(pc.prompts.length,0);assert.equal(pc.backups.length,0);
-      const shared=await pc.db.collection('gwBattleReviews/2026-09-24_day1/entries').get();
-      assert.deepEqual(shared.docs.map(doc=>doc.id),['meta']);
+    await t.test('new session initializes empty without confirmation, backup or legacy data upload',async()=>{
+      const initialize=pc.sync.initialize.bind(pc.sync),initialized=[];
+      pc.sync.initialize=local=>{initialized.push(clone(local));return initialize(local);};
+      await pc.login();await until(()=>pc.status.includes('同期済み')&&!pc.sync.busy,'empty session acknowledgement');
+      assert.deepEqual(initialized,[{base:null,snapshots:[],conditions:initial.conditions}]);
+      assert.equal(pc.prompts.length,0);assert.equal(pc.backups.length,0);
+      assert.deepEqual(pc.data(),{base:null,snapshots:[],conditions:initial.conditions});
+      const cloud=await pc.db.collection('gwBattleReviews/2026-09-24_day1/entries').get();
+      assert.deepEqual(cloud.docs.map(d=>d.id),['meta']);
+      const meta=cloud.docs[0].data();assert.equal(meta.base,null);
+      assert.equal(meta.dayKey,initial.conditions.dayKey);assert.equal(meta.dayType,initial.conditions.dayType);
+      pc.sync.initialize=initialize;
     });
-    await t.test('empty-session initialization finishes with no pending migration writes',async()=>{
-      const meta=(await pc.db.collection('gwBattleReviews/2026-09-24_day1/entries').doc('meta').get()).data();
-      assert.equal(meta.base,null);assert.equal(meta.dayKey,'day1');assert.equal(meta.dayType,'weekday');
-      assert.equal(pc.journal().queue.length,0);
+    await t.test('reconnect keeps the empty session and explicit new edits synchronize normally',async()=>{
+      const applied=pc.applied;await pc.sync.connect();await until(()=>pc.applied>applied,'reconnect acknowledgement');
+      assert.deepEqual(pc.data(),{base:null,snapshots:[],conditions:initial.conditions});
+      assert.equal(pc.prompts.length,0);assert.equal(pc.backups.length,0);
+      // Populate the subsequent two-client fixture through ordinary edits, not migration.
+      pc.edit('snapshots',[record('08:00'),record('08:17',120,110)]);
+      await until(()=>!pc.sync.busy&&pc.journal().queue.length===0,'explicit edit acknowledgement');
+      assert.equal(pc.data().snapshots.length,2);assert.equal(pc.backups.length,0);
     });
     const phone=make();
-    await t.test('new phone obtains the empty shared session without migration prompt',async()=>{
-      await phone.login();await until(()=>phone.status.includes('同期済み')&&phone.applied>0,'phone data');
-      assert.deepEqual(phone.data(),empty());assert.equal(phone.prompts.length,0);
+    await t.test('new phone obtains shared data without migration prompt',async()=>{
+      await phone.login();await until(()=>phone.data().snapshots.length===2,'phone data');assert.equal(phone.prompts.length,0);
     });
     await t.test('PC to phone and phone to PC additions',async()=>{
       pc.edit('snapshots',[...pc.data().snapshots,record('08:20',140,130)]);
