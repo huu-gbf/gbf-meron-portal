@@ -6,6 +6,7 @@ main.db. Provision MEMBER_SYNC_HMAC_SECRET through Secret Manager before deploy.
 import functools
 import hashlib
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -15,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 import firebase_admin
-from firebase_admin import auth, firestore
+from firebase_admin import auth, exceptions as firebase_exceptions, firestore
 from fastapi import Depends, FastAPI, Path, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -26,6 +27,18 @@ PROJECT = "gbf-meron-portal"
 APP_NAME = "member-sync-admin"
 ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _app_lock = threading.Lock()
+_auth_log = logging.getLogger(__name__)
+_auth_log_lock = threading.Lock()
+_auth_log_times = {}
+_auth_failure_types = (
+    (auth.ExpiredIdTokenError, "expired_token"),
+    (auth.RevokedIdTokenError, "revoked_token"),
+    (auth.UserDisabledError, "disabled_user"),
+    (auth.CertificateFetchError, "certificate_fetch"),
+    (firebase_exceptions.PermissionDeniedError, "permission_denied"),
+    (firebase_exceptions.UnavailableError, "service_unavailable"),
+    (auth.InvalidIdTokenError, "invalid_token"),
+)
 RequestID = Annotated[str, Path(min_length=32, max_length=32, pattern=r"^[a-f0-9]{32}$")]
 
 
@@ -132,19 +145,47 @@ def consume_quota(store, uid, ip):
     atomic(store, update)
 
 
+def log_auth_rejection(phase, exc):
+    # Fixed fields only: never stringify exceptions, claims or request data.
+    # Suppress repeat categories for 60 seconds per process, with bounded state.
+    # Logging failure must not change the existing authentication response.
+    try:
+        if phase == "claims":
+            reason = "claims_rejected"
+        else:
+            phase = "verify_id_token"
+            reason = next((label for kind, label in _auth_failure_types
+                           if isinstance(exc, kind)), "verification_other")
+        key = (phase, reason)
+        with _auth_log_lock:
+            stamp = time.monotonic()
+            previous = _auth_log_times.get(key)
+            if previous is not None and stamp - previous < 60:
+                return
+            _auth_log_times[key] = stamp
+        _auth_log.warning(
+            '{"event":"member_auth_rejected","phase":"%s","reason":"%s"}',
+            phase, reason)
+    except Exception:
+        pass
+
+
 def authenticated(request: Request):
     header = request.headers.get("authorization", "")
     if not header.startswith("Bearer ") or not 1 <= len(header[7:]) <= 8192:
         raise PairingError(401, "UNAUTHENTICATED")
     verifier = get_member_auth()  # Initialization failure must never fall back.
+    phase = "verify_id_token"
     try:
         claims = verifier(header[7:])
+        phase = "claims"
         uid = claims.get("uid")
         if (not isinstance(uid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", uid)
                 or claims.get("firebase", {}).get("sign_in_provider") != "anonymous"
                 or type(claims.get("exp")) is not int or claims["exp"] <= now_utc().timestamp()):
             raise ValueError("anonymous identity required")
-    except Exception:
+    except Exception as exc:
+        log_auth_rejection(phase, exc)
         raise PairingError(401, "UNAUTHENTICATED") from None
     server_key()  # Fail closed before any persistence when secret is unconfigured.
     store = get_member_firestore()
