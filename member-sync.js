@@ -1164,6 +1164,7 @@
 
   function mount(element) {
     const $ = id => element.querySelector('[data-sync="' + id + '"]');
+    const statusOnly = element.hasAttribute('data-member-sync-status-only');
     let pairing, loading, current, client, showInput = false;
     const render = state => {
       const previousStatus = current?.status;
@@ -1173,6 +1174,12 @@
       }));
       const ready = state.status === 'ready', pending = state.status === 'pending';
       $('status').textContent = state.error ? 'エラー' : ready ? '接続済み' : pending ? '承認待ち' : state.status === 'recovering' ? '確認中' : '未設定';
+      if (statusOnly) {
+        $('notice').textContent = state.requests.length ? '追加申請があります' : '';
+        $('message').textContent = state.message;
+        element.setAttribute('aria-busy', String(state.busy));
+        return;
+      }
       $('choices').hidden = ready || pending || ['denied','recovering'].includes(state.status);
       $('join-form').hidden = $('choices').hidden || !showInput;
       $('add').hidden = !ready;
@@ -1222,14 +1229,16 @@
       catch (error) { render({...current, error: true, message: errorText(error), busy: false}); }
     };
     render({status:'unconfigured', busy:false, message:'', invite:null, requests:[]});
-    $('start').onclick = () => invoke(p => p.start());
-    $('join').onclick = () => { showInput = true; render(current); $('input').focus(); };
-    $('join-form').onsubmit = event => { event.preventDefault(); invoke(p => p.claim($('input').value)); };
-    $('add').onclick = () => invoke(p => p.issue());
-    $('copy').onclick = async () => {
-      try { await navigator.clipboard.writeText($('code').textContent); $('message').textContent = 'コードをコピーしました'; }
-      catch { $('message').textContent = 'コピーできませんでした。コードを選択してコピーしてください'; }
-    };
+    if (!statusOnly) {
+      $('start').onclick = () => invoke(p => p.start());
+      $('join').onclick = () => { showInput = true; render(current); $('input').focus(); };
+      $('join-form').onsubmit = event => { event.preventDefault(); invoke(p => p.claim($('input').value)); };
+      $('add').onclick = () => invoke(p => p.issue());
+      $('copy').onclick = async () => {
+        try { await navigator.clipboard.writeText($('code').textContent); $('message').textContent = 'コードをコピーしました'; }
+        catch { $('message').textContent = 'コピーできませんでした。コードを選択してコピーしてください'; }
+      };
+    }
     document.addEventListener('visibilitychange', () => { if (!document.hidden) pairing?.poll(); });
     root.addEventListener('pagehide', () => pairing?.dispose());
     root.addEventListener('pageshow', () => pairing?.resume());
@@ -1287,6 +1296,7 @@
     }
     listen(scope, 'pagehide', () => { suspended = true; stop(); });
     listen(scope, 'pageshow', () => { suspended = false; start(); });
+    listen(scope, 'member-sync-connection', event => { if (event.detail.ready) start(); });
     listen(scope, 'offline', stop);
     listen(scope, 'online', start);
     listen(document, 'visibilitychange', () => { if (!document.hidden) start(); });

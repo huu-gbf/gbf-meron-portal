@@ -18,3 +18,19 @@
 .member-sync-request { border-top: 1px solid var(--card-border); margin-top: 16px; padding-top: 8px; }
 .member-sync-request button { min-width: 96px; }
 .member-sync [data-sync="message"]:empty { display: none; }
+
+/* Portal-specific tokens keep the shared pairing UI consistent with the TOP page. */
+#sec-device-sync {
+  --card-border: rgba(212, 175, 55, .2);
+  --card-bg: rgba(18, 24, 41, .75);
+  --bg-primary: #080b14;
+  --bg-secondary: #121829;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --cyan-primary: #67e8f9;
+  --gold-primary: #d4af37;
+  --gold-light: #fcd34d;
+}
+#sec-device-sync .member-sync-subtitle { display: block; margin: 6px 0 0; color: var(--text-muted); }
+.member-sync-summary { padding: 0 16px; }
+.member-sync-summary a { color: var(--cyan-primary); text-decoration: underline; }

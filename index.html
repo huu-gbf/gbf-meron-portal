@@ -9,6 +9,7 @@
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <!-- Tailwind CSS (Static Built) -->
   <link rel="stylesheet" href="./css/tailwind.min.css">
+  <link rel="stylesheet" href="member-sync.css?v=member-sync-ui2">
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Outfit:wght@400;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
@@ -241,6 +242,35 @@
 
 
 
+      <section id="sec-device-sync" class="scroll-mt-32 pt-4" aria-label="端末同期">
+        <details class="member-sync" data-member-sync>
+          <summary><strong>端末同期</strong> <span class="member-sync-subtitle">PC・スマホ間で共有（編成共有とは別）</span> <span data-sync="status" role="status">未設定</span> <span data-sync="notice" role="status"></span></summary>
+          <div class="member-sync-body">
+            <p class="member-sync-help">速度計算・更新履歴の既読・アーティファクト整理の設定を、PCとスマホで共有できます。</p>
+            <p class="member-sync-help">※団員同士の「編成共有」とは別の機能です。</p>
+            <p class="member-sync-help">すべての同期端末でブラウザデータを削除すると、現在の同期状態を復元できません。同期は最大5台までです（端末の解除は現在できません）。</p>
+            <div data-sync="choices" class="member-sync-actions">
+              <button type="button" data-sync="start" class="member-sync-primary">端末同期を開始</button>
+              <button type="button" data-sync="join">既存の端末と同期</button>
+            </div>
+            <form data-sync="join-form" hidden>
+              <label for="member-sync-code-input">同期コード</label>
+              <input id="member-sync-code-input" data-sync="input" type="text" maxlength="32" placeholder="ABCD-EFGH-JKLM" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+              <button type="submit" class="member-sync-primary">同期を申請</button>
+            </form>
+            <p data-sync="waiting" hidden>既存の端末で承認してください</p>
+            <div data-sync="invite" hidden>
+              <output data-sync="code" class="member-sync-code" aria-label="同期コード"></output>
+              <p>10分間有効 · 新しい端末で入力してください</p>
+              <button type="button" data-sync="copy">コードをコピー</button>
+            </div>
+            <button type="button" data-sync="add" hidden>別の端末を追加</button>
+            <div data-sync="requests"></div>
+            <p data-sync="message" role="status" aria-live="polite"></p>
+          </div>
+        </details>
+      </section>
+
       <!-- =========================================================
            SECTION: 更新履歴
       ========================================================= -->
@@ -265,11 +295,28 @@
                 <span class="text-xl">🔄</span>
                 <h3 class="text-lg font-bold text-white">団内ポータル 更新履歴</h3>
               </div>
-            <span class="text-xs text-slate-400">最終更新: 2026/10/20</span>
+            <span class="text-xs text-slate-400">最終更新: 2026/10/23</span>
           </div>
 
             <!-- Timeline list -->
           <div id="historyTimeline" class="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800 max-h-96 overflow-y-auto pr-2">
+
+            <!-- Log Item 27 -->
+            <div class="relative">
+              <span class="absolute -left-6 top-1.5 w-4 h-4 rounded-full bg-amber-400 border-4 border-slate-950 shadow-md shadow-amber-500/40"></span>
+              <div class="bg-slate-900/70 border border-slate-800/90 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span class="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">2026/10/23</span>
+                  <span class="text-xs font-bold px-2 py-0.5 bg-violet-500/20 text-violet-300 rounded">新機能</span>
+                  <strong class="text-sm font-bold text-white">PC・スマホ間の端末同期に対応</strong>
+                </div>
+                <p class="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/60 mt-2">
+                  速度計算・更新履歴の既読状態・アーティファクト整理の設定を、PCとスマホで共有できるようになりました。<br><br>
+                  端末同期の設定・管理は、TOPページの「端末同期」欄から行えます。<br><br>
+                  ※ 団員同士の「編成共有」とは別の機能です。
+                </p>
+              </div>
+            </div>
 
             <!-- Log Item 26 -->
             <div class="relative">
@@ -2329,7 +2376,7 @@
 
   </script>
   <script src="firebase-config.js"></script>
-  <script src="member-sync.js?v=member-sync-rc1" onload="loadHistoryReadSync()"></script>
+  <script src="member-sync.js?v=member-sync-ui2" onload="loadHistoryReadSync()"></script>
 </body>
 </html>
 
