@@ -47,6 +47,12 @@
           <input id="feedback-target" class="feedback-input" type="text" aria-describedby="feedback-target-count feedback-error" placeholder="例：古戦場 周回効率計算機、団員投稿">
           <span id="feedback-target-count" class="feedback-count">0 / 100</span>
         </div>
+        <div class="feedback-field" id="feedback-dropzone">
+          <label for="feedback-images">スクリーンショット <span class="feedback-muted">任意</span></label>
+          <p id="feedback-image-hint" class="feedback-muted">PNG・JPEG・WebP、最大5枚。1枚5MB・合計20MBまで。画像をここへドロップするか、フォーム内でCtrl+Vで貼り付けできます。</p>
+          <input id="feedback-images" type="file" accept="image/png,image/jpeg,image/webp" multiple aria-describedby="feedback-image-hint">
+          <div id="feedback-previews" class="feedback-images" aria-live="polite"></div>
+        </div>
         <p id="feedback-error" class="feedback-error" role="alert" hidden></p>
         <p id="feedback-status" class="feedback-status" role="status" aria-live="polite"></p>
         <button id="feedback-submit" class="feedback-button feedback-submit" type="submit">送信する</button>

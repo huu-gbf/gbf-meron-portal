@@ -51,3 +51,12 @@ textarea.feedback-input { min-height: 240px; resize: vertical; }
   .feedback-actions .feedback-button { flex: 1 1 auto; }
   .feedback-admin-toolbar > * { max-width: 100%; }
 }
+/* Screenshot selection and private administrator preview. */
+#feedback-dropzone { border: 1px dashed #888; border-radius: 10px; padding: 16px; }
+#feedback-images { max-width: 100%; }
+.feedback-images { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.feedback-images > div { display: grid; gap: 6px; }
+.feedback-images img { width: 130px; height: 110px; object-fit: contain; background: #222; border-radius: 6px; }
+.feedback-image-dialog { max-width: 95vw; max-height: 95vh; }
+.feedback-image-dialog::backdrop { background: #000b; }
+.feedback-image-dialog img { display: block; max-width: 85vw; max-height: 78vh; object-fit: contain; }

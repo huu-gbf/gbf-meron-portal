@@ -14,5 +14,6 @@ RUN playwright install --with-deps chromium
 
 COPY main.py .
 COPY member_sync.py .
+COPY portal_feedback.py .
 
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]

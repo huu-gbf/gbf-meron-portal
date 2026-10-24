@@ -64,6 +64,45 @@
     let unsubscribe = null;
     const entries = new Map();
     const deleting = new Set();
+    const imageUrls = new Set();
+    let imageDialog;
+    function clearImages() {
+      imageDialog?.remove(); imageDialog = null;
+      imageUrls.forEach(url => scope.URL.revokeObjectURL(url)); imageUrls.clear();
+    }
+    async function showImages(snapshot, container) {
+      const epoch = generation;
+      const attachments = snapshot.data().attachments;
+      for (let index = 0; index < Math.min(attachments.length, 5); index++) {
+        if (!current(epoch)) return;
+        const button = makeText('button', 'feedback-button feedback-button-secondary', `画像${index + 1}を読込中…`);
+        button.type = 'button'; button.disabled = true; container.append(button);
+        try {
+          const token = await auth.currentUser.getIdToken();
+          if (!current(epoch)) return;
+          const response = await shared.apiRequest(scope, `/${encodeURIComponent(snapshot.id)}/images/${index}`,
+            {headers: {Authorization: 'Bearer ' + token}});
+          const blob = await response.blob();
+          if (!current(epoch) || !container.isConnected) return;
+          const url = scope.URL.createObjectURL(blob); imageUrls.add(url);
+          const img = document.createElement('img'); img.src = url; img.alt = `添付画像${index + 1}（クリックで拡大）`;
+          button.replaceChildren(img); button.disabled = false;
+          button.addEventListener('click', () => {
+            if (!permitted()) return;
+            imageDialog?.remove();
+            imageDialog = document.createElement('dialog'); imageDialog.className = 'feedback-image-dialog';
+            const full = document.createElement('img'); full.src = url; full.alt = `添付画像${index + 1}`;
+            const close = makeText('button', 'feedback-button', '閉じる'); close.type = 'button';
+            close.addEventListener('click', () => imageDialog.close());
+            imageDialog.append(full, close); document.body.append(imageDialog); imageDialog.showModal();
+          });
+        } catch (error) {
+          if (!current(epoch)) return;
+          if (authorizationFailure(error)) { expired(); return; }
+          button.textContent = `画像${index + 1}を表示できません。再読み込みしてください。`;
+        }
+      }
+    }
 
     function status(message, error) {
       ui.status.textContent = message;
@@ -83,6 +122,7 @@
       ui.logout.disabled = logoutBusy;
     }
     function clearPrivate() {
+      clearImages();
       generation++;
       requestNumber++;
       activeUser = null;
@@ -142,6 +182,10 @@
       card.append(actions);
       entries.set(snapshot.id, entry);
       ui.list.append(card);
+      if (Array.isArray(data.attachments) && data.attachments.length) {
+        const images = document.createElement('div'); images.className = 'feedback-images';
+        card.insertBefore(images, actions); showImages(snapshot, images);
+      }
     }
     async function load(firstPage) {
       if (!permitted() || loadBusy || deleting.size || (!firstPage && !hasMore)) return;
@@ -157,6 +201,7 @@
         const result = await query.get({ source: 'server' });
         if (!current(epoch) || request !== requestNumber) return;
         if (firstPage) {
+          clearImages();
           entries.clear();
           ui.list.replaceChildren();
         }
@@ -189,7 +234,11 @@
       controls();
       status('投稿を削除しています…');
       try {
-        await entry.snapshot.ref.delete();
+        if (Array.isArray(entry.snapshot.data().attachments) && entry.snapshot.data().attachments.length) {
+          const token = await auth.currentUser.getIdToken();
+          if (!current(epoch)) return;
+          await shared.apiRequest(scope, '/' + encodeURIComponent(id), {method: 'DELETE', headers: {Authorization: 'Bearer ' + token}});
+        } else await entry.snapshot.ref.delete();
         if (!current(epoch) || entries.get(id) !== entry) return;
         entries.delete(id);
         entry.card.remove();
@@ -198,7 +247,9 @@
       } catch (error) {
         if (!current(epoch) || entries.get(id) !== entry) return;
         if (authorizationFailure(error)) expired();
-        else status('削除できませんでした。投稿は残っています。再度お試しください。', true);
+        else status(entry.snapshot.data().attachments?.length
+          ? '削除を完了できませんでした。画像の後処理が残っている可能性があります。再度お試しください。'
+          : '削除できませんでした。投稿は残っています。再度お試しください。', true);
       } finally {
         if (current(epoch)) {
           deleting.delete(id);

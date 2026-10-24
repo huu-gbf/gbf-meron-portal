@@ -7592,6 +7592,18 @@ def formation_storage_bucket():
     return cloud_storage.Client(project="gbf-meron-portal").bucket(FORMATION_STORAGE_BUCKET)
 
 
+# Screenshot reports reuse the existing server-side bucket and admin identity.
+try:
+    from .portal_feedback import register as register_portal_feedback
+except ImportError:
+    from portal_feedback import register as register_portal_feedback
+from firebase_admin import auth as portal_feedback_auth
+register_portal_feedback(app, lambda: get_portal_db(), lambda: formation_storage_bucket(),
+                        check_portal_origin, require_portal_writes_enabled,
+                        lambda token: portal_feedback_auth.verify_id_token(
+                            token, app=get_fcm_app(), check_revoked=True))
+
+
 def upload_formation_images(post_id: str, images: list[str]) -> tuple[list[str], list[str]]:
     if not images:
         return [], []

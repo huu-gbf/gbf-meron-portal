@@ -6,6 +6,29 @@
   const LIMITS = Object.freeze({message: 4000, name: 40, target: 100});
   const connections = new WeakMap();
   const count = value => Array.from(value).length;
+  const IMAGE_LIMITS = Object.freeze({count: 5, file: 5 * 1024 * 1024, total: 20 * 1024 * 1024});
+  function validateImages(files) {
+    if (files.length > IMAGE_LIMITS.count) throw new Error('画像は最大5枚です。');
+    let total = 0;
+    for (const file of files) {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('PNG・JPEG・WebPの画像を選んでください。');
+      if (!file.size || file.size > IMAGE_LIMITS.file) throw new Error('画像は1枚5MB以内にしてください。');
+      total += file.size;
+    }
+    if (total > IMAGE_LIMITS.total) throw new Error('画像の合計は20MB以内にしてください。');
+  }
+  function apiUrl(scope, path = '') {
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(scope.location?.hostname);
+    const base = local ? scope.PORTAL_FEEDBACK_LOCAL?.apiBaseUrl : scope.API_BASE_URL;
+    const url = new URL(base);
+    if (local ? !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) : url.protocol !== 'https:') throw Error('Invalid API configuration');
+    return url.href.replace(/\/$/, '') + '/api/portal-feedback' + path;
+  }
+  async function apiRequest(scope, path, options = {}) {
+    const response = await scope.fetch(apiUrl(scope, path), {...options, credentials: 'omit', cache: 'no-store'});
+    if (!response.ok) throw Object.assign(Error('Request failed'), {code: response.status === 403 ? 'permission-denied' : 'request-failed'});
+    return response;
+  }
   function inputError(field, message) { return Object.assign(new Error(message), {field}); }
   function normalizeFeedback(input) {
     if (!input || !['bug', 'request', 'other'].includes(input.type)) {
@@ -61,7 +84,13 @@
       async submit(input) {
         if (state.status === 'sending' || state.status === 'success') return false;
         let data;
-        try { data = normalizeFeedback(input); }
+        try {
+          data = normalizeFeedback(input);
+          if (input.attachments?.length) {
+            validateImages(input.attachments.map(item => item.file));
+            data = {...data, attachments: input.attachments};
+          }
+        }
         catch (error) { publish({status: 'error', field: error.field, message: error.message}); return false; }
         if (!isOnline()) {
           publish({status: 'error', message: '通信できません。接続を確認して、もう一度送信してください。'});
@@ -72,7 +101,7 @@
         publish({status: 'sending'});
         try {
           const signature = JSON.stringify(data);
-          if (!attempt || attempt.signature !== signature) attempt = {id: makeId(), signature, data};
+          if (!attempt || attempt.signature !== signature) attempt = {id: makeId(data), signature, data};
           await write(attempt.id, attempt.data);
           publish({status: 'success'});
           return true;
@@ -95,6 +124,33 @@
       [field, doc.getElementById('feedback-' + field)]));
     const button = doc.getElementById('feedback-submit'), status = doc.getElementById('feedback-status');
     const error = doc.getElementById('feedback-error'), again = doc.getElementById('feedback-new');
+    const picker = doc.getElementById('feedback-images'), previews = doc.getElementById('feedback-previews');
+    const dropzone = doc.getElementById('feedback-dropzone');
+    let selected = [], imageKey = 0;
+    const releaseImages = () => { selected.forEach(item => scope.URL.revokeObjectURL(item.url)); selected = []; previews?.replaceChildren(); };
+    function renderImages() {
+      previews.replaceChildren();
+      selected.forEach(item => {
+        const card = doc.createElement('div'), img = doc.createElement('img'), remove = doc.createElement('button');
+        img.src = item.url; img.alt = item.file.name || '添付画像';
+        remove.type = 'button'; remove.className = 'feedback-button feedback-button-secondary';
+        remove.textContent = '削除'; remove.setAttribute('aria-label', img.alt + 'を削除');
+        remove.addEventListener('click', () => {
+          if (['sending', 'success'].includes(sender.snapshot().status)) return;
+          selected = selected.filter(value => value !== item); scope.URL.revokeObjectURL(item.url); renderImages();
+        });
+        card.append(img, remove); previews.append(card);
+      });
+    }
+    function addImages(files) {
+      if (['sending', 'success'].includes(sender.snapshot().status)) return;
+      try {
+        const incoming = Array.from(files);
+        validateImages([...selected.map(item => item.file), ...incoming]);
+        selected.push(...incoming.map(file => ({file, key: ++imageKey, url: scope.URL.createObjectURL(file)})));
+        renderImages(); error.hidden = true; error.textContent = '';
+      } catch (failure) { error.hidden = false; error.textContent = failure.message; }
+    }
     let timer, composing = false, imeEnter = false;
     const counters = () => {
       for (const field of ['message', 'name', 'target']) {
@@ -102,8 +158,20 @@
       }
     };
     const sender = createSubmission({
-      makeId: () => connection(scope).db.collection(COLLECTION).doc().id,
-      write(id, data) {
+      makeId: data => data.attachments ? scope.crypto.randomUUID() : connection(scope).db.collection(COLLECTION).doc().id,
+      async write(id, data) {
+        if (data.attachments) {
+          const attachments = await Promise.all(data.attachments.map(item => new Promise((resolve, reject) => {
+            const reader = new scope.FileReader();
+            reader.onerror = reject;
+            reader.onload = () => resolve({contentType: item.file.type, data: reader.result.split(',')[1]});
+            reader.readAsDataURL(item.file);
+          })));
+          const {schemaVersion, attachments: ignored, ...fields} = data;
+          await apiRequest(scope, '', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({...fields, requestId: id, attachments})});
+          return;
+        }
         const {db} = connection(scope);
         return db.collection(COLLECTION).doc(id).set({...data,
           createdAt: scope.firebase.firestore.FieldValue.serverTimestamp()});
@@ -118,6 +186,8 @@
           element.removeAttribute('aria-invalid');
         }
         button.disabled = locked;
+        if (picker) picker.disabled = locked;
+        previews?.querySelectorAll('button').forEach(item => { item.disabled = locked; });
         button.textContent = state.status === 'sending' ? '送信中…' : '送信する';
         again.hidden = state.status !== 'success';
         form.setAttribute('aria-busy', String(state.status === 'sending'));
@@ -125,12 +195,19 @@
         error.hidden = state.status !== 'error';
         status.textContent = state.status === 'success' ? '送信しました。ご報告ありがとうございます。'
           : state.status === 'sending' ? '送信中…' : '';
-        if (state.field) fields[state.field].setAttribute('aria-invalid', 'true');
+        if (state.field && fields[state.field]) fields[state.field].setAttribute('aria-invalid', 'true');
         if (state.status === 'sending') timer = scope.setTimeout(() => {
           status.textContent = '通信を待っています。接続が戻ると送信を続けます。入力内容は保持しています。';
         }, 15000);
       }
     });
+    picker?.addEventListener('change', () => { addImages(picker.files); picker.value = ''; });
+    form.addEventListener('paste', event => {
+      const files = Array.from(event.clipboardData?.items || []).filter(item => item.kind === 'file').map(item => item.getAsFile()).filter(Boolean);
+      if (files.length) { event.preventDefault(); addImages(files); }
+    });
+    dropzone?.addEventListener('dragover', event => { event.preventDefault(); });
+    dropzone?.addEventListener('drop', event => { event.preventDefault(); addImages(event.dataTransfer.files); });
     form.addEventListener('input', event => {
       counters();
       const state = sender.snapshot();
@@ -154,11 +231,11 @@
     form.addEventListener('submit', event => {
       event.preventDefault();
       if (composing || imeEnter || event.isComposing) return;
-      sender.submit(Object.fromEntries(Object.entries(fields).map(([field, element]) => [field, element.value])));
+      sender.submit({...Object.fromEntries(Object.entries(fields).map(([field, element]) => [field, element.value])), attachments: [...selected]});
     });
     again.addEventListener('click', () => {
       if (!sender.reset()) return;
-      form.reset(); counters(); fields.type.focus();
+      releaseImages(); form.reset(); counters(); fields.type.focus();
     });
     scope.addEventListener('beforeunload', event => {
       if (sender.snapshot().status === 'sending') { event.preventDefault(); event.returnValue = ''; }
@@ -167,7 +244,7 @@
     return sender;
   }
   const api = Object.freeze({COLLECTION, ADMIN_UID, LIMITS, count, normalizeFeedback,
-    connection, createSubmission, mountPublic});
+    connection, createSubmission, mountPublic, IMAGE_LIMITS, validateImages, apiRequest});
   if (typeof module === 'object' && module.exports) module.exports = api;
   else {
     root.PortalFeedback = api;
