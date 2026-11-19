@@ -11,31 +11,31 @@
   const validDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v+'T00:00:00Z')) && new Date(v+'T00:00:00Z').toISOString().slice(0,10) === v;
   function validData(d) {
     return d && d.schemaVersion === 1 && validDate(d.eventDate) && Object.hasOwn(days,d.dayType) && safeScore(d.score12)
+      && (!Object.hasOwn(d,'score7') || (safeScore(d.score7) && d.score7 < d.score12))
       && (d.earlyAvgSpeed == null || safeEarlySpeed(d.earlyAvgSpeed))
 
       && (d.score18 === null || (safeScore(d.score18) && d.score18 > d.score12))
       && (d.score20 === null || (d.score18 !== null && safeScore(d.score20) && d.score20 > d.score18))
       && d.updatedAt && typeof d.updatedAt.toDate === 'function';
   }
+  function score7FromData(d) {
+    if (!d) return null;
+    if (Object.hasOwn(d,'score7')) return d.score7;
+    return d.earlyAvgSpeed == null ? null : d.score12 - d.earlyAvgSpeed * 50000;
+  }
+  function morningSpeed(score7, score12) {
+    return safeScore(score7) && safeScore(score12) && score7 < score12 ? (score12 - score7) / 5 : null;
+  }
+  function showDraftSpeed(speedRaw) {
+    $('editEarlyAvgSpeed').value = speedRaw === null ? ''
+      : `${(speedRaw / 10000).toLocaleString(undefined, {maximumFractionDigits: 0})} 万/h （約${(speedRaw / 100000000).toFixed(2)}億/h）`;
+  }
   function fillDraft() {
     $('editDate').value=latest?.eventDate||''; $('editDay').value=latest?.dayType||'weekday';
-    const s12 = latest?.score12;
-    const earlyAvg = latest?.earlyAvgSpeed;
-    let s7 = null;
-    if (s12 != null && earlyAvg != null) {
-      s7 = s12 - earlyAvg * 50000;
-    }
-    $('edit7').value = s7 != null && s7 >= 0 ? String(s7) : '';
+    const s7 = score7FromData(latest);
+    $('edit7').value = safeScore(s7) ? String(s7) : '';
     for(const hour of ['12','18','20']) $('edit'+hour).value=latest?.['score'+hour] == null ? '' : String(latest['score'+hour]);
-
-    if (s7 != null && s12 != null && s12 > s7) {
-      const speedRaw = (s12 - s7) / 5;
-      const speedMan = speedRaw / 10000;
-      const speedOku = speedRaw / 100000000;
-      $('editEarlyAvgSpeed').value = `${speedMan.toLocaleString(undefined, {maximumFractionDigits: 0})} 万/h （約${speedOku.toFixed(2)}億/h）`;
-    } else {
-      $('editEarlyAvgSpeed').value = '';
-    }
+    showDraftSpeed(morningSpeed(s7, latest?.score12));
     dirty=false;
   }
   function buttons() {
@@ -44,16 +44,9 @@
     for(const element of $('publishForm').elements) if(element.tagName!=='BUTTON') element.disabled=saving;
   }
   function readDraft() {
-    const raw7 = $('edit7').value.trim();
-    const raw12 = $('edit12').value.trim();
-    const s7 = parseNumber(raw7);
-    const s12 = parseNumber(raw12);
-    let earlyAvgSpeed = null;
-    if (raw7 !== '' && raw12 !== '' && !isNaN(s7) && !isNaN(s12) && s12 > s7) {
-      earlyAvgSpeed = ((s12 - s7) / 5) / 10000;
-    }
-    return {schemaVersion:1,eventDate:$('editDate').value,dayType:$('editDay').value,earlyAvgSpeed,
-      score12:s12,score18:$('edit18').value.trim()===''?null:parseNumber($('edit18').value),score20:$('edit20').value.trim()===''?null:parseNumber($('edit20').value),updatedAt:{toDate:()=>new Date()}};
+    return {schemaVersion:1,eventDate:$('editDate').value,dayType:$('editDay').value,
+      score7:parseNumber($('edit7').value),score12:parseNumber($('edit12').value),
+      score18:$('edit18').value.trim()===''?null:parseNumber($('edit18').value),score20:$('edit20').value.trim()===''?null:parseNumber($('edit20').value),updatedAt:{toDate:()=>new Date()}};
   }
   function dropStaleEveningScores(d, previous) {
     if (!previous) return d;
@@ -73,38 +66,25 @@
   function preview() {
     if(!admin||!ready||saving)return;
     dirty=true;
-    const raw7 = $('edit7').value.trim();
-    const raw12 = $('edit12').value.trim();
-    const s7 = parseNumber(raw7);
-    const s12 = parseNumber(raw12);
-    if (raw7 !== '' && raw12 !== '' && !isNaN(s7) && !isNaN(s12) && s12 > s7) {
-      const speedRaw = (s12 - s7) / 5;
-      const speedMan = speedRaw / 10000;
-      const speedOku = speedRaw / 100000000;
-      $('editEarlyAvgSpeed').value = `${speedMan.toLocaleString(undefined, {maximumFractionDigits: 0})} 万/h （約${speedOku.toFixed(2)}億/h）`;
-    } else {
-      $('editEarlyAvgSpeed').value = '';
-    }
     const d=readDraft();
+    const speedRaw=morningSpeed(d.score7,d.score12);
+    showDraftSpeed(speedRaw);
     els.dayType.value=d.dayType; $('sharedDay').textContent=days[d.dayType];
-    for(const hour of ['12','18','20']) {
+    for(const hour of ['7','12','18','20']) {
       const input=$('edit'+hour).value.trim();
       els['score'+hour].value=input;
       $('shared'+hour).textContent=input===''?'未入力':Number.isFinite(d['score'+hour])?formatOku(d['score'+hour]):'入力を確認してください';
     }
-    globalThis.yosenEarlyAvgSpeed=safeEarlySpeed(d.earlyAvgSpeed)?d.earlyAvgSpeed:null;
-    const score7=safeEarlySpeed(d.earlyAvgSpeed)&&Number.isFinite(d.score12)?d.score12-d.earlyAvgSpeed*50000:null;
-    els.score7.value=Number.isSafeInteger(score7)&&score7>=0?String(score7):'';
-    $('shared7').textContent=els.score7.value?formatOku(score7):'未登録';
-    $('sharedEarlyAvgSpeed').textContent=!$('editEarlyAvgSpeed').value.trim()?'未入力':safeEarlySpeed(d.earlyAvgSpeed)?(d.earlyAvgSpeed/10000).toFixed(2)+'億/h':'入力を確認してください';
+    globalThis.yosenEarlyAvgSpeed=speedRaw===null?null:speedRaw/10000;
+    $('sharedEarlyAvgSpeed').textContent=speedRaw===null?'未入力':(speedRaw/100000000).toFixed(2)+'億/h';
     calculate(); document.body.classList.add('shared-ready');
     $('sharedMeta').textContent='未公開の入力値　対象日：'+(d.eventDate||'未入力');
     $('sharedMeta').hidden=false;
-    $('sharedStatus').textContent=!safeScore(d.score12)||!safeEarlySpeed(d.earlyAvgSpeed)?'必要なデータを入力すると予測が表示されます。':'';
+    $('sharedStatus').textContent=speedRaw===null?'必要なデータを入力すると予測が表示されます。':'';
     $('previewNotice').hidden=false;
   }
   function publishedMatches(d, submitted) {
-    return d && submitted && ['schemaVersion','eventDate','dayType','earlyAvgSpeed','score12','score18','score20'].every(key=>d[key]===submitted[key]);
+    return d && submitted && ['schemaVersion','eventDate','dayType','score7','score12','score18','score20'].every(key=>d[key]===submitted[key]);
   }
   function finishPublish() {
     pendingPublish=null;fillDraft();render(latest);
@@ -126,12 +106,13 @@
       return;
     }
     els.dayType.value=d.dayType; $('sharedDay').textContent=days[d.dayType];
-    const score7=d.earlyAvgSpeed == null ? null : d.score12-d.earlyAvgSpeed*50000;
-    els.score7.value=Number.isSafeInteger(score7)&&score7>=0?String(score7):'';
+    const score7=score7FromData(d);
+    els.score7.value=safeScore(score7)?String(score7):'';
     $('shared7').textContent=els.score7.value?formatOku(score7):'未登録';
     for(const hour of ['12','18','20']) { const value=d['score'+hour]; els['score'+hour].value=value===null?'':String(value); $('shared'+hour).textContent=value===null?'未登録':formatOku(value); }
-    globalThis.yosenEarlyAvgSpeed=d.earlyAvgSpeed ?? null;
-    $('sharedEarlyAvgSpeed').textContent=d.earlyAvgSpeed == null ? '未登録' : (d.earlyAvgSpeed/10000).toFixed(2)+'億/h';
+    const earlyAvgSpeed=Object.hasOwn(d,'score7')?morningSpeed(score7,d.score12)/10000:d.earlyAvgSpeed??null;
+    globalThis.yosenEarlyAvgSpeed=earlyAvgSpeed;
+    $('sharedEarlyAvgSpeed').textContent=earlyAvgSpeed == null ? '未登録' : (earlyAvgSpeed/10000).toFixed(2)+'億/h';
     calculate(); document.body.classList.add('shared-ready');
     $('sharedMeta').textContent='対象日：'+d.eventDate.replaceAll('-','/')+'　最終更新：'+new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d.updatedAt.toDate());
     $('sharedMeta').hidden=false; $('sharedStatus').textContent='';
@@ -153,12 +134,12 @@
     const raw12 = $('edit12').value.trim();
     if (!raw7) { $('adminStatus').textContent='7時の累計貢献度を入力してください。'; return; }
     if (!raw12) { $('adminStatus').textContent='12時の累計貢献度を入力してください。'; return; }
-    const s7 = parseNumber(raw7);
-    const s12 = parseNumber(raw12);
+    const d=readDraft();
+    const {score7:s7,score12:s12}=d;
     if (isNaN(s7) || isNaN(s12)) { $('adminStatus').textContent='累計貢献度は正しい数字を入力してください。'; return; }
     if (s12 <= s7) { $('adminStatus').textContent='12時の累計貢献度は7時より大きい値を入力してください。'; return; }
 
-    const d=dropStaleEveningScores(readDraft(), latest);
+    dropStaleEveningScores(d, latest);
     if(!validData(d)){ $('adminStatus').textContent='対象日・開催条件・平均時速・累計を確認してください。12時累計は必須、18時・20時は順に大きい値を入力してください。';return; }
     saving=true;pendingPublish={data:d,confirmed:false};buttons();$('adminStatus').textContent='保存しています…';
     try {
