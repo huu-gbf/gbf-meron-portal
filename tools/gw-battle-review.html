@@ -1967,23 +1967,15 @@ function updateRefMultipliers() {
 
 function setupConditionListeners() {
   document.querySelectorAll('input[name="gw-day"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      state.dayKey = radio.value;
-      state.snapshots = StorageManager.loadSnapshots(state.dayKey);
-      updateDayDescription();
-      saveConditions();
-      if (state.predictDone) runPrediction();
-      renderHistory();
-      drawChart();
-      updateAnalysis();
-      updateRealtimeDisplay();
-      globalThis.onBattleDayChanged?.();
-      updateClearDayLabel();
-    });
+    radio.addEventListener('change', () => globalThis.onBattleDayChanged?.(radio.value));
   });
 
   document.querySelectorAll('input[name="day-type"]').forEach(radio => {
     radio.addEventListener('change', () => {
+      if (!globalThis.canEditBattle?.()) {
+        document.querySelector(`input[name="day-type"][value="${state.dayType}"]`).checked = true;
+        return;
+      }
       state.dayType = radio.value;
       updateDayDescription();
       saveConditions();
@@ -2719,6 +2711,7 @@ function renderHistory() {
     if (c.id !== 'history-empty') container.removeChild(c);
   });
   items.forEach(el => container.appendChild(el));
+  globalThis.updateBattleControls?.();
 }
 
 function calcSpeedBetween(points, idx) {
@@ -2814,8 +2807,8 @@ function renderSnapshotItem(snap, idx, allPoints) {
     <div class="snapshot-header">
       <span class="snapshot-time">🕐 ${snap.time}</span>
       <div class="snapshot-actions">
-        <button class="btn btn-ghost btn-sm" onclick="startEditSnap(${snap.id})">✏️ 編集</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteSnap(${snap.id})">🗑️ 削除</button>
+        <button class="btn btn-ghost btn-sm" onclick="if (canEditBattle()) startEditSnap(${snap.id})">✏️ 編集</button>
+        <button class="btn btn-danger btn-sm" onclick="if (canEditBattle()) deleteSnap(${snap.id})">🗑️ 削除</button>
       </div>
     </div>
     <div class="snapshot-data">
@@ -2845,7 +2838,7 @@ function renderSnapshotItem(snap, idx, allPoints) {
         <input type="text" id="edit-enemy-${snap.id}" value="${snap.enemy != null ? fmt億(snap.enemy, 4).replace('億','') + '億' : ''}" placeholder="例: 301億">
       </div>
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="btn btn-primary" style="flex:1;padding:10px;" onclick="saveEditSnap(${snap.id})">💾 保存</button>
+        <button class="btn btn-primary" style="flex:1;padding:10px;" onclick="if (canEditBattle()) saveEditSnap(${snap.id})">💾 保存</button>
         <button class="btn btn-ghost" style="flex:1;padding:10px;" onclick="cancelEditSnap(${snap.id})">✕ キャンセル</button>
       </div>
       <div class="notice notice-err result-hidden mt4" id="edit-err-${snap.id}"></div>
@@ -3144,10 +3137,12 @@ function init() {
   document.getElementById('snap-time').value = getCurrentTimeStr();
 
   // Event listeners
-  document.getElementById('btn-predict').addEventListener('click', runPrediction);
-  document.getElementById('btn-record').addEventListener('click', recordSnapshot);
-  document.getElementById('btn-clear-day').addEventListener('click', clearDayData);
-  document.getElementById('btn-clear-all').addEventListener('click', clearAllDataSafe);
+  for (const [id, action] of [['btn-predict', runPrediction], ['btn-record', recordSnapshot],
+    ['btn-clear-day', clearDayData], ['btn-clear-all', clearAllDataSafe]]) {
+    document.getElementById(id).addEventListener('click', () => {
+      if (globalThis.canEditBattle?.()) action();
+    });
+  }
   updateClearDayLabel();
 
   // Render from storage
@@ -3189,32 +3184,44 @@ class BattleSync {
     this.io = io;
     this.admin = false;
     this.ready = false;
+    this.confirmed = false;
+    this.appliedSession = null;
     this.epoch = 0;
     this.busy = false;
     this.journal = io.readJournal() || {session: null, queue: [], localOnly: true};
   }
   message(text) { this.io.status(text); }
+  canEdit() {
+    return this.admin && this.confirmed && this.appliedSession === this.session
+      && this.io.session() === this.session;
+  }
+  setConfirmed(confirmed) {
+    this.confirmed = confirmed;
+    this.io.updateControls?.();
+  }
   stop() {
     this.epoch++;
     this.unsubscribe?.(); this.unsubscribe = null; this.ready = false;
+    this.setConfirmed(false);
   }
   async authorize(user, db) {
-    this.stop(); this.db = db; this.admin = user?.uid === BATTLE_ADMIN_UID;
-    if (typeof setReadonlyMode === 'function') setReadonlyMode(!this.admin);
+    this.db = db; this.admin = user?.uid === BATTLE_ADMIN_UID;
+    this.stop();
     await this.connect();
   }
   persist() {
     try { this.io.writeJournal(this.journal); return true; }
-    catch { this.ready = false; this.message('端末キャッシュの保存に失敗しました。データをファイル保存してから再試行してください。'); return false; }
+    catch { this.ready = false; this.setConfirmed(false); this.message('端末キャッシュの保存に失敗しました。データをファイル保存してから再試行してください。'); return false; }
   }
   changed(kind, before, after) {
-    if (this.applying || battleEqual(before, after)) return;
+    if (!this.admin || this.applying || battleEqual(before, after)) return;
     const target = this.io.session();
     if (this.journal.session !== target || this.journal.localOnly) {
       this.stop(); this.journal.localOnly = true; this.persist();
       this.message('端末内に保存しました。当日・選択中の戦目へ接続して共有先を確認してください。');
       return;
     }
+    if (this.appliedSession !== target) return;
     let operation;
     if (kind === 'snapshots') {
       const old = new Map(before.map(s => [s.time, battleRecord(s)]));
@@ -3253,14 +3260,16 @@ class BattleSync {
     this.unsubscribe = this.entries.onSnapshot({includeMetadataChanges: true}, snapshot => {
       if (epoch !== this.epoch) return;
       if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+        if (snapshot.metadata.fromCache) this.setConfirmed(false);
         this.message(session + '：サーバー確認待ち／オフライン。端末キャッシュを表示しています。');
         return;
       }
       try { this.receive(snapshot, epoch); }
-      catch (e) { this.ready = false; this.message('共有データを読み込めません。' + e.message); }
+      catch (e) { this.ready = false; this.setConfirmed(false); this.message('共有データを読み込めません。' + e.message); }
     }, () => {
       if (epoch !== this.epoch) return;
       this.ready = false;
+      this.setConfirmed(false);
       this.message('クラウド同期できません。' + (this.admin ? '端末内に保存しています。接続／再試行を押してください。' : '通信環境を確認してください。'));
     });
   }
@@ -3276,6 +3285,7 @@ class BattleSync {
     }).sort((a,b) => a.time.localeCompare(b.time));
     if (!meta && records.length) throw Error('共有先の基準情報がありません。');
     if (this.journal.queue.length) { this.ready = true; this.flush(); return; }
+    let backedUp = false;
     if (!this.ready) {
       const local = this.io.capture();
       const hasLocal = local.base !== null || local.snapshots.length > 0;
@@ -3292,26 +3302,31 @@ class BattleSync {
           this.stop(); this.message('端末内データを維持しています。共有同期は停止中です。'); return;
         }
         if (!this.io.backup()) throw Error('退避保存に失敗したため読み込みを中止しました。');
+        backedUp = true;
       }
       this.journal = {session: this.session, queue: [], localOnly: false};
       this.switchingDay = false;
       if (!this.persist()) return;
       this.ready = true;
     }
-    if (!meta || this.busy) return;
-    if (this.io.isEditing?.()) {
+    if (this.busy) return;
+    if (!meta) throw Error('共有先の基準情報がありません。接続／再試行を押してください。');
+    if (this.appliedSession === this.session && this.io.isEditing?.()) {
+      this.setConfirmed(true);
       this.message(this.session + '：編集中の入力を保持しています。保存・キャンセル後に共有の更新を表示します。'); return;
     }
     this.applying = true;
-    try { this.io.apply({base: meta.base, conditions: {dayKey: meta.dayKey, dayType: meta.dayType}, snapshots: records}); }
+    try { this.io.apply({base: meta.base, conditions: {dayKey: meta.dayKey, dayType: meta.dayType}, snapshots: records}, backedUp); }
     finally { this.applying = false; }
+    this.appliedSession = this.session;
+    this.setConfirmed(true);
     this.message(this.session + '：同期済み（管理者限定の共有データ）');
   }
   async refresh() {
     if (!this.admin || !this.ready || this.busy || this.journal.queue.length) return;
     const epoch = this.epoch;
     try { const snapshot = await this.entries.get({source: 'server'}); if (epoch === this.epoch) this.receive(snapshot, epoch); }
-    catch { this.message('共有を確認できません。入力内容は端末内で保持しています。'); }
+    catch { if (epoch === this.epoch) { this.setConfirmed(false); this.message('共有を確認できません。入力内容は端末内で保持しています。'); } }
   }
   async initialize(local) {
     if (this.busy) return;
@@ -3366,12 +3381,13 @@ class BattleSync {
       }
     } catch (e) {
       this.ready = false;
+      this.setConfirmed(false);
       this.message('共有同期は未完了です。端末内データを維持しています。' + (e.message || '') + ' 接続／再試行で再送します。');
     } finally { this.busy = false; }
     if (epoch === this.epoch && this.admin && this.ready && !this.journal.queue.length) {
       // Listener events may arrive during the transaction; fetch the acknowledged state once.
       try { const snapshot = await entries.get({source: 'server'}); if (epoch === this.epoch && !this.journal.queue.length) this.receive(snapshot, epoch); }
-      catch { this.message('サーバー確認待ちです。端末内データを表示しています。'); }
+      catch { if (epoch === this.epoch) { this.setConfirmed(false); this.message('サーバー確認待ちです。端末内データを表示しています。'); } }
     }
   }
 }
@@ -3380,8 +3396,15 @@ class BattleSync {
 (() => {
   const $ = id => document.getElementById(id);
   const JOURNAL = 'gw_review_sync_v1', BACKUP = 'gw_review_backup_v1_';
-  const capture = () => ({base: StorageManager.loadBase(), snapshots: StorageManager.loadSnapshots(), conditions: StorageManager.loadConditions() || {dayKey: state.dayKey, dayType: state.dayType, dayDates: state.dayDates}});
-  let journalError = false, baseDraft = false;
+  const capture = () => ({base: StorageManager.loadBase(), snapshots: state.snapshots, conditions: StorageManager.loadConditions() || {dayKey: state.dayKey, dayType: state.dayType, dayDates: state.dayDates}});
+  const saveSelection = StorageManager.saveConditions.bind(StorageManager);
+  const observationInputs = ['snap-own', 'snap-enemy'];
+  let journalError = false, baseDraft = false, selectedDate;
+  const drafts = () => {
+    const values = {};
+    document.querySelectorAll('#sec-base input, #snap-time, #snap-own, #snap-enemy, .snapshot-edit-form:not(.result-hidden) input').forEach(el => { values[el.id] = el.value; });
+    return values;
+  };
 
   const getSessionDate = () => {
     if (state.dayDates[state.dayKey]) return state.dayDates[state.dayKey];
@@ -3394,42 +3417,37 @@ class BattleSync {
         return d.toISOString().slice(0, 10);
       }
     }
-    const inputVal = $('battle-date').value;
-    return /^\d{4}-\d{2}-\d{2}$/.test(inputVal) ? inputVal : battleDateJst();
+    return selectedDate || battleDateJst();
   };
-  const updateDateInput = () => { $('battle-date').value = getSessionDate(); };
+  const updateDateInput = () => { selectedDate = $('battle-date').value = getSessionDate(); };
   updateDateInput();
-
-  const setDayKeyFn = (dayKey) => {
-    if (state.dayKey !== dayKey) {
-      const radio = document.querySelector(`input[name="gw-day"][value="${dayKey}"]`);
-      if (radio) {
-        radio.checked = true;
-        state.dayKey = dayKey;
-        const dayDesc = document.getElementById('day-desc');
-        if (dayDesc) dayDesc.textContent = MODELS[dayKey].label;
-      }
-    }
-  };
 
   const sync = new BattleSync({
     session: () => getSessionDate() + '_' + state.dayKey,
-    setDayKey: setDayKeyFn,
     capture,
     isEditing: () => baseDraft || !!document.querySelector('.snapshot-edit-form:not(.result-hidden)'),
+    updateControls: () => setReadonlyMode(!sync.admin, sync.canEdit()),
     readJournal: () => { try { const raw = localStorage.getItem(JOURNAL); const j = raw ? JSON.parse(raw) : null;
       if (j && (!Array.isArray(j.queue) || typeof j.localOnly !== 'boolean')) throw Error(); return j;
     } catch { journalError = true; return null; } },
     writeJournal: j => { if (journalError) throw Error('保存情報を確認してください'); localStorage.setItem(JOURNAL, JSON.stringify(j)); },
     backup: () => { try {
-      const drafts = {};
-      document.querySelectorAll('#sec-base input, .snapshot-edit-form:not(.result-hidden) input').forEach(el => { drafts[el.id] = el.value; });
-      localStorage.setItem(BACKUP + Date.now() + '_' + Math.random().toString(36).slice(2), JSON.stringify({...capture(), drafts, syncJournal: localStorage.getItem(JOURNAL)})); return true;
+      localStorage.setItem(BACKUP + Date.now() + '_' + Math.random().toString(36).slice(2), JSON.stringify({...capture(), session: sync.appliedSession, drafts: drafts(), syncJournal: localStorage.getItem(JOURNAL)})); return true;
     } catch { return false; } },
     confirm: message => confirm(message),
     status: message => { $('battle-sync-status').textContent = message; },
     timestamp: () => firebase.firestore.FieldValue.serverTimestamp(),
-    apply: data => {
+    apply: (data, backedUp) => {
+      const switching = sync.appliedSession !== sync.session;
+      if (switching && !backedUp) {
+        const base = StorageManager.loadBase();
+        const hasOutgoingData = (base && !battleEqual(base, data.base))
+          || (state.snapshots.length && !battleEqual(state.snapshots, data.snapshots))
+          || sync.io.isEditing() || observationInputs.some(id => $(id).value);
+        if (hasOutgoingData && !sync.io.backup()) {
+          throw Error('退避保存に失敗しました。端末データをファイル保存してから接続／再試行を押してください。');
+        }
+      }
       // Use the existing cache formats; do not round-trip through formatted/rounded inputs.
       localStorage.setItem(StorageManager.KEYS.base, JSON.stringify(data.base));
       if (sync && typeof sync.session === 'string') {
@@ -3442,6 +3460,14 @@ class BattleSync {
       }
       localStorage.setItem(StorageManager.KEYS.conditions, JSON.stringify({...data.conditions, dayDates: state.dayDates}));
       StorageManager.saveSnapshots(data.snapshots, data.conditions.dayKey);
+      if (!battleEqual(StorageManager.loadSnapshots(data.conditions.dayKey), data.snapshots)) {
+        throw Error('観測履歴を端末に保存できませんでした。接続／再試行を押してください。');
+      }
+      if (switching) {
+        baseDraft = false;
+        observationInputs.forEach(id => { $(id).value = ''; setHint('hint-' + id, '', ''); });
+        $('snap-time').value = getCurrentTimeStr();
+      }
       state.enemyContrib12 = state.enemySpeed = state.ownContrib12 = state.ownSpeed = null;
       state.predictDone = false;
       ['enemy-contrib12','enemy-speed','own-contrib12','own-speed'].forEach(id => { $(id).value = ''; });
@@ -3457,6 +3483,9 @@ class BattleSync {
       renderHistory(); drawChart(); updateAnalysis(); updateRealtimeDisplay();
     }
   });
+  globalThis.canEditBattle = () => sync.canEdit();
+  globalThis.updateBattleControls = sync.io.updateControls;
+  globalThis.updateBattleControls();
   for (const [method, load, kind] of [['saveBase','loadBase','base'],['saveSnapshots','loadSnapshots','snapshots'],['saveConditions','loadConditions','conditions']]) {
     const original = StorageManager[method].bind(StorageManager);
     StorageManager[method] = (data, dayKey) => {
@@ -3468,9 +3497,22 @@ class BattleSync {
       if (kind === 'base' && !sync.applying && battleEqual(before, data)) sync.refresh();
     };
   }
-  globalThis.onBattleDayChanged = () => {
-    updateDateInput();
+  const canSwitch = () => {
+    if (!sync.busy && (!sync.journal.queue.length || sync.journal.session !== sync.io.session())) return true;
+    sync.message('共有先を変更する前に、元の共有先 ' + sync.journal.session + ' の送信完了を待つか、接続／再試行で同期してください。');
+    return false;
+  };
+  const saveSelectedConditions = () => saveSelection({ dayKey: state.dayKey, dayType: state.dayType, dayDates: state.dayDates });
+  globalThis.onBattleDayChanged = dayKey => {
+    if (!canSwitch()) {
+      document.querySelector(`input[name="gw-day"][value="${state.dayKey}"]`).checked = true;
+      return;
+    }
     sync.stop();
+    state.dayKey = dayKey;
+    saveSelectedConditions();
+    updateDateInput();
+    updateClearDayLabel();
     sync.switchingDay = true;
     if (sync.db) sync.connect();
   };
@@ -3487,9 +3529,7 @@ class BattleSync {
   // The override is kept for backward compatibility but the button now calls clearAllDataSafe/clearDayData instead.
   $('battle-backup').onclick = () => {
     const saved = {};
-    const drafts = {};
-    document.querySelectorAll('#sec-base input, .snapshot-edit-form:not(.result-hidden) input').forEach(el => { drafts[el.id] = el.value; });
-    saved.currentDrafts = JSON.stringify(drafts);
+    saved.currentDrafts = JSON.stringify(drafts());
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k.startsWith(BACKUP) || k === JOURNAL || Object.values(StorageManager.KEYS).includes(k)) saved[k] = localStorage.getItem(k);
@@ -3508,17 +3548,22 @@ class BattleSync {
     finally { $('battle-password').value = ''; $('battle-sign-in').disabled = false; }
   };
   $('battle-sign-out').onclick = async () => {
-    sync.stop(); sync.admin = false;
+    sync.admin = false; sync.stop();
     try { await auth.signOut(); } catch { sync.message('ログアウトに失敗しました。再試行してください。'); }
   };
   $('battle-connect').onclick = () => sync.connect();
   $('battle-date').onchange = () => {
     const value = $('battle-date').value;
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      state.dayDates[state.dayKey] = value;
-      saveConditions();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !canSwitch()) {
+      updateDateInput();
+      return;
     }
-    sync.stop(); sync.message('共有日を変更しました。接続ボタンで共有先を確認してください。');
+    sync.stop();
+    state.dayDates[state.dayKey] = value;
+    saveSelectedConditions();
+    updateDateInput();
+    sync.switchingDay = false;
+    sync.message('共有日を変更しました。接続ボタンで共有先を確認してください。');
   };
   $('battle-reload').onclick = () => {
     if (sync.busy) { sync.message('送信処理の完了を待ってください。'); return; }
@@ -3529,12 +3574,10 @@ class BattleSync {
     sync.journal = {session: null, queue: [], localOnly: true};
     if (sync.persist()) sync.connect();
   };
-  document.querySelectorAll('input[name="gw-day"]').forEach(radio => radio.addEventListener('click', e => {
-    if (radio.value !== state.dayKey && (sync.busy || sync.journal.queue.length)) {
-      e.preventDefault(); sync.message('戦目の切り替え前に未同期入力を同期するか、退避して共有を読み直してください。');
-    }
-  }, true));
-  addEventListener('offline', () => sync.message('オフライン：端末内に保存しています。共有同期は未完了です。'));
+  addEventListener('offline', () => {
+    sync.setConfirmed(false);
+    sync.message('オフライン：端末内に保存しています。共有同期は未完了です。');
+  });
   addEventListener('online', () => { if (sync.admin) sync.connect(); });
   setInterval(() => {
     if (!$('battle-date').value) updateDateInput();
@@ -3558,7 +3601,7 @@ class BattleSync {
   else startAuth();
 })();
 
-function setReadonlyMode(isReadonly) {
+function setReadonlyMode(isReadonly, canEdit) {
   const disableSelectors = [
     'input[name="day-type"]',
     '#enemy-contrib12',
@@ -3571,17 +3614,16 @@ function setReadonlyMode(isReadonly) {
     '#btn-predict',
     '#btn-record',
     '#btn-clear-day',
-    '#btn-clear-all'
+    '#btn-clear-all',
+    '.snapshot-actions button',
+    '.snapshot-edit-form input',
+    '.snapshot-edit-form button'
   ];
 
   disableSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => {
-      el.disabled = isReadonly;
-      if (isReadonly) {
-        el.classList.add('readonly-mode');
-      } else {
-        el.classList.remove('readonly-mode');
-      }
+      el.disabled = !canEdit;
+      el.classList.toggle('readonly-mode', !canEdit);
     });
   });
 
