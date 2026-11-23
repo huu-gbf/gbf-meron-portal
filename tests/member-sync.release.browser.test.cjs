@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
 const ORIGIN = 'http://127.0.0.1:18766';
-const HISTORY_ID = '2026/10/23|PC・スマホ間の端末同期に対応';
+const HISTORY_ID = '2026/11/24|古戦場 周回効率・時速計算ツールを改善';
 const SPEED = ORIGIN + '/speed-calculator-folder/speed-calculator.html';
 const waitStatus = page => page.waitForFunction(() => document.querySelector('[data-sync="status"]')?.textContent.includes('接続済み'));
 const uid = page => page.evaluate(() => firebase.app('member-sync').auth().currentUser?.uid);
@@ -127,8 +127,9 @@ test('release: pairing persists across speed, portal and Artifact on PC/mobile',
         assert.equal(await page.evaluate(()=>getLatestHistoryId()),HISTORY_ID);
         const ids=await page.locator('#historyTimeline > div').evaluateAll(items=>items.map(item=>item.querySelector('span.font-mono').textContent.trim()+'|'+item.querySelector('strong').textContent.trim()));
         assert.equal(ids.filter(id=>id===HISTORY_ID).length,1);
-        assert.equal(ids[1],'2026/10/20|不具合・要望フォームを追加');
-        assert((await page.locator('#historyTimeline > :first-child p').textContent()).includes('速度計算・更新履歴の既読状態・アーティファクト整理の設定を、PCとスマホで共有できるようになりました。'));
+        assert.deepEqual(ids.slice(0,3),[HISTORY_ID,'2026/10/23|PC・スマホ間の端末同期に対応',
+          '2026/10/20|不具合・要望フォームを追加']);
+        assert((await page.locator('#historyTimeline > :nth-child(2) p').textContent()).includes('速度計算・更新履歴の既読状態・アーティファクト整理の設定を、PCとスマホで共有できるようになりました。'));
         assert.equal(await page.locator('#historyNewBadge').isVisible(),true);
       }
       await pc.waitForFunction(expected => firebase.auth().currentUser?.uid===expected,adminUid);
