@@ -39,8 +39,14 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
   // Pin the model and the operations outside this change.
   const normalize=s=>s.replace(/\r\n/g,'\n');
   const before=normalize(previous),after=normalize(html);
-  const modelStart=before.indexOf('const MODELS ='), modelEnd=before.indexOf('// Historical error range');
-  assert.equal(after.slice(after.indexOf('const MODELS ='),after.indexOf('// Historical error range')),before.slice(modelStart,modelEnd));
+  const coefficients = source => {
+    const start = source.indexOf('const MODELS =');
+    const end = source.indexOf('// Historical error range', start);
+    return new Function(source.slice(start, end) + ';return {models:MODELS, blocks:TIME_BLOCKS}')();
+  };
+  const previousModel = coefficients(before);
+  previousModel.models.day3.weekend.provisional = false;
+  assert.deepEqual(coefficients(after), previousModel);
   for(const name of ['calcPrediction','recordSnapshot','saveEditSnap','deleteSnap','calcSpeedBetween']) {
     const extract=s=>{const begin=s.indexOf('function '+name+'(');assert.ok(begin >= 0, name);return s.slice(begin,s.indexOf('\n}',begin)+2);};
     assert.equal(extract(after),extract(before),name+' changed');
@@ -49,15 +55,53 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
   const old=model(before),now=model(after);
   for(const day of ['day1','day2','day3','day4'])for(const type of ['weekday','weekend'])for(const m of ['standard','caution']) {
     assert.deepEqual(clone(now.calcPrediction(57300123456,2507151234,day,type,m)),clone(old.calcPrediction(57300123456,2507151234,day,type,m)));
-    assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
+    if (day === 'day1' || day === 'day2') assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
   }
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day1','weekday')),clone({low:95.85000000000001,high:109.33,config:{lowRate:-0.0415,highRate:0.0933,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day2','weekday')),clone({low:86.55,high:101.42,config:{lowRate:-0.1345,highRate:0.0142,sameConditionCount:4,rangeSourceCount:4,rangeSourceLabel:'4開催',rangeSourceNote:''}}));
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day2','weekend')),clone({low:86.55,high:101.42,config:{lowRate:-0.1345,highRate:0.0142,sameConditionCount:1,rangeSourceCount:5,rangeSourceLabel:'現行仕様の2戦目 5開催',rangeSourceNote:''}}));
-  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day3','weekday')),clone({low:98.14,high:104.34,config:{lowRate:-0.0186,highRate:0.0434,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
-  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day3','weekend')),clone({low:98.14,high:104.34,config:{lowRate:-0.0186,highRate:0.0434,sameConditionCount:1,rangeSourceCount:4,rangeSourceLabel:'現行仕様の3戦目 4開催',rangeSourceNote:''}}));
-  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day4','weekday')),clone({low:90.35,high:101.81,config:{lowRate:-0.0965,highRate:0.0181,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
-  assert.deepEqual(clone(now.calcReferenceRange(0,100,'day4','weekend')),clone({low:94.97,high:101.77000000000001,config:{lowRate:-0.0503,highRate:0.0177,sameConditionCount:2,rangeSourceCount:2,rangeSourceLabel:'2開催',rangeSourceNote:''}}));
+});
+
+test('day 3 and 4 reference ranges follow complete JST round 80–84 observations', () => {
+  // Sums of the 15 morning and 36 afternoon hourly rates (万/h), in round order.
+  // The round 80 day 3 afternoon is incomplete (15:40–16:00).
+  const samples = {
+    day3: [
+      ['2025-11-26', 4694907, null],
+      ['2026-01-26', 6155067, 20421659], ['2026-04-11', 8869921, 25801532],
+      ['2026-06-26', 8460178, 26404260], ['2026-09-26', 8932267, 28614289],
+    ],
+    day4: [
+      ['2025-11-27', 5650361, 14120119], ['2026-01-27', 7585672, 19617249],
+      ['2026-04-12', 9744768, 24891518], ['2026-06-27', 10949189, 26099855],
+      ['2026-09-27', 11288463, 25905111],
+    ],
+  };
+  const weightedHours = {day3:{weekday:15.90,weekend:14.65}, day4:{weekday:12.70,weekend:12.55}};
+  const source = html.slice(html.indexOf('const MODELS'), html.indexOf('const StorageManager'));
+  const {range, models} = new Function(source + ';return {range:calcReferenceRange,models:MODELS}')();
+  for (const [day, rows] of Object.entries(samples)) {
+    const errors = {weekday:[], weekend:[]};
+    for (const [date, morning, afternoon] of rows) {
+      if (afternoon === null) continue;
+      const weekday = new Date(date + 'T00:00:00Z').getUTCDay();
+      const type = weekday === 0 || weekday === 6 ? 'weekend' : 'weekday';
+      const predicted = morning / 15 * weightedHours[day][type];
+      errors[type].push((afternoon / 3) / predicted - 1);
+    }
+    for (const [type, rates] of Object.entries(errors)) {
+      const low = Math.round(10000 * Math.min(...rates)) / 10000;
+      const high = Math.round(10000 * Math.max(...rates)) / 10000;
+      const {config, low: lower, high: upper} = range(100e8, 250e8, day, type);
+      assert.deepEqual([config.lowRate, config.highRate], [low, high]);
+      assert.deepEqual([config.sameConditionCount, config.rangeSourceCount], [rates.length, rates.length]);
+      assert.equal(config.rangeSourceLabel, rates.length + '開催');
+      assert.equal(Math.round(lower), Math.round(100e8 + 250e8 * (1 + low)));
+      assert.equal(Math.round(upper), Math.round(100e8 + 250e8 * (1 + high)));
+    }
+    assert.equal(models[day].weekend.provisional, false);
+  }
+  assert.equal(models.day2.weekend.provisional, true);
 });
 
 test('decimal inputs, speed units and exact safe-integer boundaries', () => {

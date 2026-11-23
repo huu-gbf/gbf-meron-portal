@@ -1162,7 +1162,7 @@ input.error {
 
     <div class="help-text mt8">
       📌 <strong>警戒予測について：</strong>現在環境に近い直近の第80〜83回の実績を参考にした警戒用予測です。統計的な上限値ではなく、過去の強いケースより少し安全側に置いています。相手が現在遅い場合でも下げません。<br><br>
-      📌 <strong>予測精度について：</strong>過去データでは良好な結果を確認していますが、現行仕様（第80回以降）の開催数が少ないため精度は参考値です。特に2・3戦目の土日祝は1開催のみの暫定モデルです。<br><br>
+      📌 <strong>予測精度について：</strong>過去データでは良好な結果を確認していますが、現行仕様（第80回以降）の開催数が少ないため精度は参考値です。特に2戦目の土日祝は1開催のみの暫定モデルです。<br><br>
       📌 参考レンジについて：現在環境に近い直近の第80〜84回を中心に、12時時点の標準予測と実際の最終結果にどのくらい差が出たかをもとにした参考範囲です。標準予測が過去にどの程度上振れ・下振れしたかを見るための目安であり、今回も必ずこの範囲に収まるという意味ではありません。
     </div>
   </section>
@@ -1383,7 +1383,7 @@ const MODELS = {
     weekend: {
       standard: { t12_17: 1.15, t17_19: 1.20, t19_23: 1.30, t23_24: 1.30 },
       caution:  { t12_17: 1.25, t17_19: 1.30, t19_23: 1.45, t23_24: 1.45 },
-      provisional: true
+      provisional: false
     }
   },
   day4: {
@@ -1417,13 +1417,14 @@ const REFERENCE_RANGES = Object.freeze({
     weekday: Object.freeze({ lowRate: -0.1345, highRate: 0.0142, sameConditionCount: 4, rangeSourceCount: 4, rangeSourceLabel: '4開催', rangeSourceNote: '' }),
     weekend: Object.freeze({ lowRate: -0.1345, highRate: 0.0142, sameConditionCount: 1, rangeSourceCount: 5, rangeSourceLabel: '現行仕様の2戦目 5開催', rangeSourceNote: '' })
   }),
+  // Round 84 days 3 and 4 were Sep 26 (Sat) and Sep 27 (Sun), 2026.
   day3: Object.freeze({
-    weekday: Object.freeze({ lowRate: -0.0186, highRate: 0.0434, sameConditionCount: 3, rangeSourceCount: 3, rangeSourceLabel: '3開催', rangeSourceNote: '' }),
-    weekend: Object.freeze({ lowRate: -0.0186, highRate: 0.0434, sameConditionCount: 1, rangeSourceCount: 4, rangeSourceLabel: '現行仕様の3戦目 4開催', rangeSourceNote: '' })
+    weekday: Object.freeze({ lowRate: -0.0186, highRate: 0.0434, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '※第80回は一部データ欠損のため除外' }),
+    weekend: Object.freeze({ lowRate: -0.0072, highRate: 0.0933, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' })
   }),
   day4: Object.freeze({
-    weekday: Object.freeze({ lowRate: -0.0965, highRate: 0.0181, sameConditionCount: 3, rangeSourceCount: 3, rangeSourceLabel: '3開催', rangeSourceNote: '' }),
-    weekend: Object.freeze({ lowRate: -0.0503, highRate: 0.0177, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' })
+    weekday: Object.freeze({ lowRate: -0.0162, highRate: 0.0181, sameConditionCount: 2, rangeSourceCount: 2, rangeSourceLabel: '2開催', rangeSourceNote: '' }),
+    weekend: Object.freeze({ lowRate: -0.0857, highRate: 0.0177, sameConditionCount: 3, rangeSourceCount: 3, rangeSourceLabel: '3開催', rangeSourceNote: '' })
   })
 });
 
@@ -3007,8 +3008,8 @@ function selfTest() {
   const EXPECTED_REFERENCES = {
     day1: { weekday: [-0.0415, 0.0933, 3, 3], weekend: [-0.0540, 0.0441, 2, 2] },
     day2: { weekday: [-0.1345, 0.0142, 4, 4], weekend: [-0.1345, 0.0142, 1, 5] },
-    day3: { weekday: [-0.0186, 0.0434, 3, 3], weekend: [-0.0186, 0.0434, 1, 4] },
-    day4: { weekday: [-0.0965, 0.0181, 3, 3], weekend: [-0.0503, 0.0177, 2, 2] }
+    day3: { weekday: [-0.0186, 0.0434, 2, 2], weekend: [-0.0072, 0.0933, 2, 2] },
+    day4: { weekday: [-0.0162, 0.0181, 2, 2], weekend: [-0.0857, 0.0177, 3, 3] }
   };
   for (const [dayKey, dayTypes] of Object.entries(EXPECTED_REFERENCES)) {
     for (const [dayType, expected] of Object.entries(dayTypes)) {
