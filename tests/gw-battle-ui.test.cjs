@@ -314,6 +314,71 @@ test('integrated battle page: dates, local deletion, sharing and viewer controls
       assert.deepEqual((await cloud(pc, newSession)).map(row => row.id).sort(), ['1300','meta']);
       assert.deepEqual(errors, []); assert.deepEqual(blocked, []);
     });
+    await t.test('5000万/h survives save, reload and a second save; invalid drafts hide predictions', async () => {
+      await pc.locator('#enemy-speed').fill('5000万/h');
+      await pc.locator('#btn-predict').click(); await synced(pc);
+      const base = async () => (await cloud(pc,newSession)).find(row => row.id === 'meta').base;
+      assert.equal((await base()).enemySpeed, 50000000);
+      assert.equal(await pc.locator('#pred-std-enemy').textContent(), '107.2億');
+      await pc.reload(); await synced(pc);
+      assert.equal(await pc.locator('#enemy-speed').inputValue(), '5000');
+      assert.equal(await pc.locator('#pred-std-enemy').textContent(), '107.2億');
+      await pc.locator('#enemy-contrib12').fill('101億');
+      await pc.locator('#btn-predict').click(); await synced(pc);
+      assert.equal((await base()).enemyContrib12, 101e8);
+      assert.equal((await base()).enemySpeed, 50000000);
+      await pc.locator('#enemy-speed').fill('Infinity');
+      await pc.locator('label').filter({has:pc.locator('input[name="day-type"][value="weekend"]')}).click();
+      assert.equal(await pc.locator('#sec-results').isHidden(), true);
+      assert.equal(await pc.evaluate(() => collectChartData().predStd), null);
+      await pc.locator('#enemy-speed').fill('5000');
+      assert.equal(await pc.locator('#pred-std-enemy').textContent(), '108.8億');
+      assert.equal(await pc.evaluate(() => collectChartData().predStd), 10880000000);
+      await pc.locator('#btn-predict').click(); await synced(pc);
+      assert.equal((await base()).enemySpeed, 50000000);
+    });
+    await t.test('editing a record preserves exact points including an unchanged save', async () => {
+      const edit = pc.locator('#history-list .snapshot-actions button').first();
+      const form = pc.locator('.snapshot-edit-form:not(.result-hidden)');
+      for (const amount of ['12345678901', null, '12345678902']) {
+        await edit.click();
+        const field = form.locator('[id^="edit-enemy-"]');
+        if (amount === null) assert.equal(await field.inputValue(), '12345678901');
+        else await field.fill(amount);
+        await form.locator('.btn-primary').click(); await synced(pc);
+        const row = (await cloud(pc,newSession)).find(row => row.id === '1300');
+        assert.equal(row.enemy, Number(amount ?? '12345678901'));
+      }
+    });
+    await t.test('observations share a sorted time axis and comparable speed interval', async () => {
+      const result = await pc.evaluate(() => {
+        const point = (time,own,enemy) => ({time,own:own == null ? null : own*1e8,enemy:enemy*1e8});
+        state.snapshots = [point('07:00',0,0),point('12:00',121,101),point('13:00',141,131)];
+        updateAnalysis();
+        const values = () => ['ana-own-speed','ana-enemy-speed','ana-speed-diff'].map(id => document.getElementById(id).textContent);
+        const all = values(), points = collectChartData().enemy;
+        state.snapshots.splice(2,0,point('12:30',null,115));
+        updateAnalysis(); const partial = values();
+        state.snapshots.push(point('14:00',null,140)); updateAnalysis();
+        return {all,points,partial,last:values(),hidden:document.getElementById('overtake-block').classList.contains('result-hidden')};
+      });
+      assert.deepEqual(result.points.map(p => p.min), [420,720,780]);
+      assert.equal(result.points[1].val, 101e8);
+      assert.deepEqual(result.all.slice(0,2), ['20.00億/h','30.00億/h']);
+      assert.deepEqual(result.partial, result.all);
+      assert.equal(result.last[2], '—'); assert.equal(result.hidden, true);
+    });
+    await t.test('graph renders adjacent safe integers at the storage limit', async () => {
+      const rendered = await pc.evaluate(() => {
+        state.predictDone = false;
+        state.enemyContrib12 = state.ownContrib12 = null;
+        state.snapshots = [{time:'13:00',own:null,enemy:Number.MAX_SAFE_INTEGER - 1},
+          {time:'14:00',own:null,enemy:Number.MAX_SAFE_INTEGER}];
+        drawChart();
+        return document.querySelector('#chart-area polyline')?.getAttribute('points');
+      });
+      assert.match(rendered, /^[-.\d]+,[-.\d]+ [-.\d]+,[-.\d]+$/);
+    });
     console.log('Battle browser artifacts: '+output);
   } finally {
     if (browser) await browser.close();

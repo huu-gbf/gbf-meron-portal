@@ -1445,98 +1445,47 @@ const REFERENCE_RANGES = Object.freeze({
  *   - parseFloat による先頭読み取り（後続文字の無視）は行わない。
  *   - 不正文字が混ざっている場合は null を返す。
  */
-function parseContrib(str) {
-  if (!str || typeof str !== 'string') return null;
-  // スペース除去のみ（カンマは各分岐で除去）
-  str = str.trim().replace(/\s/g, '');
-  if (!str) return null;
-
-  // ---- 数字＋カンマのみを許可する汎用バリデーション ----
-  // 使用可能文字: 数字 0-9、小数点、カンマ、億、万
-  // それ以外が混ざっていれば null
-  if (/[^\d.,億万]/.test(str)) return null;
-
-  // ---- ケース1: 億+万の複合形式 ----
-  // 例: 14億5000万 / 14億5,000万 / 100億2500万
-  const compoundMatch = str.match(/^(\d+(?:\.\d+)?)億(\d[\d,]*)万$/);
-  if (compoundMatch) {
-    const okuPart = parseFloat(compoundMatch[1]);
-    const manPart = parseFloat(compoundMatch[2].replace(/,/g, ''));
-    if (isNaN(okuPart) || isNaN(manPart) || okuPart < 0 || manPart < 0) return null;
-    return Math.round(okuPart * 1e8 + manPart * 1e4);
-  }
-
-  // ---- ケース2: 億のみ ----
-  // 例: 573億 / 14.5億 / 14.50億
-  const okuMatch = str.match(/^(\d+(?:\.\d+)?)億$/);
-  if (okuMatch) {
-    const num = parseFloat(okuMatch[1]);
-    if (isNaN(num) || num < 0) return null;
-    return Math.round(num * 1e8);
-  }
-
-  // ---- ケース3: 万のみ ----
-  // 例: 5000万 / 5,000万
-  const manMatch = str.match(/^(\d[\d,]*)万$/);
-  if (manMatch) {
-    const num = parseFloat(manMatch[1].replace(/,/g, ''));
-    if (isNaN(num) || num < 0) return null;
-    return Math.round(num * 1e4);
-  }
-
-  // ---- ケース4: 純粋な数値（カンマ区切り可） ----
-  // 例: 1450000000 / 1,450,000,000
-  const plainMatch = str.match(/^\d[\d,]*$/);
-  if (plainMatch) {
-    const num = parseFloat(str.replace(/,/g, ''));
-    if (isNaN(num) || num < 0) return null;
-    return Math.round(num);
-  }
-
-  // いずれにも合致しない（小数点のある純粋数値など非対応形式）→ null
-  return null;
+// Scale decimal digits before rounding to avoid binary rounding at half a point.
+function scaledPoints(text, places) {
+  const [whole, fraction = ''] = text.replace(/,/g, '').split('.');
+  const digits = (whole + fraction.slice(0, places).padEnd(places, '0')).replace(/^0+/, '') || '0';
+  if (digits.length > 16) return null;
+  const value = Number(digits);
+  if (value === Number.MAX_SAFE_INTEGER && /[1-9]/.test(fraction.slice(places))) return null;
+  const rounded = value + (fraction.charAt(places) >= '5' ? 1 : 0);
+  return Number.isSafeInteger(rounded) ? rounded : null;
 }
 
-/**
- * Parse a speed (時速) string.
- * Rules:
- *   - If input ends with '億' → treat as ×1e8
- *   - If input < 10000 (no obvious scale) → treat as 億/h (×1e8)
- *   - Otherwise → treat as 万/h (×1e4)
- * This covers: 250715 → 250715万/h, 25.07億 → 25.07億/h
- * Returns absolute value (貢献度/h), or null on error.
- */
+const amountPattern = /^(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d*)?|\.\d+)$/;
+
+function parseContrib(str) {
+  if (typeof str !== 'string') return null;
+  const match = /^([\d,.]+)(?:(億|万)(?:([\d,]+)万)?)?$/.exec(str.trim().replace(/\s*(億|万)\s*/g, '$1'));
+  if (!match) return null;
+  const [, amount, unit, remainder] = match;
+  if (!amountPattern.test(amount) || (!unit && amount.includes('.'))) return null;
+  if (remainder && (unit !== '億' || !amountPattern.test(remainder))) return null;
+  const main = scaledPoints(amount, unit === '億' ? 8 : unit === '万' ? 4 : 0);
+  const extra = remainder ? scaledPoints(remainder, 4) : 0;
+  if (main === null || extra === null) return null;
+  const total = main + extra;
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+// The input label specifies 万/h. Explicit 億 and 万 override the default.
 function parseSpeed(str) {
-  if (!str || typeof str !== 'string') return null;
-  str = str.trim().replace(/\s/g, '').replace(/[\/h時hH]/g, '').trim();
-  if (!str) return null;
+  if (typeof str !== 'string') return null;
+  const match = /^\+?([\d,.]+)\s*(億|万)?\s*(?:\/\s*(?:[hH]|時間?)|[hH時])?$/.exec(str.trim());
+  if (!match || !amountPattern.test(match[1])) return null;
+  const value = scaledPoints(match[1], match[2] === '億' ? 8 : 4);
+  return value > 0 ? value : null;
+}
 
-  // 億/h
-  if (str.includes('億')) {
-    const num = parseFloat(str.replace('億', '').replace(/,/g, ''));
-    if (isNaN(num) || num <= 0) return null;
-    return Math.round(num * 1e8);
-  }
-
-  // 万/h (explicit suffix)
-  if (str.includes('万')) {
-    const num = parseFloat(str.replace('万', '').replace(/,/g, ''));
-    if (isNaN(num) || num <= 0) return null;
-    return Math.round(num * 1e4);
-  }
-
-  // Plain number
-  const stripped = str.replace(/,/g, '');
-  const num = parseFloat(stripped);
-  if (isNaN(num) || num <= 0) return null;
-
-  // Heuristic: if >= 10000, assume 万/h; else assume 億/h
-  if (num >= 10000) {
-    return Math.round(num * 1e4); // 万/h → absolute
-  } else if (num >= 1) {
-    return Math.round(num * 1e8); // 億/h → absolute
-  }
-  return null;
+function speedInput(value) {
+  if (!Number.isSafeInteger(value)) return String(value / 1e4);
+  const digits = String(value).padStart(5, '0');
+  const fraction = digits.slice(-4).replace(/0+$/, '');
+  return digits.slice(0, -4) + (fraction ? '.' + fraction : '');
 }
 
 /**
@@ -1979,7 +1928,7 @@ function setupConditionListeners() {
       state.dayType = radio.value;
       updateDayDescription();
       saveConditions();
-      if (state.predictDone) runPrediction();
+      if (state.enemyContrib12 != null) runPrediction();
     });
   });
 }
@@ -2006,19 +1955,21 @@ function loadConditions() {
    SECTION 10: PREDICTION
    ================================================ */
 
-function runPrediction() {
+function runPrediction(save = true) {
   // Validate inputs
   const enemyContrib12Str = document.getElementById('enemy-contrib12').value;
   const enemySpeedStr = document.getElementById('enemy-speed').value;
   const ownContrib12Str = document.getElementById('own-contrib12').value;
   const ownSpeedStr = document.getElementById('own-speed').value;
 
-  const errEl = document.getElementById('input-error');
-
-  let errors = [];
+  const errors = [];
 
   const ec = parseContrib(enemyContrib12Str);
-  const es = parseSpeed(enemySpeedStr);
+  const saved = StorageManager.loadBase();
+  const readSpeed = (text, original) => Number.isFinite(original) && original > 0
+    && original <= Number.MAX_SAFE_INTEGER && text === speedInput(original)
+    ? original : parseSpeed(text);
+  const es = readSpeed(enemySpeedStr, saved?.enemySpeed);
 
   if (!enemyContrib12Str.trim()) errors.push('相手団の12:00累計貢献度を入力してください');
   else if (ec == null) errors.push('相手団の累計貢献度を正しく解釈できませんでした');
@@ -2027,12 +1978,16 @@ function runPrediction() {
   else if (es == null) errors.push('相手団の平均時速を正しく解釈できませんでした');
 
   const oc = ownContrib12Str.trim() ? parseContrib(ownContrib12Str) : null;
-  const os = ownSpeedStr.trim() ? parseSpeed(ownSpeedStr) : null;
+  const os = ownSpeedStr.trim() ? readSpeed(ownSpeedStr, saved?.ownSpeed) : null;
 
   if (ownContrib12Str.trim() && oc == null) errors.push('自団の累計貢献度を正しく解釈できませんでした');
   if (ownSpeedStr.trim() && os == null) errors.push('自団の平均時速を正しく解釈できませんでした');
 
   if (errors.length > 0) {
+    state.predictDone = false;
+    hide(document.getElementById('sec-results'));
+    hide(document.getElementById('late-night-block'));
+    drawChart();
     showError('input-error', errors.join('<br>'));
     return;
   }
@@ -2047,14 +2002,19 @@ function runPrediction() {
   state.predictDone = true;
 
   // Save base data
-  StorageManager.saveBase({
+  if (save) StorageManager.saveBase({
     enemyContrib12: ec,
     enemySpeed: es,
     ownContrib12: oc,
     ownSpeed: os
   });
 
-  // Calculate predictions
+  renderPrediction();
+  if (save) document.getElementById('sec-results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function renderPrediction() {
+  const {enemyContrib12: ec, enemySpeed: es, ownContrib12: oc, ownSpeed: os} = state;
   const enemyStd = calcPrediction(ec, es, state.dayKey, state.dayType, 'standard');
   const enemyCaut = calcPrediction(ec, es, state.dayKey, state.dayType, 'caution');
 
@@ -2067,7 +2027,7 @@ function runPrediction() {
 
   // Own team
   const ownBlock = document.getElementById('own-pred-block');
-  if (oc && os) {
+  if (oc != null && os != null) {
     const ownStd = calcPrediction(oc, os, state.dayKey, state.dayType, 'standard');
     const ownCaut = calcPrediction(oc, os, state.dayKey, state.dayType, 'caution');
     document.getElementById('pred-std-own').textContent = fmt億(ownStd.total);
@@ -2093,8 +2053,7 @@ function runPrediction() {
   // Update chart
   drawChart();
 
-  // Scroll to results
-  document.getElementById('sec-results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  updateAnalysis();
 }
 
 /* ================================================
@@ -2243,16 +2202,18 @@ function recordSnapshot() {
    SECTION 13: ANALYSIS UPDATE
    ================================================ */
 
+function battlePoints() {
+  const byTime = new Map();
+  if (state.enemyContrib12 != null || state.ownContrib12 != null) {
+    byTime.set('12:00', {time:'12:00', own:state.ownContrib12, enemy:state.enemyContrib12});
+  }
+  for (const observation of state.snapshots) byTime.set(observation.time, observation);
+  return [...byTime.values()].sort((a, b) => a.time.localeCompare(b.time));
+}
+
 function updateAnalysis() {
   const secAnalysis = document.getElementById('sec-analysis');
-
-  // Determine the "virtual first record" at 12:00
-  let allPoints = [];
-
-  if (state.enemyContrib12 != null) {
-    allPoints.push({ time: '12:00', own: state.ownContrib12, enemy: state.enemyContrib12, virtual: true });
-  }
-  allPoints = allPoints.concat(state.snapshots);
+  const allPoints = battlePoints();
 
   // Need at least 2 points and latest must have both own+enemy for speed analysis
   const latest = allPoints.length > 0 ? allPoints[allPoints.length - 1] : null;
@@ -2285,101 +2246,53 @@ function updateAnalysis() {
     leadEl.className = 'lead-indicator';
   }
 
-  // Speed analysis: need 2 points with enemy data
-  const pointsWithEnemy = allPoints.filter(p => p.enemy != null);
+  // Both sides must share the endpoints used for comparison.
+  const shared = allPoints.filter(p => p.enemy != null && p.own != null);
   const ownSpeedEl = document.getElementById('ana-own-speed');
   const enemySpeedEl = document.getElementById('ana-enemy-speed');
   const diffSpeedEl = document.getElementById('ana-speed-diff');
   const overtakeBlock = document.getElementById('overtake-block');
   const overtakeText = document.getElementById('overtake-text');
 
-  if (pointsWithEnemy.length >= 2) {
-    const prev = pointsWithEnemy[pointsWithEnemy.length - 2];
-    const curr = pointsWithEnemy[pointsWithEnemy.length - 1];
-
-    const prevMin = timeStrToMinutes(prev.time);
-    const currMin = timeStrToMinutes(curr.time);
-    const deltaH = (currMin - prevMin) / 60;
-
-    if (deltaH > 0) {
-      let ownSpeed = null, enemySpeed = null;
-
-      // Calculate own speed if both points have own data
-      const pointsWithOwn = allPoints.filter(p => p.own != null);
-      if (pointsWithOwn.length >= 2) {
-        const prevO = pointsWithOwn[pointsWithOwn.length - 2];
-        const currO = pointsWithOwn[pointsWithOwn.length - 1];
-        const prevOMin = timeStrToMinutes(prevO.time);
-        const currOMin = timeStrToMinutes(currO.time);
-        const deltaOH = (currOMin - prevOMin) / 60;
-        if (deltaOH > 0) ownSpeed = (currO.own - prevO.own) / deltaOH;
-      }
-
-      enemySpeed = (curr.enemy - prev.enemy) / deltaH;
-
-      ownSpeedEl.textContent = ownSpeed != null ? fmtSpeed(ownSpeed) : '—';
-      enemySpeedEl.textContent = fmtSpeed(enemySpeed);
-
-      if (ownSpeed != null) {
-        const diff = ownSpeed - enemySpeed;
-        if (Math.abs(diff) < 1e6) {
-          diffSpeedEl.textContent = '同速';
-          diffSpeedEl.className = 'info-val';
-        } else if (diff > 0) {
-          diffSpeedEl.textContent = `自団が${(diff / 1e8).toFixed(2)}億/h速い`;
-          diffSpeedEl.className = 'info-val positive';
-        } else {
-          diffSpeedEl.textContent = `相手団が${(-diff / 1e8).toFixed(2)}億/h速い`;
-          diffSpeedEl.className = 'info-val negative';
-        }
-
-        // Overtake calculation
-        const latestMin = currMin;
-        const remainingH = (24 * 60 - latestMin) / 60;
-
-        if (ownLatest != null && enemyLatest != null) {
-          const leadDiff = ownLatest - enemyLatest;
-
-          if (Math.abs(leadDiff) < 1e6) {
-            // Tied
-            hide(overtakeBlock);
-          } else if (leadDiff < 0 && diff > 0) {
-            // Own is behind but faster
-            const hoursUntil = calcOvertake(-leadDiff, diff);
-            if (hoursUntil && hoursUntil.hoursUntil <= remainingH) {
-              const eta = Math.floor(latestMin / 60 * 60 + latestMin % 60 + hoursUntil.hoursUntil * 60);
-              overtakeText.textContent = `現在ペースでは ${fmtHours(hoursUntil.hoursUntil)} で追いつく見込み`;
-            } else {
-              overtakeText.textContent = `現在ペースでは24時までに追いつきません`;
-            }
-            show(overtakeBlock);
-          } else if (leadDiff > 0 && diff < 0) {
-            // Own is ahead but enemy is faster
-            const hoursUntil = calcOvertake(leadDiff, -diff);
-            if (hoursUntil && hoursUntil.hoursUntil <= remainingH) {
-              overtakeText.textContent = `相手団は現在ペースでは ${fmtHours(hoursUntil.hoursUntil)} で追いつく見込み`;
-            } else {
-              overtakeText.textContent = `相手団は現在ペースでは24時までに追いつきません`;
-            }
-            show(overtakeBlock);
-          } else {
-            hide(overtakeBlock);
-          }
-        } else {
-          hide(overtakeBlock);
-        }
-      } else {
-        diffSpeedEl.textContent = '—';
-        diffSpeedEl.className = 'info-val';
-        hide(overtakeBlock);
-      }
-    }
-  } else {
-    ownSpeedEl.textContent = '—';
-    enemySpeedEl.textContent = '—';
-    diffSpeedEl.textContent = '—';
-    hide(overtakeBlock);
+  // Show each side's available speed. A comparison needs matching endpoints.
+  function speedBetween(previous, current, side) {
+    const hours = (timeStrToMinutes(current.time) - timeStrToMinutes(previous.time)) / 60;
+    return (current[side] - previous[side]) / hours;
   }
+  function individualSpeed(side) {
+    const points = allPoints.filter(p => p[side] != null);
+    return points.length < 2 ? null : speedBetween(points.at(-2), points.at(-1), side);
+  }
+  hide(overtakeBlock);
+  if (shared.length < 2 || shared.at(-1) !== latest) {
+    ownSpeedEl.textContent = fmtSpeed(individualSpeed('own'));
+    enemySpeedEl.textContent = fmtSpeed(individualSpeed('enemy'));
+    diffSpeedEl.textContent = '—';
+    diffSpeedEl.className = 'info-val';
+    return;
+  }
+  const previous = shared.at(-2);
+  const ownSpeed = speedBetween(previous, latest, 'own');
+  const enemySpeed = speedBetween(previous, latest, 'enemy');
+  ownSpeedEl.textContent = fmtSpeed(ownSpeed);
+  enemySpeedEl.textContent = fmtSpeed(enemySpeed);
+  const diff = ownSpeed - enemySpeed;
+  if (Math.abs(diff) < 1e6) {
+    diffSpeedEl.textContent = '同速';
+    diffSpeedEl.className = 'info-val';
+  } else {
+    diffSpeedEl.textContent = (diff > 0 ? '自団が' : '相手団が') + (Math.abs(diff) / 1e8).toFixed(2) + '億/h速い';
+    diffSpeedEl.className = diff > 0 ? 'info-val positive' : 'info-val negative';
+  }
+  const lead = ownLatest - enemyLatest;
+  if (Math.abs(lead) < 1e6 || lead * diff >= 0) return;
+  const remaining = (24 * 60 - timeStrToMinutes(latest.time)) / 60;
+  const overtake = calcOvertake(Math.abs(lead), Math.abs(diff));
+  const prefix = lead > 0 ? '相手団は現在ペースでは' : '現在ペースでは';
+  overtakeText.textContent = overtake && overtake.hoursUntil <= remaining
+    ? prefix + ' ' + fmtHours(overtake.hoursUntil) + ' で追いつく見込み'
+    : prefix + '24時までに追いつきません';
+  show(overtakeBlock);
 }
 
 /* ================================================
@@ -2396,17 +2309,7 @@ function collectChartData() {
   const enemy = [];  // {min, val}
   const own   = [];  // {min, val}
 
-  // 12:00 anchor from base data
-  if (state.enemyContrib12 != null) {
-    enemy.push({ min: 720, val: state.enemyContrib12 });
-  }
-  if (state.ownContrib12 != null) {
-    own.push({ min: 720, val: state.ownContrib12 });
-  }
-
-  // Snapshots
-  const sorted = [...state.snapshots].sort((a, b) => a.time.localeCompare(b.time));
-  for (const s of sorted) {
+  for (const s of battlePoints()) {
     const m = timeStrToMinutes(s.time);
     if (m == null) continue;
     if (s.enemy != null) enemy.push({ min: m, val: s.enemy });
@@ -2496,10 +2399,13 @@ function drawChart() {
     let step = steps.find(s => s >= roughStep) || roughStep;
     const start = Math.ceil(yMin / step) * step;
     const ticks = [];
-    for (let v = start; v <= yMax + step * 0.01; v += step) {
-      ticks.push(v);
+    // Near MAX_SAFE_INTEGER a sub-point step can round back to the same value.
+    for (let i = 0; i < 6; i++) {
+      const v = start + i * step;
+      if (v > yMax + step * 0.01) break;
+      if (ticks.at(-1) !== v) ticks.push(v);
     }
-    return ticks.slice(0, 6);
+    return ticks;
   }
 
   // Helper: polyline points string
@@ -2831,11 +2737,11 @@ function renderSnapshotItem(snap, idx, allPoints) {
       </div>
       <div class="edit-row">
         <span class="edit-label">自団</span>
-        <input type="text" id="edit-own-${snap.id}" value="${snap.own != null ? fmt億(snap.own, 4).replace('億','') + '億' : ''}" placeholder="例: 320億">
+        <input type="text" id="edit-own-${snap.id}" value="${snap.own != null ? snap.own : ''}" placeholder="例: 320億">
       </div>
       <div class="edit-row">
         <span class="edit-label">相手</span>
-        <input type="text" id="edit-enemy-${snap.id}" value="${snap.enemy != null ? fmt億(snap.enemy, 4).replace('億','') + '億' : ''}" placeholder="例: 301億">
+        <input type="text" id="edit-enemy-${snap.id}" value="${snap.enemy != null ? snap.enemy : ''}" placeholder="例: 301億">
       </div>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn btn-primary" style="flex:1;padding:10px;" onclick="if (canEditBattle()) saveEditSnap(${snap.id})">💾 保存</button>
@@ -3011,8 +2917,7 @@ function loadFromStorage() {
       setHint('hint-enemy-contrib12', describeContrib(state.enemyContrib12), 'ok');
     }
     if (state.enemySpeed != null) {
-      const man = state.enemySpeed / 1e4;
-      document.getElementById('enemy-speed').value = String(man);
+      document.getElementById('enemy-speed').value = speedInput(state.enemySpeed);
       setHint('hint-enemy-speed', describeSpeed(state.enemySpeed), 'ok');
     }
     if (state.ownContrib12 != null) {
@@ -3020,12 +2925,13 @@ function loadFromStorage() {
       setHint('hint-own-contrib12', describeContrib(state.ownContrib12), 'ok');
     }
     if (state.ownSpeed != null) {
-      const man = state.ownSpeed / 1e4;
-      document.getElementById('own-speed').value = String(man);
+      document.getElementById('own-speed').value = speedInput(state.ownSpeed);
       setHint('hint-own-speed', describeSpeed(state.ownSpeed), 'ok');
     }
 
-    state.predictDone = true;
+    state.predictDone = Number.isFinite(base.enemyContrib12) && base.enemyContrib12 >= 0
+      && base.enemyContrib12 <= Number.MAX_SAFE_INTEGER && Number.isFinite(base.enemySpeed)
+      && base.enemySpeed > 0 && base.enemySpeed <= Number.MAX_SAFE_INTEGER;
   }
 
   state.snapshots = StorageManager.loadSnapshots();
@@ -3147,7 +3053,7 @@ function init() {
 
   // Render from storage
   if (state.predictDone) {
-    runPrediction();
+    renderPrediction();
   }
   renderHistory();
   drawChart();
@@ -3176,8 +3082,26 @@ const battleEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const battleScore = v => v === null || (Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER);
 const battleBase = b => b === null || (b && Object.keys(b).length === 4
   && ['enemyContrib12','enemySpeed','ownContrib12','ownSpeed'].every(k => Object.hasOwn(b, k) && battleScore(b[k])));
+const writableBase = b => battleBase(b) && (b === null || (b.enemyContrib12 != null && b.enemySpeed > 0
+  && (b.ownSpeed === null || b.ownSpeed > 0)));
 const battleSnapshot = s => s && /^((0[7-9]|1[0-9]|2[0-3]):[0-5][0-9]|24:00)$/.test(s.time)
   && battleScore(s.own) && battleScore(s.enemy);
+
+function validBattleOperation(op) {
+  if (!op || typeof op !== 'object') return false;
+  if (['initialize','patch','records'].filter(key => Object.hasOwn(op, key)).length !== 1) return false;
+  if (op.initialize) return !!op.local && writableBase(op.local.base)
+    && Array.isArray(op.local.snapshots) && op.local.snapshots.every(battleSnapshot)
+    && ['weekday','weekend'].includes(op.local.conditions?.dayType);
+  if (op.patch) {
+    const keys = Object.keys(op.patch);
+    return keys.length === 1 && (keys[0] === 'base' ? writableBase(op.patch.base)
+      : keys[0] === 'dayType' && ['weekday','weekend'].includes(op.patch.dayType));
+  }
+  return Array.isArray(op.records) && op.records.every(row => row
+    && [row.before, row.after].every(s => s === null || (battleSnapshot(s) && s.time === row.time))
+    && (row.before || row.after));
+}
 
 class BattleSync {
   constructor(io) {
@@ -3230,6 +3154,7 @@ class BattleSync {
         .map(k => ({time: k, before: old.get(k) || null, after: next.get(k) || null}));
       operation = {records};
     } else operation = {patch: kind === 'base' ? {base: after} : {dayType: after.dayType}};
+    if (!validBattleOperation(operation)) { this.message('入力値を確認してください。共有への送信を中止しました。'); return; }
     this.journal.queue.push(operation);
     if (this.persist()) this.flush();
   }
@@ -3332,7 +3257,7 @@ class BattleSync {
     if (this.busy) return;
     this.switchingDay = false;
     const session = this.session;
-    if (!battleBase(local.base) || local.snapshots.some(s => !battleSnapshot(s)) || new Set(local.snapshots.map(s => s.time)).size !== local.snapshots.length
+    if (!writableBase(local.base) || local.snapshots.some(s => !battleSnapshot(s)) || new Set(local.snapshots.map(s => s.time)).size !== local.snapshots.length
       || local.snapshots.length > 450) { this.stop(); this.message('端末データの形式・件数を確認してください。移行せず保存を維持しました。'); return; }
     this.busy = true;
     // Persist the full migration intent before sending anything. A reload cannot lose it.
@@ -3348,6 +3273,13 @@ class BattleSync {
     try {
       while (this.journal.queue.length && epoch === this.epoch && this.admin) {
         const operation = this.journal.queue[0];
+        if (!validBattleOperation(operation)) {
+          // Keep a recoverable copy of the entire journal before skipping only the invalid entry.
+          if (!this.io.backup()) throw Error('不正な未同期入力を退避できません。');
+          this.journal.queue.shift();
+          if (!this.persist()) return;
+          continue;
+        }
         this.message(session + '：同期中…（未同期の入力は端末内にも保存しています）');
         await this.db.runTransaction(async tx => {
           const metaRef = entries.doc('meta'), metaDoc = await tx.get(metaRef);
@@ -3473,13 +3405,9 @@ class BattleSync {
       ['enemy-contrib12','enemy-speed','own-contrib12','own-speed'].forEach(id => { $(id).value = ''; });
       ['hint-enemy-contrib12','hint-enemy-speed','hint-own-contrib12','hint-own-speed'].forEach(id => setHint(id, '', ''));
       loadFromStorage();
-      if (data.base) {
-        for (const [key, id] of [['enemyContrib12','enemy-contrib12'],['enemySpeed','enemy-speed'],['ownContrib12','own-contrib12'],['ownSpeed','own-speed']]) {
-          $(id).value = data.base[key] == null ? '' : String(key.endsWith('Speed') ? data.base[key] / 1e4 : data.base[key]);
-        }
-      }
+      showError('input-error', null);
       updateDayDescription(); updateRefMultipliers();
-      if (state.predictDone) runPrediction(); else hide($('sec-results'));
+      if (state.predictDone) renderPrediction(); else hide($('sec-results'));
       renderHistory(); drawChart(); updateAnalysis(); updateRealtimeDisplay();
     }
   });
@@ -3516,7 +3444,10 @@ class BattleSync {
     sync.switchingDay = true;
     if (sync.db) sync.connect();
   };
-  document.querySelectorAll('#sec-base input').forEach(el => el.addEventListener('input', () => { baseDraft = true; }));
+  document.querySelectorAll('#sec-base input').forEach(el => el.addEventListener('input', () => {
+    baseDraft = true;
+    if (sync.canEdit() && (state.enemyContrib12 != null || !$('input-error').classList.contains('result-hidden'))) runPrediction(false);
+  }));
   $('history-list').addEventListener('click', e => {
     if (e.target.closest('.snapshot-edit-form')) queueMicrotask(() => sync.refresh());
   });

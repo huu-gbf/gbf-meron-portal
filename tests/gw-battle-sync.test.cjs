@@ -36,20 +36,20 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
   assert.equal(scope.date(new Date('2026-09-23T14:59:59Z')),'2026-09-23');
   assert.equal(scope.date(new Date('2026-09-23T15:00:00Z')),'2026-09-24');
   const previous=execFileSync('git',['show','HEAD:tools/gw-battle-review.html'],{encoding:'utf8'});
-  // Every original function except cache input restoration is byte-for-byte unchanged.
+  // Pin the model and the operations outside this change.
   const normalize=s=>s.replace(/\r\n/g,'\n');
   const before=normalize(previous),after=normalize(html);
   const modelStart=before.indexOf('const MODELS ='), modelEnd=before.indexOf('// Historical error range');
   assert.equal(after.slice(after.indexOf('const MODELS ='),after.indexOf('// Historical error range')),before.slice(modelStart,modelEnd));
-  for(const name of ['runPrediction','recordSnapshot','saveEditSnap','deleteSnap','updateAnalysis','calcSpeedBetween']) {
-    const extract=s=>{const begin=s.indexOf('function '+name+'(');const next=s.indexOf('\nfunction ',begin+1);return s.slice(begin,next);};
+  for(const name of ['calcPrediction','recordSnapshot','saveEditSnap','deleteSnap','calcSpeedBetween']) {
+    const extract=s=>{const begin=s.indexOf('function '+name+'(');assert.ok(begin >= 0, name);return s.slice(begin,s.indexOf('\n}',begin)+2);};
     assert.equal(extract(after),extract(before),name+' changed');
   }
   const model=source=>{const c={};vm.runInNewContext(source.slice(source.indexOf('const MODELS ='),source.indexOf('const StorageManager ='))+'\nglobalThis.api={calcPrediction,calcReferenceRange,calcOvertake};',c);return c.api;};
   const old=model(before),now=model(after);
   for(const day of ['day1','day2','day3','day4'])for(const type of ['weekday','weekend'])for(const m of ['standard','caution']) {
     assert.deepEqual(clone(now.calcPrediction(57300123456,2507151234,day,type,m)),clone(old.calcPrediction(57300123456,2507151234,day,type,m)));
-    if((day!=='day1'||type!=='weekday') && day!=='day2' && day!=='day3' && day!=='day4') assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
+    assert.deepEqual(clone(now.calcReferenceRange(57300123456,35000000000,day,type)),clone(old.calcReferenceRange(57300123456,35000000000,day,type)));
   }
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day1','weekday')),clone({low:95.85000000000001,high:109.33,config:{lowRate:-0.0415,highRate:0.0933,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day2','weekday')),clone({low:86.55,high:101.42,config:{lowRate:-0.1345,highRate:0.0142,sameConditionCount:4,rangeSourceCount:4,rangeSourceLabel:'4開催',rangeSourceNote:''}}));
@@ -58,6 +58,41 @@ test('JST date and unchanged prediction/model/recording functions',()=>{
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day3','weekend')),clone({low:98.14,high:104.34,config:{lowRate:-0.0186,highRate:0.0434,sameConditionCount:1,rangeSourceCount:4,rangeSourceLabel:'現行仕様の3戦目 4開催',rangeSourceNote:''}}));
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day4','weekday')),clone({low:90.35,high:101.81,config:{lowRate:-0.0965,highRate:0.0181,sameConditionCount:3,rangeSourceCount:3,rangeSourceLabel:'3開催',rangeSourceNote:''}}));
   assert.deepEqual(clone(now.calcReferenceRange(0,100,'day4','weekend')),clone({low:94.97,high:101.77000000000001,config:{lowRate:-0.0503,highRate:0.0177,sameConditionCount:2,rangeSourceCount:2,rangeSourceLabel:'2開催',rangeSourceNote:''}}));
+});
+
+test('decimal inputs, speed units and exact safe-integer boundaries', () => {
+  const source = html.slice(html.indexOf('function scaledPoints'), html.indexOf('function fmt億'));
+  const {parseContrib, parseSpeed, speedInput} = new Function(source + ';return {parseContrib,parseSpeed,speedInput}')();
+  for (const units of ['5000', '9999', '10000', '200000']) {
+    assert.equal(parseSpeed(units), Number(units) * 10000);
+    assert.equal(parseSpeed(units + '万/h'), parseSpeed(units));
+  }
+  for (const input of ['0', '-1', '', 'Infinity', '20abc', '1.2.3', '3,3', '900719925474.0992']) {
+    assert.equal(parseSpeed(input), null, input);
+  }
+  for (const input of ['Infinity', '20abc', '1.2.3', '1,,2', '9007199254740993']) {
+    assert.equal(parseContrib(input), null, input);
+  }
+  assert.equal(parseSpeed('0.00015万/h'), 2);
+  assert.equal(parseContrib('0.000000015億'), 2);
+  assert.equal(parseSpeed('25.07151234億/h'), 2507151234);
+  assert.equal(parseContrib('123.45678901億'), 12345678901);
+  assert.equal(parseContrib('14億5,000万'), 1450000000);
+  for (const speed of [1, 50000000, 2507151234, Number.MAX_SAFE_INTEGER - 1, Number.MAX_SAFE_INTEGER]) {
+    assert.equal(parseSpeed(speedInput(speed)), speed);
+  }
+});
+
+test('all eight noon forecasts match independent weighted-hour totals', () => {
+  const source = html.slice(html.indexOf('const MODELS'), html.indexOf('const StorageManager'));
+  const predict = new Function(source + ';return calcPrediction')();
+  const hours = [[14.30,15.25,15.60,16.55], [17,18.40,15.65,16.90],
+    [15.90,17.25,14.65,16.10], [12.70,13.90,12.55,13.50]];
+  hours.forEach((row, index) => row.forEach((weightedHours, position) => {
+    const actual = predict(100e8, 20e8, 'day' + (index + 1), position < 2 ? 'weekday' : 'weekend',
+      position % 2 ? 'caution' : 'standard');
+    assert.equal(Math.round(actual.total), Math.round(100e8 + weightedHours * 20e8));
+  }));
 });
 
 test('legacy storage shape and 06:59/07:00/08:00/11:59/12:00 recording boundaries',()=>{
@@ -213,6 +248,21 @@ test('emulator: authentication, migration, two clients, CRUD, concurrency, offli
       const reload=make(pc.data(),{journal:saved});await reload.login();await until(()=>reload.journal().queue.length===0&&!reload.sync.busy,'replay');
       assert.equal(reload.data().snapshots.filter(s=>s.time==='10:15').length,1);reload.sync.stop();
       pc.sync.journal=reload.journal();pc.online=true;await pc.sync.connect();await until(()=>pc.status.includes('同期済み'),'restore pc');
+    });
+    await t.test('invalid legacy base is backed up and adjacent valid operations replay', async () => {
+      const session = '2099-02-01_day1';
+      const seed = make(empty(), {session});
+      await seed.login(); await until(() => seed.applied > 0, 'create empty session'); seed.sync.stop();
+      const valid = time => ({records:[{time,before:null,after:record(time)}]});
+      const journal = {session,localOnly:false,queue:[valid('13:00'),
+        {patch:{base:{enemyContrib12:100,enemySpeed:null,ownContrib12:null,ownSpeed:null}}}, valid('14:00')]};
+      const replay = make(empty(), {session,journal});
+      await replay.login(); await until(() => replay.applied > 0 && !replay.sync.busy, 'recover queue');
+      assert.equal(replay.backups.length, 1);
+      assert.equal(replay.journal().queue.length, 0);
+      assert.equal(replay.data().base, null);
+      assert.deepEqual(replay.data().snapshots.map(s => s.time), ['13:00','14:00']);
+      replay.sync.stop();
     });
     await t.test('time edit atomically moves record without deleting unrelated rows',async()=>{
       pc.edit('snapshots',pc.data().snapshots.map(s=>s.time==='10:15'?{...s,time:'10:16'}:s));
