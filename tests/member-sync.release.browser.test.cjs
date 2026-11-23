@@ -105,7 +105,10 @@ test('release: pairing persists across speed, portal and Artifact on PC/mobile',
       await pc.locator('.table-time-input[data-hell="200"]').fill('42');
       await phone.waitForFunction(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))?.['200']===42);
       await phone.locator('.table-time-input[data-hell="200"]').fill('0');
-      await pc.waitForFunction(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))?.['200']===0);
+      assert(await phone.locator('#btnCopyResult').isDisabled());
+      assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[200]),42);
+      await phone.locator('.table-time-input[data-hell="200"]').fill('1');
+      await pc.waitForFunction(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))?.['200']===1);
       for(const [page,expected] of [[pc,pcUid],[phone,phoneUid]]) {
         await page.locator('a[href="../index.html#sec-device-sync"]').click();
         await waitStatus(page);

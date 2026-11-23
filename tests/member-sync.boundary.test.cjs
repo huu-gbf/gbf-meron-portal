@@ -191,7 +191,7 @@ test('remote six HELL values and interval update all calculator outputs without 
   assert.equal(doc.querySelector('#honorHourlyExact').textContent,
     `（約 ${Math.round(3600 / 142.7 * 20000000).toLocaleString()} pt / h）`);
   assert.equal(doc.querySelector('#goalTotalRuns').textContent, '50');
-  assert.equal(doc.querySelector('#goalTotalTime').textContent, '1時間 58分');
+  assert.equal(doc.querySelector('#goalTotalTime').textContent, '1時間58分55秒');
   assert.equal(doc.querySelector('#goalTotalMeat').textContent, '1,000');
   await debounce(t);
   assert.deepEqual(network.writes, []);
@@ -213,12 +213,13 @@ test('focused comparison input accepts a remote value without a write loop', asy
 });
 
 for (const field of ['hellTimesSec.200', 'intervalSec']) {
-  for (const latestZero of [false, true]) {
-    test('latest '+field+' edit'+(latestZero ? ' of zero' : '')+' survives pagehide while an older write is in flight', async t => {
+  for (const useMinimum of [false, true]) {
+    test('latest '+field+' edit'+(useMinimum ? ' at the minimum' : '')+' survives pagehide while an older write is in flight', async t => {
       t.mock.timers.enable({apis:['setTimeout']});
       const network = transport(), page = await calculator(t, network);
       const a = field === 'intervalSec' ? 4 : 101;
-      const b = latestZero ? 0 : (field === 'intervalSec' ? 5 : 102);
+      const minimum = field === 'intervalSec' ? 0 : 1;
+      const b = useMinimum ? minimum : (field === 'intervalSec' ? 5 : 102);
       const edit = value => field === 'intervalSec' ? page.editInterval(value) : page.editHell(200, value);
       const valueOf = settings => field === 'intervalSec' ? settings.intervalSec : settings.hellTimesSec[200];
       network.hold();
@@ -279,11 +280,16 @@ for (const field of ['hellTimesSec.200', 'intervalSec']) {
   });
 }
 
-test('comparison zero survives cloud propagation and reload', async t => {
+test('new zero edit is rejected and a legacy cloud zero survives reload until corrected', async t => {
   t.mock.timers.enable({apis:['setTimeout']});
   const network = transport(), page = await calculator(t, network);
   page.editHell(200, 0);
   await debounce(t);
+  assert.deepEqual(network.writes, []);
+  assert.equal(JSON.parse(page.storage()[timesKey])[200], 90);
+  const legacy = network.read();
+  legacy.hellTimesSec[200] = 0;
+  network.publish(legacy);
   assert.equal(network.read().hellTimesSec[200], 0);
   assert.equal(JSON.parse(page.storage()[timesKey])[200], 0);
   const saved = page.storage(); page.close();
@@ -291,7 +297,11 @@ test('comparison zero survives cloud propagation and reload', async t => {
   assert.equal(reloaded.readState().comparisonTimes[200], 0);
   assert.equal(reloaded.table()[4], 0);
   assert.equal(reloaded.window.document.querySelector('#inputSeconds').value, '0');
-  assert.equal(reloaded.window.document.querySelector('#totalBattleSeconds').textContent, '1');
+  assert.equal(reloaded.window.document.querySelector('#totalBattleSeconds').textContent, '—');
+  assert.equal(reloaded.window.document.querySelector('#btnCopyResult').disabled, true);
+  reloaded.editHell(200, 75);
+  await debounce(t);
+  assert.deepEqual(network.writes, [['hellTimesSec.200', 75]]);
 });
 
 test('selection, target honor and recalculation do not write cloud settings', async t => {
@@ -304,4 +314,28 @@ test('selection, target honor and recalculation do not write cloud settings', as
   await debounce(t);
   assert.deepEqual(network.writes, []);
   assert.deepEqual(network.read(), before);
+});
+
+test('200 and 250 HELL show and copy the same hourly rates with the correct material', async t => {
+  const page = await calculator(t, transport());
+  const doc = page.window.document;
+  let copied;
+  Object.defineProperty(page.window.navigator, 'clipboard', {value: {writeText: async text => { copied = text; }}});
+  for (const [level, seconds, exact, runs, time, material, quantity] of [
+    [200, 75, '923,076,923', '50', '1時間5分', '肉', '1,000'],
+    [250, 240, '1,111,111,111', '14', '56分42秒', 'マリシャスクランプ', '280']
+  ]) {
+    page.select(level);
+    page.editHell(level, seconds);
+    const text = id => doc.getElementById(id).textContent;
+    assert.equal(text('honorHourlyExact'), '（約 ' + exact + ' pt / h）');
+    assert.equal(text('goalTotalRuns'), runs);
+    assert.equal(text('goalTotalTime'), time);
+    assert.equal(text('hourlyMaterial'), material);
+    assert.equal(text('goalTotalMeat'), quantity);
+    assert.equal(text('halfElixirHourly'), String(Math.round(3600 / (seconds + 3) * 50 / 75)));
+    doc.getElementById('btnCopyResult').click();
+    assert(copied.includes('(' + exact + ' pt)'));
+    assert(copied.includes('消費' + material + 'ペース: ' + text('meatHourly') + ' 個/h'));
+  }
 });

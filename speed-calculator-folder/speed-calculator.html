@@ -5,7 +5,7 @@
   <meta name="robots" content="noindex">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>古戦場 周回効率計算ツール | Granblue Fantasy UNF Calculator</title>
-  <meta name="description" content="グランブルーファンタジー（グラブル）の決戦！星の古戦場におけるHELL難易度別貢献度時速・周回数・必要肉数・目標逆算を瞬時にシミュレーションできる高機能計算機。">
+  <meta name="description" content="グランブルーファンタジー（グラブル）の決戦！星の古戦場におけるHELL難易度別貢献度時速・周回数・必要素材数・目標逆算を瞬時にシミュレーションできる高機能計算機。">
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1049,6 +1049,25 @@ input[type=number] {
   color: #64748b;
   font-size: 0.78rem;
 }
+.input-error {
+  color: #fda4af;
+  font-size: 0.8rem;
+}
+.btn-copy:disabled { opacity: 0.55; cursor: default; }
+
+@media (max-width: 600px) {
+  .app-container { padding-inline: 12px; }
+  .glass-card { padding: 16px; }
+  .time-inputs-wrapper, .result-header-row { flex-wrap: wrap; gap: 6px; }
+  .speed-number-wrapper, .metric-val-wrap { flex-wrap: wrap; }
+  .speed-suffix, .metric-sub-unit, .input-suffix { white-space: nowrap; }
+  .speed-main-num { font-size: clamp(2rem, 9vw, 3.5rem); }
+  .metric-box { padding: 10px; gap: 6px; }
+  .chip, .table-time-input { min-height: 32px; }
+}
+@media (max-width: 430px) {
+  .metrics-grid { grid-template-columns: 1fr; }
+}
   </style>
   <link rel="manifest" href="../manifest.webmanifest">
   <meta name="theme-color" content="#080b14">
@@ -1077,7 +1096,7 @@ input[type=number] {
     <!-- Header -->
     <header class="app-header">
       <h1 class="app-title">古戦場 周回効率・時速計算ツール</h1>
-      <p class="app-subtitle">HELL難易度と討伐秒数から、貢献度時速・周回数・消費肉・目標達成時間をリアルタイム算出</p>
+      <p class="app-subtitle">HELL難易度と討伐秒数から、貢献度時速・周回数・消費素材・目標達成時間をリアルタイム算出</p>
     </header>
     <aside class="member-sync member-sync-summary" data-member-sync data-member-sync-status-only aria-label="端末同期">
       <p>端末同期：<span data-sync="status" role="status">未設定</span> <span data-sync="notice" role="status"></span></p>
@@ -1135,7 +1154,7 @@ input[type=number] {
 
               <span class="hell-name">250 HELL</span>
               <span class="hell-pt">7,500万 pt</span>
-              <span class="hell-meat">肉 20個</span>
+              <span class="hell-meat">マリシャスクランプ 20個</span>
             </button>
           </div>
         </div>
@@ -1151,14 +1170,14 @@ input[type=number] {
             <div class="time-input-dual">
               <div class="input-block">
                 <div class="input-with-suffix">
-                  <input type="number" id="inputMinutes" min="0" max="59" value="1" placeholder="0">
+                  <input type="number" id="inputMinutes" aria-describedby="timeError" min="0" max="59" value="1" placeholder="0">
                   <span class="input-suffix">分</span>
                 </div>
               </div>
               <span class="time-colon">:</span>
               <div class="input-block">
                 <div class="input-with-suffix">
-                  <input type="number" id="inputSeconds" min="0" max="59" value="15" placeholder="0">
+                  <input type="number" id="inputSeconds" aria-describedby="timeError" min="0" max="59" value="15" placeholder="0">
                   <span class="input-suffix">秒</span>
                 </div>
               </div>
@@ -1168,6 +1187,8 @@ input[type=number] {
               （合計 <span id="totalBattleSeconds">75</span> 秒）
             </div>
           </div>
+
+          <p class="input-error" id="timeError" role="status" hidden>分・秒はそれぞれ0〜59の整数で、合計1秒以上にしてください。</p>
 
           <!-- Quick Presets -->
           <div class="preset-label">クイックプリセット:</div>
@@ -1250,7 +1271,7 @@ input[type=number] {
             <div class="metric-box">
               <span class="metric-icon">🥩</span>
               <div class="metric-info">
-                <span class="metric-label">1時間消費肉数</span>
+                <span class="metric-label">1時間消費<span id="hourlyMaterial">肉</span>数</span>
                 <div class="metric-val-wrap">
                   <span class="metric-val" id="meatHourly">923</span>
                   <span class="metric-sub-unit">個 / h</span>
@@ -1279,7 +1300,7 @@ input[type=number] {
                   <span class="metric-val" id="apHourly">2,308</span>
                   <span class="metric-sub-unit">AP / h</span>
                 </div>
-                <span class="metric-note">半汁換算: 約 <span id="halfElixirHourly">46</span> 本</span>
+                <span class="metric-note">半汁換算: 約 <span id="halfElixirHourly">31</span> 本</span>
               </div>
             </div>
           </div>
@@ -1299,16 +1320,17 @@ input[type=number] {
             <div class="panel-icon">🎯</div>
             <h2>目標貢献度 逆算シミュレーター</h2>
           </div>
-          <p class="section-desc">目標の貢献度を設定すると、現在の周回ペースで必要な周回数・所要時間・必要肉数を逆算します。</p>
+          <p class="section-desc">目標の貢献度を設定すると、現在の周回ペースで必要な周回数・所要時間・必要素材数を逆算します。</p>
 
           <div class="goal-input-row">
             <div class="input-block goal-input-block">
               <label for="inputTargetHonor">目標貢献度 (pt)</label>
               <div class="input-with-suffix">
-                <input type="number" id="inputTargetHonor" value="1000000000" step="10000000" min="1000000">
+                <input type="number" id="inputTargetHonor" value="1000000000" step="10000000" min="1000000" aria-describedby="goalError">
                 <span class="input-suffix">pt</span>
               </div>
             </div>
+            <p class="input-error" id="goalError" role="status" hidden>目標貢献度は100万pt以上の整数で入力してください（最大9,007,199,254,740,991pt）。</p>
             <div class="goal-presets">
               <span class="goal-preset-label">目標目安:</span>
               <button type="button" class="chip goal-chip" data-goal="300000000">3億</button>
@@ -1327,10 +1349,10 @@ input[type=number] {
             </div>
             <div class="goal-stat-item">
               <span class="goal-stat-label">⏱️ 合計所要時間</span>
-              <div class="goal-stat-value"><strong id="goalTotalTime">1時間 5分</strong></div>
+              <div class="goal-stat-value"><strong id="goalTotalTime">1時間5分</strong></div>
             </div>
             <div class="goal-stat-item">
-              <span class="goal-stat-label">🥩 必要グラッジチャンク</span>
+              <span class="goal-stat-label">🥩 必要<span id="goalMaterial">グラッジチャンク</span></span>
               <div class="goal-stat-value"><strong id="goalTotalMeat">1,000</strong> <span class="unit">個</span></div>
             </div>
           </div>
@@ -1344,7 +1366,7 @@ input[type=number] {
         <div class="panel-icon">⚖️</div>
         <div>
           <h2>全難易度 時速比較・シミュレーション表</h2>
-          <p class="section-desc">難易度ごとのタイムを入力して、どの難易度が最も時速・肉効率が出るかを一覧比較できます。</p>
+          <p class="section-desc">難易度ごとのタイムを入力して、どの難易度が最も時速が出るかを一覧比較できます。</p>
         </div>
       </div>
 
@@ -1354,7 +1376,7 @@ input[type=number] {
             <tr>
               <th>難易度</th>
               <th>単体貢献度</th>
-              <th>自発肉</th>
+              <th>自発素材</th>
               <th>想定討伐タイム</th>
               <th>時速周回数</th>
               <th>貢献度時速 (pt/h)</th>
@@ -1454,16 +1476,23 @@ const LS_KEY_HELL_TIMES = 'gbf_unf_speed_calc_times';
 const LS_KEY_INTERVAL = 'gbf_unf_speed_calc_interval';
 const LS_KEY_PENDING = 'gbf_unf_speed_calc_sync_pending';
 
+// Invalid edits are visible only in this page. Persisted and synced times keep their last value.
+const invalidTimeDrafts = new Map();
+const validBattleTime = value => Number.isInteger(value) && value >= 1 && value <= 3599;
+const materialName = hell => hell.level === 250 ? 'マリシャスクランプ' : '肉';
+
 function loadSavedTimes() {
   try {
     const saved = localStorage.getItem(LS_KEY_HELL_TIMES);
-    if (saved) {
+    if (saved !== null) {
       const parsed = JSON.parse(saved);
       for (const key in parsed) {
         if (state.comparisonTimes[key] !== undefined) {
           state.comparisonTimes[key] = parsed[key];
         }
       }
+    } else {
+      saveTimes();
     }
   } catch (e) {
     console.error('Failed to load saved times', e);
@@ -1474,8 +1503,8 @@ function loadSavedInterval() {
   try {
     const saved = localStorage.getItem(LS_KEY_INTERVAL);
     if (saved !== null) {
-      const val = parseFloat(saved);
-      if (!isNaN(val)) {
+      const val = Number(saved);
+      if (saved.trim() && Number.isFinite(val) && val >= 0 && val <= 15 && Math.round(val * 10) / 10 === val) {
         state.intervalSec = val;
         elements.inputInterval.value = val;
         elements.intervalDisplay.textContent = val.toFixed(1);
@@ -1541,13 +1570,18 @@ window.addEventListener('member-sync-connection', event => {
     event.detail.client,
     () => ({hellTimesSec: {...state.comparisonTimes}, intervalSec: state.intervalSec}),
     settings => {
+      // A remote change replaces a draft only for the same difficulty.
+      for (const level of invalidTimeDrafts.keys()) {
+        if (settings.hellTimesSec[level] !== state.comparisonTimes[level]) invalidTimeDrafts.delete(level);
+      }
       state.comparisonTimes = {...settings.hellTimesSec};
       state.intervalSec = settings.intervalSec;
       saveTimes();
       saveInterval();
       elements.inputInterval.value = state.intervalSec;
       elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
-      setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
+      if (invalidTimeDrafts.has(state.selectedHell)) updateCalculation();
+      else setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
       renderComparisonTable(true);
     },
     pendingIO
@@ -1561,27 +1595,14 @@ window.addEventListener('pagehide', () => {
 window.addEventListener('pageshow', event => { if (event.persisted) speedCloudSync?.start(); });
 // Replay persisted pending when the network is restored (section 14).
 window.addEventListener('online', () => speedCloudSync?.replayPending());
-function syncHellChange(level, before) {
-  const value = state.comparisonTimes[level];
-  if (value !== before) speedCloudSync?.change('hellTimesSec.' + level, value);
-}
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   loadSavedTimes();
   loadSavedInterval();
   
-  if (state.comparisonTimes[state.selectedHell] !== undefined) {
-    const initialSec = state.comparisonTimes[state.selectedHell];
-    state.minutes = Math.floor(initialSec / 60);
-    state.seconds = initialSec % 60;
-    elements.inputMinutes.value = state.minutes;
-    elements.inputSeconds.value = state.seconds;
-  }
-
   setupEventListeners();
-  renderComparisonTable();
-  updateCalculation();
+  setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
 });
 
 // Setup Events
@@ -1591,9 +1612,6 @@ function setupEventListeners() {
     card.addEventListener('click', () => {
       const level = parseInt(card.dataset.level, 10);
       selectHell(level);
-
-
-
     });
   });
 
@@ -1609,25 +1627,20 @@ function setupEventListeners() {
     saveInterval();
     if (state.intervalSec !== before) speedCloudSync?.change('intervalSec', state.intervalSec);
     updateCalculation();
-    renderComparisonTable();
   });
 
   // Time Preset Chips
   elements.presetChips.forEach(chip => {
     chip.addEventListener('click', () => {
       const totalSec = parseInt(chip.dataset.time, 10);
-      const before = state.comparisonTimes[state.selectedHell];
+      commitBattleTime(state.selectedHell, totalSec);
       setTimeFromTotalSeconds(totalSec);
-      syncHellChange(state.selectedHell, before);
-      
-      elements.presetChips.forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
     });
   });
 
   // Goal Honor Input
   elements.inputTargetHonor.addEventListener('input', (e) => {
-    state.targetHonor = parseInt(e.target.value, 10) || 0;
+    state.targetHonor = e.target.valueAsNumber;
     elements.goalChips.forEach(c => c.classList.remove('active'));
     updateGoalCalculation();
   });
@@ -1649,40 +1662,34 @@ function setupEventListeners() {
 }
 
 // Time input handlers
+function commitBattleTime(level, seconds) {
+  invalidTimeDrafts.delete(level);
+  if (state.comparisonTimes[level] === seconds) return;
+  state.comparisonTimes[level] = seconds;
+  saveTimes();
+  speedCloudSync?.change('hellTimesSec.' + level, seconds);
+}
+
 function handleTimeInput() {
-  const before = state.comparisonTimes[state.selectedHell];
-  let min = parseInt(elements.inputMinutes.value, 10);
-  let sec = parseInt(elements.inputSeconds.value, 10);
-
-  if (isNaN(min) || min < 0) min = 0;
-  if (isNaN(sec) || sec < 0) sec = 0;
-
-  state.minutes = min;
-  state.seconds = sec;
-
-  // Clear active state of preset chips if custom time
-  const totalSec = min * 60 + sec;
-  let matchFound = false;
-  elements.presetChips.forEach(chip => {
-    if (parseInt(chip.dataset.time, 10) === totalSec) {
-      chip.classList.add('active');
-      matchFound = true;
-    } else {
-      chip.classList.remove('active');
-    }
-  });
-
+  const min = elements.inputMinutes.valueAsNumber;
+  const sec = elements.inputSeconds.valueAsNumber;
+  const total = min * 60 + sec;
+  if (elements.inputMinutes.validity.valid && elements.inputSeconds.validity.valid && validBattleTime(total)) {
+    state.minutes = min;
+    state.seconds = sec;
+    commitBattleTime(state.selectedHell, total);
+  } else {
+    invalidTimeDrafts.set(state.selectedHell, '');
+  }
   updateCalculation();
-  syncHellChange(state.selectedHell, before);
 }
 
 function setTimeFromTotalSeconds(totalSec) {
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  state.minutes = min;
-  state.seconds = sec;
-  elements.inputMinutes.value = min;
-  elements.inputSeconds.value = sec;
+  const numeric = Number.isFinite(totalSec);
+  state.minutes = numeric ? Math.floor(totalSec / 60) : '';
+  state.seconds = numeric ? totalSec % 60 : '';
+  elements.inputMinutes.value = state.minutes;
+  elements.inputSeconds.value = state.seconds;
   updateCalculation();
 }
 
@@ -1699,30 +1706,49 @@ function formatHonorJapanese(honor) {
   }
 }
 
-// Main Calculation
+function hourlyRates(hell, battleSec) {
+  const totalCycleSec = battleSec + state.intervalSec;
+  const clearsPerHour = 3600 / totalCycleSec;
+  return {totalCycleSec, clearsPerHour, honorPerHour: clearsPerHour * hell.pt,
+    meatPerHour: clearsPerHour * hell.meat, apPerHour: clearsPerHour * hell.ap};
+}
+
+function selectedTimeIsValid() {
+  return !invalidTimeDrafts.has(state.selectedHell) && validBattleTime(state.comparisonTimes[state.selectedHell]);
+}
+
 function updateCalculation() {
   const currentHell = HELL_DATA[state.selectedHell];
-  const battleSec = Math.max(1, state.minutes * 60 + state.seconds);
-  const totalCycleSec = battleSec + state.intervalSec;
-
-  // Update time displays
+  const battleSec = state.comparisonTimes[state.selectedHell];
+  const valid = selectedTimeIsValid();
+  document.getElementById('timeError').hidden = valid;
+  elements.inputMinutes.setAttribute('aria-invalid', String(!valid));
+  elements.inputSeconds.setAttribute('aria-invalid', String(!valid));
+  elements.btnCopyResult.disabled = !valid;
+  elements.presetChips.forEach(chip => chip.classList.toggle('active', valid && Number(chip.dataset.time) === battleSec));
+  document.getElementById('hourlyMaterial').textContent = materialName(currentHell);
+  document.getElementById('goalMaterial').textContent = currentHell.level === 250 ? materialName(currentHell) : 'グラッジチャンク';
+  elements.resHellLevel.textContent = currentHell.name;
+  elements.resSinglePt.textContent = formatHonorJapanese(currentHell.pt).num + formatHonorJapanese(currentHell.pt).unit;
+  elements.meatPerRun.textContent = currentHell.meat;
+  renderComparisonTable();
+  updateGoalCalculation();
+  if (!valid) {
+    for (const key of ['totalBattleSeconds', 'cycleTotalTimeDisplay', 'honorHourlyFormatted', 'honorHourlyExact',
+        'clearsHourly', 'clearsPerMin', 'meatHourly', 'honorMinuteFormatted', 'apHourly', 'halfElixirHourly']) {
+      elements[key].textContent = '—';
+    }
+    elements.honorHourlyUnit.textContent = '';
+    return;
+  }
+  const {totalCycleSec, clearsPerHour, honorPerHour, meatPerHour, apPerHour} = hourlyRates(currentHell, battleSec);
   elements.totalBattleSeconds.textContent = battleSec;
   elements.cycleTotalTimeDisplay.textContent = totalCycleSec.toFixed(1);
-
-  // Hourly calculations
-  const clearsPerHour = 3600 / totalCycleSec;
-  const honorPerHour = clearsPerHour * currentHell.pt;
-  const meatPerHour = clearsPerHour * currentHell.meat;
-  const apPerHour = clearsPerHour * currentHell.ap;
-  const halfElixirPerHour = apPerHour / 50;
+  const halfElixirPerHour = apPerHour / 75;
 
   // Minute calculations
   const clearsPerMin = 60 / totalCycleSec;
   const honorPerMin = clearsPerMin * currentHell.pt;
-
-  // Update Main Result UI
-  elements.resHellLevel.textContent = currentHell.name;
-  elements.resSinglePt.textContent = formatHonorJapanese(currentHell.pt).num + formatHonorJapanese(currentHell.pt).unit;
 
   // Hourly Honor (Big number)
   const formattedHourly = formatHonorJapanese(honorPerHour);
@@ -1734,52 +1760,38 @@ function updateCalculation() {
   elements.clearsHourly.textContent = clearsPerHour.toFixed(2);
   elements.clearsPerMin.textContent = clearsPerMin.toFixed(2);
   elements.meatHourly.textContent = Math.round(meatPerHour).toLocaleString();
-  elements.meatPerRun.textContent = currentHell.meat;
-  
+
   // Minute Honor (in 万 pt)
   elements.honorMinuteFormatted.textContent = Math.round(honorPerMin / 10000).toLocaleString();
   
   elements.apHourly.textContent = Math.round(apPerHour).toLocaleString();
   elements.halfElixirHourly.textContent = Math.round(halfElixirPerHour).toLocaleString();
-
-  // Also update comparison state for current Hell
-  state.comparisonTimes[state.selectedHell] = state.minutes * 60 + state.seconds;
-  saveTimes();
-  renderComparisonTable();
-
-  // Update Goal
-  updateGoalCalculation();
 }
 
 // Goal Simulator Calculation
 function updateGoalCalculation() {
   const currentHell = HELL_DATA[state.selectedHell];
-  const battleSec = Math.max(1, state.minutes * 60 + state.seconds);
-  const totalCycleSec = battleSec + state.intervalSec;
-  const targetPt = state.targetHonor || 0;
-
-  if (targetPt <= 0) {
-    elements.goalTotalRuns.textContent = '0';
-    elements.goalTotalTime.textContent = '0分';
-    elements.goalTotalMeat.textContent = '0';
+  const targetPt = state.targetHonor;
+  const validGoal = Number.isSafeInteger(targetPt) && targetPt >= Number(elements.inputTargetHonor.min);
+  document.getElementById('goalError').hidden = validGoal;
+  elements.inputTargetHonor.setAttribute('aria-invalid', String(!validGoal));
+  if (!selectedTimeIsValid() || !validGoal) {
+    elements.goalTotalRuns.textContent = '—';
+    elements.goalTotalTime.textContent = '—';
+    elements.goalTotalMeat.textContent = '—';
     return;
   }
-
+  const totalCycleSec = state.comparisonTimes[state.selectedHell] + state.intervalSec;
   const requiredRuns = Math.ceil(targetPt / currentHell.pt);
   const totalSecondsNeeded = requiredRuns * totalCycleSec;
   const requiredMeat = requiredRuns * currentHell.meat;
 
-  // Format Time
-  const hours = Math.floor(totalSecondsNeeded / 3600);
-  const remainingSec = totalSecondsNeeded % 3600;
-  const minutes = Math.floor(remainingSec / 60);
-
-  let timeString = '';
-  if (hours > 0) {
-    timeString = `${hours}時間 ${minutes}分`;
-  } else {
-    timeString = `${minutes}分`;
-  }
+  // The interval slider uses tenths of a second. Round only for display.
+  const tenths = Math.round(totalSecondsNeeded * 10);
+  const hours = Math.floor(tenths / 36000);
+  const minutes = Math.floor(tenths / 600) % 60;
+  const seconds = (tenths % 600) / 10;
+  const timeString = (hours ? hours + '時間' : '') + (minutes ? minutes + '分' : '') + (seconds ? seconds + '秒' : '');
 
   elements.goalTotalRuns.textContent = requiredRuns.toLocaleString();
   elements.goalTotalTime.textContent = timeString;
@@ -1789,7 +1801,7 @@ function updateGoalCalculation() {
 // Render Comparison Matrix
 // 行(tr)と入力欄(input)は初回のみ生成し、以降は既存DOMの表示値だけを更新する。
 // (入力のたびにDOMを作り直すと、入力中のinputが破棄されてフォーカスが外れるため)
-function createComparisonRow(hell, time) {
+function createComparisonRow(hell) {
   const tr = document.createElement('tr');
 
   tr.innerHTML = `
@@ -1800,11 +1812,11 @@ function createComparisonRow(hell, time) {
       <span class="table-speed-val" style="color: var(--cyan-primary);">${formatHonorJapanese(hell.pt).num}${formatHonorJapanese(hell.pt).unit}</span>
     </td>
     <td>
-      <span style="font-family: var(--font-numbers); color: var(--text-muted); font-size: 0.85rem;">肉 ${hell.meat}個</span>
+      <span style="font-family: var(--font-numbers); color: var(--text-muted); font-size: 0.85rem;">${materialName(hell)} ${hell.meat}個</span>
     </td>
     <td>
-      <input type="number" min="0" max="3599" class="table-time-input" value="${time}" data-hell="${hell.level}">
-      <span style="font-size: 0.75rem; color: var(--text-muted);">秒 (+${state.intervalSec.toFixed(1)}秒)</span>
+      <input type="number" min="1" max="3599" class="table-time-input" aria-label="${hell.name} 討伐秒数" aria-describedby="tableHint${hell.level}" data-hell="${hell.level}">
+      <span id="tableHint${hell.level}" style="font-size: 0.75rem; color: var(--text-muted);"></span>
     </td>
     <td>
       <span style="font-family: var(--font-numbers); font-weight: 700;"></span> <span style="font-size:0.75rem; color:var(--text-muted);">周/h</span>
@@ -1831,14 +1843,16 @@ function createComparisonRow(hell, time) {
 
   // Input change
   const input = tr.querySelector('.table-time-input');
-  input.addEventListener('input', (e) => {
-    const before = state.comparisonTimes[hell.level];
-    const val = parseInt(e.target.value, 10) || 0;
-    state.comparisonTimes[hell.level] = val;
-    saveTimes();
-    syncHellChange(hell.level, before);
+  input.addEventListener('input', () => {
+    const val = input.valueAsNumber;
+    const valid = validBattleTime(val);
+    if (valid) {
+      commitBattleTime(hell.level, val);
+    } else {
+      invalidTimeDrafts.set(hell.level, input.value);
+    }
     if (hell.level === state.selectedHell) {
-      setTimeFromTotalSeconds(val);
+      setTimeFromTotalSeconds(valid ? val : null);
     } else {
       renderComparisonTable();
     }
@@ -1859,24 +1873,22 @@ function renderComparisonTable(forceInputValues = false) {
   let maxHonorPerHour = 0;
   const computedData = hellLevels.map(lvl => {
     const hell = HELL_DATA[lvl];
-    const time = state.comparisonTimes[lvl] ?? hell.defaultSec;
-    const cycleTime = time + state.intervalSec;
-    const clears = 3600 / cycleTime;
+    const time = state.comparisonTimes[lvl];
+    const valid = validBattleTime(time) && !invalidTimeDrafts.has(lvl);
+    const clears = valid ? 3600 / (time + state.intervalSec) : 0;
     const honorH = clears * hell.pt;
-    const meatH = clears * hell.meat;
     if (honorH > maxHonorPerHour) maxHonorPerHour = honorH;
-    return { hell, time, cycleTime, clears, honorH, meatH };
+    return { hell, time, valid, clears, honorH };
   });
 
-  computedData.forEach((item, idx) => {
-    const { hell, time, cycleTime, clears, honorH, meatH } = item;
+  computedData.forEach(({ hell, time, valid, clears, honorH }, idx) => {
     const isCurrent = hell.level === state.selectedHell;
     const formattedHonor = formatHonorJapanese(honorH);
     const pct = maxHonorPerHour > 0 ? ((honorH / maxHonorPerHour) * 100).toFixed(0) : 0;
 
     let tr;
     if (needBuild) {
-      tr = createComparisonRow(hell, time);
+      tr = createComparisonRow(hell);
       tbody.appendChild(tr);
     } else {
       tr = tbody.children[idx];
@@ -1887,16 +1899,18 @@ function renderComparisonTable(forceInputValues = false) {
     const cells = tr.children;
     // 入力欄: 入力中(フォーカス中)の欄にはvalueを書き戻さない
     const input = cells[3].querySelector('.table-time-input');
-    if ((forceInputValues || document.activeElement !== input) && input.value !== String(time)) {
-      input.value = time;
+    const shown = invalidTimeDrafts.get(hell.level) ?? time;
+    if ((forceInputValues || document.activeElement !== input) && input.value !== String(shown)) {
+      input.value = shown;
     }
-    cells[3].querySelector('span').textContent = `秒 (+${state.intervalSec.toFixed(1)}秒)`;
-    cells[4].querySelector('span').textContent = clears.toFixed(1);
+    input.setAttribute('aria-invalid', String(!valid));
+    cells[3].querySelector('span').textContent = valid ? `秒 (+${state.intervalSec.toFixed(1)}秒)` : '1〜3599秒の整数を入力してください';
+    cells[4].querySelector('span').textContent = valid ? clears.toFixed(1) : '—';
     const honorSpans = cells[5].querySelectorAll('span');
-    honorSpans[0].textContent = formattedHonor.num;
+    honorSpans[0].textContent = valid ? formattedHonor.num : '—';
     honorSpans[1].textContent = formattedHonor.unit;
     cells[6].querySelector('.speed-bar-fill').style.width = `${pct}%`;
-    cells[6].querySelector('.speed-pct').textContent = `${pct}%`;
+    cells[6].querySelector('.speed-pct').textContent = valid ? `${pct}%` : '—';
   });
 }
 
@@ -1914,6 +1928,7 @@ function highlightComparisonRow() {
 }
 
 function selectHell(level) {
+  invalidTimeDrafts.delete(level);
   state.selectedHell = level;
   elements.hellCards.forEach(card => {
     if (parseInt(card.dataset.level, 10) === level) {
@@ -1932,19 +1947,16 @@ function selectHell(level) {
 
 // Copy Result Function
 function copyResultToClipboard() {
+  if (!selectedTimeIsValid()) return;
   const currentHell = HELL_DATA[state.selectedHell];
-  const battleSec = state.minutes * 60 + state.seconds;
-  const totalCycleSec = battleSec + state.intervalSec;
-  const clearsPerHour = (3600 / totalCycleSec).toFixed(2);
-  const honorPerHour = (clearsPerHour * currentHell.pt);
+  const {totalCycleSec, clearsPerHour, honorPerHour, meatPerHour} = hourlyRates(currentHell, state.comparisonTimes[state.selectedHell]);
   const formattedHonor = formatHonorJapanese(honorPerHour);
-  const meatPerHour = Math.round(clearsPerHour * currentHell.meat);
 
   const text = `【古戦場時速計算】${currentHell.name}
 ・クリアタイム: ${state.minutes > 0 ? `${state.minutes}分` : ''}${state.seconds}秒 (+硬直${state.intervalSec.toFixed(1)}秒 / 実質${parseFloat(totalCycleSec.toFixed(1))}秒)
 ・貢献度時速: ${formattedHonor.num}${formattedHonor.unit} pt/h (${Math.round(honorPerHour).toLocaleString()} pt)
-・周回ペース: ${clearsPerHour} 周/h
-・消費肉ペース: ${meatPerHour.toLocaleString()} 個/h
+・周回ペース: ${clearsPerHour.toFixed(2)} 周/h
+・消費${materialName(currentHell)}ペース: ${Math.round(meatPerHour).toLocaleString()} 個/h
 #グラブル #星の古戦場`;
 
   navigator.clipboard.writeText(text).then(() => {

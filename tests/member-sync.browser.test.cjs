@@ -15,6 +15,18 @@ const selector=id=>'[data-sync="'+id+'"]';
 async function waitText(page,id,text) {
   await page.waitForFunction(({id,text})=>document.querySelector('[data-sync="'+id+'"]').textContent.includes(text),{id,text},{timeout:35000});
 }
+async function openSettings(page) {
+  await page.locator('[data-member-sync-status-only] a[href="../index.html#sec-device-sync"]').click();
+  await page.waitForURL(ORIGIN+'/index.html#sec-device-sync');
+  await page.waitForFunction(()=>document.querySelector('#sec-device-sync details')?.open &&
+    document.querySelector('#sec-device-sync [data-member-sync]').getAttribute('aria-busy')==='false');
+}
+
+async function openCalculator(page) {
+  await page.goto(URL);
+  await waitText(page,'status','接続済み');
+}
+
 async function identity(page) {
   return page.evaluate(()=>firebase.app('member-sync').auth().currentUser?.uid || null);
 }
@@ -59,7 +71,8 @@ async function editInterval(page,value) {
 test('real browser pairing, reload, admin isolation, desktop/mobile and calculator fallback', {timeout:360000}, async t=>{
   assert.equal(process.env.FIRESTORE_EMULATOR_HOST,'127.0.0.1:8080');
   assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST,'127.0.0.1:9099');
-  const server=spawn('python',['tests/member-sync-browser.py'],{env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'},stdio:['ignore','pipe','pipe'],windowsHide:true});
+  const server=spawn('python',['-B','-m','uvicorn','member-sync-release-browser:app','--app-dir','tests',
+    '--host','127.0.0.1','--port','18765','--no-access-log'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
   let serverErrors='';server.stderr.on('data',chunk=>{serverErrors+=chunk;});
   let browser;
   const output=process.env.MEMBER_SYNC_ARTIFACT_DIR || fs.mkdtempSync(path.join(os.tmpdir(),'member-sync-browser-'));
@@ -75,9 +88,17 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     browser=await chromium.launch({channel:'msedge',headless:true});
     const contexts=[];
     async function device(viewport) {
-      const context=await browser.newContext({viewport,permissions:['clipboard-read','clipboard-write']});contexts.push(context);
+      const context=await browser.newContext({viewport,serviceWorkers:'block',permissions:['clipboard-read','clipboard-write']});contexts.push(context);
       await context.route('**/*',route=>{
-        const host=new globalThis.URL(route.request().url()).hostname;
+        const requestUrl=new globalThis.URL(route.request().url());
+        const host=requestUrl.hostname;
+        if (requestUrl.origin===ORIGIN && ['/manifest.webmanifest','/icons/apple-touch-icon.png'].includes(requestUrl.pathname)) {
+          return route.fulfill({status:204,body:''});
+        }
+        if(requestUrl.origin==='https://meron-ai-api-281908486591.asia-northeast1.run.app' &&
+          ['/api/visit','/api/registered-updates'].includes(requestUrl.pathname)) {
+          return route.fulfill({json:requestUrl.pathname.endsWith('updates')?[]:{},headers:{'Access-Control-Allow-Origin':'*'}});
+        }
         if(!['127.0.0.1','localhost'].includes(host)){external.push(host+new globalThis.URL(route.request().url()).pathname);return route.abort();}
         return route.continue();
       });
@@ -92,7 +113,8 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       });
       await page.goto(URL);await page.waitForFunction(()=>globalThis.firebase?.apps.some(a=>a.name==='member-sync'));
       await page.waitForFunction(()=>document.querySelector('[data-member-sync]').getAttribute('aria-busy')==='false');
-      await page.locator('[data-member-sync] summary').click();
+      assert.equal(await page.locator('[data-member-sync-status-only] [data-sync="status"]').innerText(),'未設定');
+      assert.equal(await page.locator(selector('start')).count(),0);
       return page;
     }
     const pc=await device({width:1440,height:1000});
@@ -110,9 +132,11 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     });
     await t.test('page load creates no anonymous account; explicit start creates profile only',async()=>{
       assert.equal(await identity(pc),null);assert.equal(await identity(phone),null);
+      await openSettings(pc);await openSettings(phone);
       let inviteCalls=0;pc.on('request',r=>{if(r.url().endsWith('/invites')&&r.method()==='POST')inviteCalls++;});
       await pc.locator(selector('start')).click();await waitText(pc,'status','接続済み');
       pcUid=await identity(pc);assert(pcUid);assert.equal(inviteCalls,0);
+      await openCalculator(pc);
       const initial=await waitCloud(pc,data=>data.revision===1);
       assert.equal(initial.hellTimesSec[200],123);assert.equal(initial.intervalSec,4.2);
       await pause(1100);assert.equal((await cloud(pc)).revision,1);
@@ -122,7 +146,7 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     await t.test('reload restores the same UID and connection without another start',async()=>{
       await pc.reload();await waitText(pc,'status','接続済み');assert.equal(await identity(pc),pcUid);
       assert.deepEqual(await admins(pc,stamp+'pc'),pcAdmins);
-      await pc.locator('[data-member-sync] summary').click();assert.equal(await pc.locator(selector('start')).isVisible(),false);
+      await openSettings(pc);await waitText(pc,'status','接続済み');assert.equal(await pc.locator(selector('start')).isVisible(),false);
     });
     await t.test('issue, copy, expiry text and reissue show only the latest code',async()=>{
       await pc.locator(selector('add')).click();await pc.locator(selector('invite')).waitFor({state:'visible'});
@@ -142,13 +166,14 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       assert.equal(await phone.evaluate(async()=> (await firebase.app('member-sync').firestore().doc('memberIdentities/'+firebase.app('member-sync').auth().currentUser.uid).get({source:'server'})).exists),false);
       await phone.screenshot({path:path.join(output,'phone-pending.png'),fullPage:true});
       await phone.reload();await waitText(phone,'status','承認待ち');assert.equal(await identity(phone),phoneUid);
-      await phone.locator('[data-member-sync] summary').click();
+      assert(await phone.locator('#sec-device-sync details').evaluate(el=>el.open));
       assert.deepEqual(await admins(phone,stamp+'phone'),phoneAdmins);
     });
     await t.test('existing device detects pending automatically; one approve completes phone pairing',async()=>{
       await waitText(pc,'notice','追加申請があります');
       await pc.getByRole('button',{name:'承認',exact:true}).click();await waitText(pc,'message','端末を追加しました');
       await waitText(phone,'status','接続済み');await waitText(phone,'message','同期設定が完了しました');
+      await openCalculator(pc);await openCalculator(phone);
       await waitLocal(phone,200,123);
       assert.equal(await phone.locator('#inputInterval').inputValue(),'4.2');
       await pause(1100);assert.equal((await cloud(pc)).revision,1);
@@ -156,7 +181,8 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       assert.equal(profiles[0],profiles[1]);
       assert.deepEqual(await admins(pc,stamp+'pc'),pcAdmins);assert.deepEqual(await admins(phone,stamp+'phone'),phoneAdmins);
       await phone.reload();await waitText(phone,'status','接続済み');assert.equal(await identity(phone),phoneUid);
-      await phone.locator('[data-member-sync] summary').click();
+      await waitLocal(phone,200,123);
+      assert.equal(await phone.locator('#inputInterval').inputValue(),'4.2');
     });
     await t.test('PC 200HELL reaches phone; interval returns to PC without remote write loops',async()=>{
       const before=(await cloud(pc)).revision;
@@ -194,15 +220,15 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       assert.equal(await identity(pc),pcUid);
       assert.equal((await cloud(pc)).updatedByDeviceId,before.updatedByDeviceId);
       await pause(1200);assert.equal((await cloud(pc)).revision,before.revision);
-      await pc.locator('[data-member-sync] summary').click();
+      assert.equal(await pc.locator('#inputInterval').inputValue(),String(before.intervalSec));
     });
-    await t.test('preset and boundary zero values propagate and remain in local storage',async()=>{
+    await t.test('preset and minimum valid times propagate and remain in local storage',async()=>{
       await pc.locator('.hell-card[data-level="200"]').click();
       const chip=pc.locator('.preset-chips .chip').first();const value=Number(await chip.getAttribute('data-time'));
       await chip.click();await waitLocal(phone,200,value);
-      await editHell(pc,200,0);await waitLocal(phone,200,0);
-      assert.equal(await phone.locator('#inputMinutes').inputValue(),'0');assert.equal(await phone.locator('#inputSeconds').inputValue(),'0');
-      assert.equal((await cloud(pc)).hellTimesSec[200],0);
+      await editHell(pc,200,1);await waitLocal(phone,200,1);
+      assert.equal(await phone.locator('#inputMinutes').inputValue(),'0');assert.equal(await phone.locator('#inputSeconds').inputValue(),'1');
+      assert.equal((await cloud(pc)).hellTimesSec[200],1);
     });
     await t.test('calculator results match pre-sync checkpoint with identical inputs',async()=>{
       const baseline=execFileSync('git',['show','17d2628:speed-calculator-folder/speed-calculator.html'],{encoding:'utf8'})
@@ -210,14 +236,16 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       const base=await browser.newContext({viewport:{width:1440,height:1000}});
       await base.route('**/*',route=>route.request().url()===URL?route.fulfill({contentType:'text/html',body:baseline}):route.fulfill({status:204,body:''}));
       const page=await base.newPage();await page.goto(URL);
-      const ids=['totalBattleSeconds','cycleTotalTimeDisplay','honorHourlyFormatted','honorHourlyExact','clearsHourly','meatHourly','apHourly','goalTotalRuns','goalTotalTime','goalTotalMeat'];
+      const ids=['totalBattleSeconds','cycleTotalTimeDisplay','honorHourlyFormatted','honorHourlyExact','clearsHourly','meatHourly','apHourly','goalTotalRuns','goalTotalMeat'];
       for(const target of [pc,page]){
         await target.locator('.hell-card[data-level="200"]').click();
         await target.locator('#inputMinutes').fill('2');await target.locator('#inputSeconds').fill('10');
         await editInterval(target,4.2);await target.locator('#inputTargetHonor').fill('1000000000');
       }
       const values=target=>target.evaluate(ids=>ids.map(id=>document.getElementById(id).textContent),ids);
-      assert.deepEqual(await values(pc),await values(page));await base.close();
+      assert.deepEqual(await values(pc),await values(page));
+      assert.equal(await pc.locator('#goalTotalTime').textContent(),'1時間51分50秒');
+      await base.close();
       await waitLocal(phone,200,130);await pause(1100);
     });
     await t.test('desktop and mobile remain editable without increased page overflow',async()=>{
@@ -225,8 +253,9 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),widths[i]);
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth),true);
         assert(await page.locator('#inputSeconds').isEditable());
-        assert(await page.locator(selector('add')).isEnabled());
         await page.screenshot({path:path.join(output,i?'phone-synced.png':'desktop-synced.png'),fullPage:true});
+        await openSettings(page);await waitText(page,'status','接続済み');
+        assert(await page.locator(selector('add')).isEnabled());
       }
       assert.deepEqual(await admins(pc,stamp+'pc'),pcAdmins);assert.deepEqual(await admins(phone,stamp+'phone'),phoneAdmins);
     });
@@ -235,6 +264,7 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       const phoneCode=await phone.locator(selector('code')).textContent();
       const box=await phone.locator(selector('code')).boundingBox();assert(box.x>=0&&box.x+box.width<=390);
       const third=await device({width:390,height:844});
+      await openSettings(third);
       await third.locator(selector('join')).click();await third.locator(selector('input')).fill(phoneCode);
       await third.locator(selector('join-form')+' button').click();await waitText(third,'status','承認待ち');
       await waitText(phone,'notice','追加申請があります');
@@ -257,22 +287,27 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     });
     await t.test('invalid and consumed codes show safe errors; network loss leaves calculation and storage working',async()=>{
       const fourth=await device({width:390,height:844});
+      await openSettings(fourth);
       await fourth.locator(selector('join')).click();await fourth.locator(selector('input')).fill('not-a-code');
       await fourth.locator(selector('join-form')+' button').click();await waitText(fourth,'message','コードが正しくありません');
       assert.equal(await identity(fourth),null);
       await fourth.locator(selector('input')).fill(code);await fourth.locator(selector('join-form')+' button').click();
       await waitText(fourth,'message','このコードは使用できません');
+      // Keep the calculator loaded while testing the portal's offline error.
+      const offlineCalculator=await pc.context().newPage();
+      await openCalculator(offlineCalculator);
+      offlineCalculator.on('pageerror',error=>pageErrors.push(error.message));
       await pc.context().setOffline(true);
       await pc.route('**/api/member-sync/**',route=>route.abort('failed'));
       await pc.locator(selector('add')).click();await waitText(pc,'message','通信に失敗しました');
-      await pc.locator('#inputMinutes').fill('2');await pc.locator('#inputSeconds').fill('11');
-      await pc.locator('#inputSeconds').dispatchEvent('input');
-      assert.equal(await pc.locator('#totalBattleSeconds').textContent(),'131');
-      assert(await pc.evaluate(()=>localStorage.getItem('gbf_unf_speed_calc_times')));
-      assert((await pc.locator('#honorHourlyFormatted').textContent()).length>0);
+      await offlineCalculator.locator('#inputMinutes').fill('2');await offlineCalculator.locator('#inputSeconds').fill('11');
+      await offlineCalculator.locator('#inputSeconds').dispatchEvent('input');
+      assert.equal(await offlineCalculator.locator('#totalBattleSeconds').textContent(),'131');
+      assert(await offlineCalculator.evaluate(()=>localStorage.getItem('gbf_unf_speed_calc_times')));
+      assert((await offlineCalculator.locator('#honorHourlyFormatted').textContent()).length>0);
       await pause(1800);
-      assert.equal(await pc.locator('#totalBattleSeconds').textContent(),'131');
-      assert.equal(await pc.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[200]),131);
+      assert.equal(await offlineCalculator.locator('#totalBattleSeconds').textContent(),'131');
+      assert.equal(await offlineCalculator.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[200]),131);
       assert.deepEqual(pageErrors,[]);
     });
     // ── Block 5A-1: offline pending / reconnect replay browser tests ──────────────────────
@@ -297,6 +332,7 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
     const pc5clone=await device({width:1440,height:1000});
     await admins(pc5clone,stamp5+'pc5c');
     await t.test('Block 5A-1 setup: pair pc5 for pending tests',async()=>{
+      await openSettings(pc5);await openSettings(pc5clone);
       await pc5.locator(selector('start')).click();await waitText(pc5,'status','接続済み');
       pc5uid=await identity(pc5);assert(pc5uid);
       await pc5.locator(selector('add')).click();await pc5.locator(selector('invite')).waitFor({state:'visible'});
@@ -306,6 +342,8 @@ test('real browser pairing, reload, admin isolation, desktop/mobile and calculat
       await waitText(pc5,'notice','追加申請があります');
       await pc5.getByRole('button',{name:'承認',exact:true}).click();await waitText(pc5,'message','端末を追加しました');
       await waitText(pc5clone,'status','接続済み');
+      await openCalculator(pc5);await waitCloud(pc5,d=>d.hellTimesSec[90]===50);
+      await openCalculator(pc5clone);await waitLocal(pc5clone,90,50);
     });
     await t.test('Block 5A-1 A+F: offline change saves to pending LS; different field snapshot accepted',async()=>{
       await editHell(pc5,90,10);await waitCloud(pc5,d=>d.hellTimesSec[90]===10);
