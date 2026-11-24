@@ -19,14 +19,14 @@
 </head>
 <body>
 <main>
-<header><div class="eyebrow">2026.11 闇有利古戦場 限定 / v1.3</div><h1>250HELL サリエル落ち判定</h1><p class="sub">1ターン目・刑死あり・シャトラLv1・敵の通常攻撃2HIT／3HIT</p></header>
-<p class="notice">参考試算：敵初期ATKは過去開催の286,000を使用。今回の250HELLでの実戦一致は未確認です。「計算上の確定落ち」は実戦保証ではありません。</p>
+<header><div class="eyebrow">2026.11 闇有利古戦場 限定 / v1.4</div><h1>250HELL サリエル落ち判定</h1><p class="sub">1ターン目・刑死あり・シャトラLv1・敵の通常攻撃2HIT／3HIT</p></header>
+<p class="notice">参考試算：敵初期ATKは過去開催の286,000を使用。<br>1T目の参考：過去開催の250HELLでは、初期HP帯の通常攻撃100回の観測でDA以上100%（DA65回・TA35回、SA0回）。<br>今回の250HELLでの実戦一致は未確認です。「計算上の確定落ち」は実戦保証ではありません。</p>
 <div class="layout">
 <section class="panel" aria-labelledby="settings-title">
 <h2 id="settings-title">装備条件</h2>
 <form id="settings" novalidate>
 <div class="fields">
-<div class="field full"><label for="maxHp">サリエルの最大HP</label><input id="maxHp" name="maxHp" type="number" inputmode="numeric" step="1" min="1" max="100000000" placeholder="例：90000" required><p class="help">HPを減らす前の最大HP（装備・AF・指輪等を反映済みの値）。</p></div>
+<div class="field full"><label for="maxHp">サリエルの最大HP</label><input id="maxHp" name="maxHp" type="number" inputmode="numeric" step="1" min="1" max="100000000" placeholder="例：90000" required></div>
 <fieldset class="full"><legend>開幕HP減少</legend><div class="choicegrid">
 <label class="choice"><input type="radio" name="loss" value="40"><span>−40%<small>修羅2本</small></span></label>
 <label class="choice"><input type="radio" name="loss" value="60" checked><span>−60%<small>修羅2本＋HP消費AF</small></span></label>
@@ -34,7 +34,7 @@
 <fieldset class="full"><legend>敵の通常攻撃回数</legend><div class="choicegrid">
 <label class="choice"><input type="radio" name="hits" value="2" checked><span>2HIT<small>DA</small></span></label>
 <label class="choice"><input type="radio" name="hits" value="3"><span>3HIT<small>TA</small></span></label>
-</div><p class="help">すべてサリエルに命中する場合。2HIT・3HITの結果は右側で比較できます。</p></fieldset>
+</div></fieldset>
 <div class="field"><label for="ax1">AX防御①</label><div class="unit"><input id="ax1" type="number" inputmode="decimal" min="0" max="100" step="any" value="0" required><span>%</span></div></div>
 <div class="field"><label for="ax2">AX防御②</label><div class="unit"><input id="ax2" type="number" inputmode="decimal" min="0" max="100" step="any" value="0" required><span>%</span></div></div>
 <fieldset class="full"><legend>禁禍本（禁聖の写本・虎口III）</legend><div class="choicegrid">
@@ -46,7 +46,7 @@
 <div class="field"><label for="ring">指輪 防御UP</label><div class="unit"><input id="ring" type="number" inputmode="decimal" min="0" max="100" step="any" value="0" required><span>%</span></div></div>
 <p class="help full">防御UPの初期値0は「効果なし」です。防御効果がある人は必ず変更してください。AF防御DOWN70%は別に固定しています。</p>
 </div>
-<div class="actions"><button class="btn primary" type="button" id="example">入力例</button><button class="btn" type="button" id="reset">初期化</button></div>
+<div class="actions"><button class="btn" type="button" id="reset">初期化</button></div>
 <div id="storage" class="storage" aria-live="polite">入力はこのブラウザに保存されます。</div>
 </form>
 <details><summary>固定条件を確認する</summary>
@@ -120,7 +120,6 @@ function calculate(v){
 }
 const $=id=>document.getElementById(id), key='gf3-sariel-250hell-202611-v1', fields=['maxHp','ax1','ax2','curse','af','ring'];
 const defaults={maxHp:'',loss:'60',book:'yes',hits:'2',ax1:'0',ax2:'0',curse:'33',af:'0',ring:'0'};
-const example={...defaults,maxHp:'90000',ax1:'6',ax2:'4.5'};
 const selected=name=>document.querySelector(`input[name="${name}"]:checked`)?.value;
 function read(){return Object.fromEntries([...fields.map(id=>[id,$(id).value]),['loss',selected('loss')],['book',selected('book')],['hits',selected('hits')]])}
 function set(v){for(const id of fields)$(id).value=v[id];for(const name of ['loss','book','hits']){const el=document.querySelector(`input[name="${name}"][value="${v[name]}"]`);if(el)el.checked=true}}
@@ -168,7 +167,7 @@ function render(){
  $('verdict').dataset.state=state;put('status',status);put('margin',margin);renderComparison(base,v);
  const max=Math.max(Number(r.high),Number(r.healed),1)*1.08;const pct=n=>Math.min(100,Math.max(0,Number(n)/max*100));$('band').style.left=`${pct(r.low)}%`;$('band').style.width=`${pct(r.high)-pct(r.low)}%`;$('pin').style.left=`${pct(r.healed)}%`;put('scale',fmt(Math.ceil(max)));$('output').hidden=false;
 }
-$('settings').addEventListener('submit',e=>e.preventDefault());$('settings').addEventListener('input',render);$('settings').addEventListener('change',render);$('example').addEventListener('click',()=>{set(example);render()});$('reset').addEventListener('click',()=>{set(defaults);render()});
+$('settings').addEventListener('submit',e=>e.preventDefault());$('settings').addEventListener('input',render);$('settings').addEventListener('change',render);$('reset').addEventListener('click',()=>{set(defaults);render()});
 restore();render();
 </script>
 </body></html>
