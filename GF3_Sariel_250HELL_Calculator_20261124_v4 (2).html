@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="2026年11月闇有利古戦場・サリエル落ち判定の条件付き試算。">
+<title>250HELL サリエル落ち判定 | 闇古戦場 2026.11</title>
+<style>
+:root{--bg:#111520;--panel:#1b2130;--panel2:#222a3c;--text:#eef1f7;--sub:#bac5d9;--line:#3a455c;--accent:#bea7f3;--accent2:#d6c6fa;--ok:#91dfb3;--bad:#ffc1bb;--warn:#ffda91;--radius:14px;font-family:system-ui,-apple-system,"Segoe UI","Noto Sans JP",Meiryo,sans-serif;font-size:16px;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);line-height:1.6}button,input,select{font:inherit}button{cursor:pointer}main{max-width:1040px;margin:auto;padding:24px 20px 34px}header{padding:0 0 18px;border-bottom:1px solid var(--line);margin-bottom:16px}.eyebrow{font-size:.78rem;letter-spacing:.10em;color:var(--accent2);font-weight:700}h1{font-size:clamp(1.4rem,4.5vw,2rem);line-height:1.3;margin:.35rem 0 .45rem}h2{font-size:1.1rem;margin:0 0 .8rem}h3{font-size:.95rem;margin:0 0 .4rem}.sub{color:var(--sub);font-size:.85rem;margin:.3rem 0}.notice{font-size:.84rem;color:var(--warn);margin:0 0 16px;padding:10px 12px;border-left:3px solid #ca9f55;background:#272536;border-radius:4px 8px 8px 4px}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:14px 12px}.full{grid-column:1/-1}.field{min-width:0}label,.label{display:block;font-size:.88rem;font-weight:650;margin-bottom:5px}.unit{position:relative}.unit input{padding-right:36px}.unit span{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--sub);font-size:.88rem;pointer-events:none}input[type=number]{width:100%;border:1px solid var(--line);background:#101521;color:var(--text);border-radius:9px;padding:10px 12px;font-size:1.03rem;font-variant-numeric:tabular-nums;min-height:46px}input:disabled{opacity:.5}input:focus-visible,button:focus-visible,summary:focus-visible,.choice input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}.choicegrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}fieldset{border:0;margin:0;padding:0;min-width:0}legend{font-size:.88rem;font-weight:650;padding:0;margin-bottom:5px}.choice{position:relative;margin:0}.choice input{position:absolute;opacity:0;width:1px;height:1px}.choice span{display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;border:1px solid var(--line);border-radius:9px;min-height:50px;background:#141a27;padding:8px 4px;line-height:1.4;font-size:.95rem;cursor:pointer}.choice input:checked+span{border:2px solid var(--accent);padding:7px 3px;background:#302842;color:#f0e7ff}.choice small{font-size:.72rem;color:var(--sub);font-weight:400}.help{font-size:.76rem;color:var(--sub);line-height:1.5;margin:5px 0 0}.actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}.btn{border:1px solid var(--line);border-radius:8px;color:var(--text);background:#282f41;padding:8px 12px;font-size:.85rem;min-height:42px}.btn:hover{background:#343d52}.btn.primary{background:#3b3055;border-color:#695591}.storage{margin-top:8px;font-size:.72rem;color:var(--sub)}.result{position:sticky;top:12px}.hpgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:14px;border-bottom:1px solid var(--line)}.hpbox{padding:11px;background:var(--panel2);border-radius:10px}.k{font-size:.78rem;color:var(--sub);font-weight:500}.n{display:block;font-size:clamp(1.25rem,3.6vw,1.7rem);font-weight:750;font-variant-numeric:tabular-nums;letter-spacing:-.025em;line-height:1.3;margin-top:4px;overflow-wrap:anywhere}.recovery{margin:8px 0 0;font-size:.78rem;color:var(--sub)}.damage{padding:16px 0 13px}.mainnum{font-size:clamp(1.55rem,4vw,2.12rem);font-weight:750;letter-spacing:-.04em;line-height:1.3;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.center{font-size:.85rem;color:var(--sub);margin-top:3px}.verdict{padding:12px 0 4px;border-top:1px solid var(--line)}.verdict h3{font-size:1.4rem;line-height:1.4;color:var(--sub);margin:2px 0 4px}.verdict[data-state=fall] h3{color:var(--ok)}.verdict[data-state=survive] h3{color:var(--bad)}.verdict[data-state=random] h3{color:var(--warn)}.verdict p{margin:.25rem 0;font-size:.86rem;color:var(--sub)}.meter{position:relative;height:16px;margin:18px 0 8px;background:#3b4352;border-radius:5px}.meter-band{position:absolute;top:0;bottom:0;border-radius:4px;background:#b99862}.meter-pin{position:absolute;top:-4px;height:24px;width:3px;background:#fff;border-radius:2px}.meter-label{font-size:.73rem;color:var(--sub);display:flex;justify-content:space-between;gap:8px}.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px;border-top:1px solid var(--line);padding-top:12px}.stat strong{font-size:.95rem;display:block;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.err{font-size:.82rem;color:var(--bad);margin-top:8px}details{border-top:1px solid var(--line);margin-top:16px;padding-top:12px}summary{cursor:pointer;font-size:.88rem;font-weight:650;color:var(--accent2)}details p,details li{font-size:.81rem;color:var(--sub)}table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:8px}th,td{text-align:left;padding:6px 3px;border-bottom:1px solid var(--line);vertical-align:top}td:last-child{text-align:right;font-variant-numeric:tabular-nums}code{font-family:ui-monospace,monospace;font-size:.8em;overflow-wrap:anywhere}footer{font-size:.73rem;color:var(--sub);margin-top:18px;line-height:1.7}.hidden,[hidden]{display:none!important}
+.breakdown{margin-top:14px}.breakdown h3{font-size:.88rem;margin:12px 0 5px;color:var(--text)}.breakdown table{margin:0}.breakdown th{font-weight:500;color:var(--sub)}.breakdown td{overflow-wrap:anywhere}.breakdown .totalrow th,.breakdown .totalrow td{color:var(--text);font-weight:700;border-top:1px solid var(--line)}.calc-line{background:#141a27;border:1px solid var(--line);border-radius:8px;padding:10px 11px;margin:6px 0;font-size:.84rem;line-height:1.65;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.calc-line strong{color:var(--accent2)}.breakdown .compact{margin:6px 0;font-size:.76rem;line-height:1.5}.calc-factor{display:inline-block;white-space:nowrap}.calc-factor b{font-weight:650;color:var(--text)}.calc-factor small{font-size:.72rem;color:var(--sub)}
+.hitcompare{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.hitgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hitcard{border:1px solid var(--line);background:#141a27;border-radius:10px;padding:11px;min-width:0}.hitcard[data-selected=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}.hitstate{display:block;font-size:1rem;margin:4px 0;line-height:1.4}.hitcard[data-state=fall] .hitstate{color:var(--ok)}.hitcard[data-state=survive] .hitstate{color:var(--bad)}.hitcard[data-state=random] .hitstate{color:var(--warn)}.hitnumbers{font-weight:700;font-size:1rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.hitcard .help{font-size:.72rem}
+.reference{margin-top:16px;padding:14px 16px;border-top:1px solid var(--line);color:var(--sub);font-size:.82rem;line-height:1.6}.reference h2{color:var(--text);font-size:.95rem;margin:0 0 5px}.reference p{margin:4px 0}.reference a{color:var(--accent2);overflow-wrap:anywhere;text-underline-offset:3px}.reference a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(max-width:360px){.hitgrid{grid-template-columns:1fr}}
+@media(max-width:700px){main{padding:18px 12px 24px}.layout{grid-template-columns:1fr;gap:12px}.panel{padding:15px}.result{position:static}.fields{gap:12px 10px}.mainnum{font-size:1.9rem}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="eyebrow">2026.11 闇有利古戦場 限定 / v1.4</div><h1>250HELL サリエル落ち判定</h1><p class="sub">1ターン目・刑死あり・シャトラLv1・敵の通常攻撃2HIT／3HIT</p></header>
+<p class="notice">参考試算：敵初期ATKは過去開催の286,000を使用。<br>1T目の参考：過去開催の250HELLでは、初期HP帯の通常攻撃100回の観測でDA以上100%（DA65回・TA35回、SA0回）。<br>今回の250HELLでの実戦一致は未確認です。「計算上の確定落ち」は実戦保証ではありません。</p>
+<div class="layout">
+<section class="panel" aria-labelledby="settings-title">
+<h2 id="settings-title">装備条件</h2>
+<form id="settings" novalidate>
+<div class="fields">
+<div class="field full"><label for="maxHp">サリエルの最大HP</label><input id="maxHp" name="maxHp" type="number" inputmode="numeric" step="1" min="1" max="100000000" placeholder="例：90000" required></div>
+<fieldset class="full"><legend>開幕HP減少</legend><div class="choicegrid">
+<label class="choice"><input type="radio" name="loss" value="40"><span>−40%<small>修羅2本</small></span></label>
+<label class="choice"><input type="radio" name="loss" value="60" checked><span>−60%<small>修羅2本＋HP消費AF</small></span></label>
+</div></fieldset>
+<fieldset class="full"><legend>敵の通常攻撃回数</legend><div class="choicegrid">
+<label class="choice"><input type="radio" name="hits" value="2" checked><span>2HIT<small>DA</small></span></label>
+<label class="choice"><input type="radio" name="hits" value="3"><span>3HIT<small>TA</small></span></label>
+</div></fieldset>
+<div class="field"><label for="ax1">AX防御①</label><div class="unit"><input id="ax1" type="number" inputmode="decimal" min="0" max="100" step="any" value="0" required><span>%</span></div></div>
+<div class="field"><label for="ax2">AX防御②</label><div class="unit"><input id="ax2" type="number" inputmode="decimal" min="0" max="100" step="any" value="0" required><span>%</span></div></div>
+<fieldset class="full"><legend>禁禍本（禁聖の写本・虎口III）</legend><div class="choicegrid">
+<label class="choice"><input type="radio" name="book" value="yes" checked><span>装備あり<small>堅守を計算</small></span></label>
+<label class="choice"><input type="radio" name="book" value="no"><span>装備なし<small>堅守・魔蝕なし</small></span></label>
+</div><p class="help">極星器の防御UP25%とは別に計算します。虎口IIIはSL15・禁禍加護なし・1本限定。</p></fieldset>
+<div class="field full"><label for="curse">禁禍 防御DOWN（魔蝕）</label><div class="unit"><input id="curse" type="number" inputmode="decimal" min="0" max="99.99" step="any" value="33" required><span>%</span></div><p class="help" id="curseHelp">マイナス記号なしで入力（例：深度6なら33、効果なしなら0）。</p></div>
+<div class="field"><label for="af">AF 防御UP</label><div class="unit"><input id="af" type="number" inputmode="decimal" min="0" max="100" step="any" value="0" required><span>%</span></div></div>
+<div class="field"><label for="ring">指輪 防御UP</label><div class="unit"><input id="ring" type="number" inputmode="decimal" min="0" max="100" step="any" value="0" required><span>%</span></div></div>
+<p class="help full">防御UPの初期値0は「効果なし」です。防御効果がある人は必ず変更してください。AF防御DOWN70%は別に固定しています。</p>
+</div>
+<div class="actions"><button class="btn" type="button" id="reset">初期化</button></div>
+<div id="storage" class="storage" aria-live="polite">入力はこのブラウザに保存されます。</div>
+</form>
+<details><summary>固定条件を確認する</summary>
+<table><tbody><tr><th scope="row">敵ATK / 通常倍率</th><td>286,000 / 1倍</td></tr><tr><th scope="row">サリエル基礎防御</th><td>10</td></tr><tr><th scope="row">極星器の防御UP</th><td>25%</td></tr><tr><th scope="row">大事なもの防御UP</th><td>10%</td></tr><tr><th scope="row">水着シャトラLv1防御UP</th><td>10%</td></tr><tr><th scope="row">AF防御DOWN</th><td>70%</td></tr><tr><th scope="row">刑死による敵攻撃DOWN</th><td>10%</td></tr><tr><th scope="row">サリエル被ダメージ軽減</th><td>20%</td></tr><tr><th scope="row">有利属性補正</th><td>0.75倍</td></tr><tr><th scope="row">敵攻撃前の吸収</th><td>1,000 × 3回</td></tr><tr><th scope="row">敵通常攻撃</th><td>同一キャラに2HITまたは3HIT（選択）</td></tr><tr><th scope="row">乱数</th><td>0.950～1.050</td></tr></tbody></table>
+<p>上の条件と異なる編成（極星器の防御UP25%がない、LB防御、追加軽減、禁禍加護あり等）は対象外です。刑死・シャトラLv1・吸収3回が敵の攻撃前に成立している場合に限ります。</p></details>
+</section>
+<section class="panel result" aria-labelledby="results-title" aria-live="polite" aria-atomic="false">
+<h2 id="results-title">被ダメージ予測</h2>
+<div id="empty"><p class="sub">サリエルの最大HPを入力し、装備条件を確認してください。</p></div>
+<div id="error" class="err" role="alert" hidden></div>
+<div id="output" hidden>
+<div class="hpgrid"><div class="hpbox"><div class="k">開幕HP（堅守参照）</div><strong class="n" id="openHp">―</strong></div><div class="hpbox"><div class="k">敵攻撃直前HP</div><strong class="n" id="beforeHitHp">―</strong></div></div>
+<p class="recovery" id="healText">吸収 +3,000</p>
+<div class="damage"><div class="k" id="rangeLabel">2HIT合計 最小～最大</div><div class="mainnum" id="range">―</div><div class="center" id="central">乱数中心：―</div></div>
+<div class="verdict" id="verdict" data-state="none"><div class="k">この条件・計算モデル上の判定</div><h3 id="status">―</h3><p id="margin">―</p><div class="meter" aria-hidden="true"><div class="meter-band" id="band"></div><div class="meter-pin" id="pin"></div></div><div class="meter-label"><span>0</span><span>■ 被ダメ範囲　│敵攻撃直前HP</span><span id="scale">―</span></div></div>
+<section class="hitcompare" aria-labelledby="compareTitle"><h3 id="compareTitle">2HIT・3HITの比較</h3><div class="hitgrid">
+<div class="hitcard" id="compare2"><div class="k">2HIT（DA）</div><strong class="hitstate" id="state2">―</strong><div class="hitnumbers" id="range2">―</div><div class="k" id="center2">―</div><p class="help" id="margin2">―</p></div>
+<div class="hitcard" id="compare3"><div class="k">3HIT（TA）</div><strong class="hitstate" id="state3">―</strong><div class="hitnumbers" id="range3">―</div><div class="k" id="center3">―</div><p class="help" id="margin3">―</p></div>
+</div></section>
+<div class="stats"><div class="stat"><span class="k">武器スキル防御UP</span><strong id="weaponDef">―</strong></div><div class="stat"><span class="k">防御UP合計</span><strong id="totalDef">―</strong></div><div class="stat"><span class="k">実効防御値</span><strong id="effDef">―</strong></div><div class="stat"><span class="k">1HIT 最小～最大</span><strong id="oneHit">―</strong></div></div>
+<details class="breakdown"><summary>計算の内訳</summary>
+<h3>1. 防御UPの合計</h3>
+<table aria-label="防御UPの内訳"><tbody>
+<tr><th scope="row">極星器の防御UP</th><td>+25%</td></tr>
+<tr><th scope="row">武器の堅守（開幕HPで計算）</th><td id="fxGarrison">―</td></tr>
+<tr><th scope="row">AX防御① ＋ ②</th><td id="fxAx">―</td></tr>
+<tr><th scope="row">大事なもの</th><td>+10%</td></tr>
+<tr><th scope="row">シャトラのサポアビ（Lv1）</th><td>+10%</td></tr>
+<tr><th scope="row">AF防御UP</th><td id="fxAf">―</td></tr>
+<tr><th scope="row">指輪防御UP</th><td id="fxRing">―</td></tr>
+<tr class="totalrow"><th scope="row">防御UP合計</th><td id="fxTotal">―</td></tr>
+</tbody></table>
+<h3>2. 防御DOWNを反映</h3>
+<div class="calc-line"><span id="fxDefLine">―</span><br><span class="k">防御UPからAFの70%を引き、魔蝕の残り倍率を掛ける</span></div>
+<h3>3. 敵の攻撃ダメージ</h3>
+<div class="calc-line"><span class="calc-factor"><b>28,600</b> <small>（250HELL基礎ダメージ）</small></span><br>× <span class="calc-factor"><b>0.90</b> <small>（刑死・攻撃DOWN10%）</small></span><br>× <span class="calc-factor"><b>0.75</b> <small>（有利属性）</small></span><br>× <span class="calc-factor"><b>0.80</b> <small>（サリエル軽減20%）</small></span><br>÷ <span class="calc-factor"><b id="fxDefFactor">―</b> <small>（防御倍率）</small></span><br>× 乱数（0.95～1.05）<br><span class="k" id="fxHitNote">1HITごとに切り上げて2回分を合計</span><br><strong id="fxDamage">―</strong></div>
+<p class="compact">開幕HPで堅守を計算し、落ち判定には吸収回復後のHPを使います。表示の小数は見やすく丸めていますが、計算途中は丸めません。</p>
+<p class="compact">参考：敵ATK 286,000 ÷ 基礎防御10 = 28,600。研究台帳 v1.0.12 に基づく試算です。今回の250HELLや防御効果の全組み合わせは未検証。追加攻撃・回避・バリア等は対象外です。</p>
+</details>
+</div>
+</section>
+</div>
+<section class="reference" aria-labelledby="reference-title">
+<h2 id="reference-title">参考動画</h2>
+<p>クワトロ【分析・解説】quwatoro</p>
+<a href="https://www.youtube.com/watch?v=38IF_sJsQw4&amp;t=102s" target="_blank" rel="noopener noreferrer">【1ターン10億ダメージOVER！？】ゾーシモス限界背水軸 闇古戦場250hell討伐編成【グラブル】</a>
+<p class="help">編成・ムーブの参考（1:42 編成紹介）。この計算機の防御補正や被ダメージ式は別途研究・試算したものです。</p>
+</section>
+<footer>団員向け・独立HTML版。ネット接続不要、入力の外部送信なし。<br>GF3製品とは別ツールです。2026年11月24日版 / 研究台帳 v1.0.12 参照。</footer>
+</main>
+<script>
+'use strict';
+// Exact rational arithmetic for this provisional mathematical model.
+const gcd=(a,b)=>{a=a<0n?-a:a;b=b<0n?-b:b;while(b){[a,b]=[b,a%b]}return a||1n};
+function q(n,d=1n){n=BigInt(n);d=BigInt(d);if(!d)throw Error('分母0');if(d<0n){n=-n;d=-d}const g=gcd(n,d);return {n:n/g,d:d/g}}
+function dec(s){s=String(s).trim();if(!/^\d+(?:\.\d{1,10})?$/.test(s))throw Error('数値は0以上、小数第10位までで入力してください。');const [a,b='']=s.split('.');return q(BigInt(a+b),10n**BigInt(b.length))}
+const add=(a,b)=>q(a.n*b.d+b.n*a.d,a.d*b.d),sub=(a,b)=>q(a.n*b.d-b.n*a.d,a.d*b.d),mul=(a,b)=>q(a.n*b.n,a.d*b.d),div=(a,b)=>q(a.n*b.d,a.d*b.n),ceil=a=>a.n>=0n?(a.n+a.d-1n)/a.d:a.n/a.d;
+const ONE=q(1),HUNDRED=q(100), num=a=>Number(a.n)/Number(a.d), sum=(...a)=>a.reduce(add,q(0));
+function calculate(v){
+ const M=BigInt(v.maxHp),loss=BigInt(v.loss),h0=ceil(q(M*(100n-loss),100n));
+ const healed=h0+3000n>M?M:h0+3000n;
+ const x=sub(ONE,q(h0,M));
+ const g=v.book==='yes'?sub(mul(q(60),x),mul(q(15),mul(mul(x,x),x))):q(0);
+ const weapon=add(q(25),g), total=sum(weapon,q(20),dec(v.ax1),dec(v.ax2),dec(v.af),dec(v.ring));
+ const curse=v.book==='yes'?dec(v.curse):q(0);
+ const eff=mul(mul(q(10),sub(add(ONE,div(total,HUNDRED)),q(70,100))),sub(ONE,div(curse,HUNDRED)));
+ if(eff.n<=0n)throw Error('実効防御値が0以下です。条件を確認してください。');
+ const raw=div(q(154440),eff); // 286000 * .90 * .75 * .80
+ const lo=ceil(mul(raw,q(95,100))),mid=ceil(raw),hi=ceil(mul(raw,q(105,100)));
+ return {M,h0,healed,g,weapon,total,eff,lo,mid,hi,low:2n*lo,middle:2n*mid,high:2n*hi};
+}
+const $=id=>document.getElementById(id), key='gf3-sariel-250hell-202611-v1', fields=['maxHp','ax1','ax2','curse','af','ring'];
+const defaults={maxHp:'',loss:'60',book:'yes',hits:'2',ax1:'0',ax2:'0',curse:'33',af:'0',ring:'0'};
+const selected=name=>document.querySelector(`input[name="${name}"]:checked`)?.value;
+function read(){return Object.fromEntries([...fields.map(id=>[id,$(id).value]),['loss',selected('loss')],['book',selected('book')],['hits',selected('hits')]])}
+function set(v){for(const id of fields)$(id).value=v[id];for(const name of ['loss','book','hits']){const el=document.querySelector(`input[name="${name}"][value="${v[name]}"]`);if(el)el.checked=true}}
+function save(v){try{localStorage.setItem(key,JSON.stringify(v));$('storage').textContent='入力をこのブラウザに自動保存しています。'}catch{$('storage').textContent='自動保存できない環境です。再入力してください。'}}
+function restore(){try{const d=JSON.parse(localStorage.getItem(key)||'null');if(d&&typeof d==='object'){const v={...defaults};for(const f of fields)if(typeof d[f]==='string')v[f]=d[f];if(['40','60'].includes(d.loss))v.loss=d.loss;if(['yes','no'].includes(d.book))v.book=d.book;if(['2','3'].includes(d.hits))v.hits=d.hits;set(v)}}catch{}}
+const fmt=n=>n.toLocaleString('ja-JP'), fmtQ=(a,d=8)=>num(a).toLocaleString('ja-JP',{maximumFractionDigits:d});
+function put(id,s){$(id).textContent=s}
+function validate(v){
+ if(!/^\d+$/.test(v.maxHp)||Number(v.maxHp)<1||Number(v.maxHp)>100000000)throw Error('最大HPを1～100,000,000の整数で入力してください。');
+ if(!['40','60'].includes(v.loss)||!['yes','no'].includes(v.book))throw Error('開幕HP減少と禁禍本の有無を選んでください。');
+ if(!['2','3'].includes(v.hits))throw Error('敵の通常攻撃回数を選んでください。');
+ for(const [id,cap,label] of [['ax1',100,'AX防御①'],['ax2',100,'AX防御②'],['af',100,'AF防御UP'],['ring',100,'指輪防御UP'],['curse',99.99,'禁禍防御DOWN']]){
+  if(id==='curse'&&v.book==='no')continue;
+  try{const a=dec(v[id]);if(num(a)>cap)throw Error('range')}catch{throw Error(`${label}は0～${cap}の数値（小数第10位まで）を入力してください。効果がない場合は0です。`)}
+ }
+}
+// Display only: use the same exact fractions as the existing calculator.
+function renderBreakdown(v,r){
+ const f=a=>fmtQ(a,6), pct=a=>`${f(a)}%`, plus=a=>`+${pct(a)}`;
+ const curse=v.book==='yes'?dec(v.curse):q(0);
+ const factor=div(r.eff,q(10));
+ put('fxGarrison',v.book==='yes'?plus(r.g):'なし（0%）');
+ put('fxAx',`${plus(dec(v.ax1))} ＋ ${plus(dec(v.ax2))}`);
+ put('fxAf',plus(dec(v.af)));put('fxRing',plus(dec(v.ring)));put('fxTotal',plus(r.total));
+ put('fxDefLine',`(100% ＋ ${pct(r.total)} − 70%) × (1 − ${pct(curse)}) ≒ ${f(factor)}倍`);
+ put('fxDefFactor',f(factor));
+ put('fxHitNote',`1HITごとに切り上げて${v.hits}回分を合計`);
+ put('fxDamage',`${v.hits}HIT合計：${fmt(r.low)} ～ ${fmt(r.high)}`);
+}
+// Only the number of already-integerized hits changes; the v2 formula is untouched.
+function withHits(r,hits){const n=BigInt(hits);return {...r,low:n*r.lo,middle:n*r.mid,high:n*r.hi}}
+function outcome(r){
+ if(r.healed<=r.low)return {state:'fall',status:'計算上は確定落ち',margin:`最低ダメージまでの余裕：${fmt(r.low-r.healed)} HP`,short:`余裕 ${fmt(r.low-r.healed)} HP`};
+ if(r.healed>r.high)return {state:'survive',status:'計算上は確定生存',margin:`最大ダメージ後の残HP：${fmt(r.healed-r.high)} HP`,short:`最大被弾後 ${fmt(r.healed-r.high)} HP`};
+ return {state:'random',status:'乱数次第',margin:`確定落ちまであと ${fmt(r.healed-r.low)} HP 減らす必要があります。`,short:`落ちまであと ${fmt(r.healed-r.low)} HP`};
+}
+function renderComparison(base,v){for(const h of ['2','3']){const r=withHits(base,h),o=outcome(r);$('compare'+h).dataset.state=o.state;$('compare'+h).dataset.selected=String(h===v.hits);put('state'+h,o.status);put('range'+h,`${fmt(r.low)} ～ ${fmt(r.high)}`);put('center'+h,`乱数中心：${fmt(r.middle)}`);put('margin'+h,o.short)}}
+function render(){
+ const v=read();$('curse').disabled=v.book==='no';$('curseHelp').textContent=v.book==='no'?'禁禍本なし：魔蝕0%・堅守0%として計算します。':'マイナス記号なしで入力（例：深度6なら33、効果なしなら0）。';
+ save(v);$('error').hidden=true;$('output').hidden=true;$('empty').hidden=true;
+ if(v.maxHp===''){$('empty').hidden=false;return}
+ let r,base;try{validate(v);base=calculate(v);r=withHits(base,v.hits)}catch(e){put('error',e.message);$('error').hidden=false;return}
+ put('openHp',fmt(r.h0));put('beforeHitHp',fmt(r.healed));put('healText',`吸収 +${fmt(r.healed-r.h0)}（最大3,000）`);put('rangeLabel',`${v.hits}HIT合計 最小～最大`);put('range',`${fmt(r.low)} ～ ${fmt(r.high)}`);put('central',`乱数中心：${fmt(r.middle)}`);put('weaponDef',`${fmtQ(r.weapon)}%`);put('totalDef',`${fmtQ(r.total)}%`);put('effDef',fmtQ(r.eff));put('oneHit',`${fmt(r.lo)} ～ ${fmt(r.hi)}`);renderBreakdown(v,r);
+ const {state,status,margin}=outcome(r);
+ $('verdict').dataset.state=state;put('status',status);put('margin',margin);renderComparison(base,v);
+ const max=Math.max(Number(r.high),Number(r.healed),1)*1.08;const pct=n=>Math.min(100,Math.max(0,Number(n)/max*100));$('band').style.left=`${pct(r.low)}%`;$('band').style.width=`${pct(r.high)-pct(r.low)}%`;$('pin').style.left=`${pct(r.healed)}%`;put('scale',fmt(Math.ceil(max)));$('output').hidden=false;
+}
+$('settings').addEventListener('submit',e=>e.preventDefault());$('settings').addEventListener('input',render);$('settings').addEventListener('change',render);$('reset').addEventListener('click',()=>{set(defaults);render()});
+restore();render();
+</script>
+</body></html>
