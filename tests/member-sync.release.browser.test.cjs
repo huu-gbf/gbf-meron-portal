@@ -102,13 +102,18 @@ test('release: pairing persists across speed, portal and Artifact on PC/mobile',
     await t.test('calculator keeps bidirectional sync and links back to expanded TOP settings', async () => {
       for(const page of [pc,phone]) { await page.goto(SPEED); await waitStatus(page); }
       assert.equal(await pc.locator('[data-sync="start"]').count(),0);
-      await pc.locator('.table-time-input[data-hell="200"]').fill('42');
+      await pc.locator('.table-time-input[data-hell="200"][data-time-part="minutes"]').fill('0');
+      await pc.locator('.table-time-input[data-hell="200"][data-time-part="seconds"]').fill('42');
       await phone.waitForFunction(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))?.['200']===42);
-      await phone.locator('.table-time-input[data-hell="200"]').fill('0');
+      assert.equal(await phone.locator('.table-time-input[data-hell="200"][data-time-part="minutes"]').inputValue(),'0');
+      assert.equal(await phone.locator('.table-time-input[data-hell="200"][data-time-part="seconds"]').inputValue(),'42');
+      await phone.locator('.table-time-input[data-hell="200"][data-time-part="seconds"]').fill('0');
       assert(await phone.locator('#btnCopyResult').isDisabled());
       assert.equal(await phone.evaluate(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))[200]),42);
-      await phone.locator('.table-time-input[data-hell="200"]').fill('1');
+      await phone.locator('.table-time-input[data-hell="200"][data-time-part="seconds"]').fill('1');
       await pc.waitForFunction(()=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))?.['200']===1);
+      assert.equal(await pc.locator('.table-time-input[data-hell="200"][data-time-part="minutes"]').inputValue(),'0');
+      assert.equal(await pc.locator('.table-time-input[data-hell="200"][data-time-part="seconds"]').inputValue(),'1');
       for(const [page,expected] of [[pc,pcUid],[phone,phoneUid]]) {
         await page.locator('a[href="../index.html#sec-device-sync"]').click();
         await waitStatus(page);
@@ -170,12 +175,18 @@ test('release: pairing persists across speed, portal and Artifact on PC/mobile',
     await t.test('same speed identities restore both Artifact modes and synchronize in both directions', async () => {
       for(const [page,expected]of [[pc,pcUid],[phone,phoneUid]]) {
         await page.goto(ORIGIN+'/awakening-manager.html');
-        await page.waitForFunction(profile=>typeof artifactSync!=='undefined'&&artifactSync?.snapshot()?.ownerProfileId===profile,profileId);
-        await page.waitForFunction(async profile=>{
+        await page.waitForFunction(profile=>{
+          const snap=typeof artifactSync!=='undefined'&&artifactSync?.snapshot();
+          return snap?.ownerProfileId===profile &&
+            snap?.modes?.gw?.lastKnownResetEpoch!==null &&
+            snap?.modes?.high?.lastKnownResetEpoch!==null;
+        },profileId);
+        const allExist = await page.evaluate(async profile=>{
           const db=firebase.app('member-sync').firestore();
           const docs=await Promise.all(['awakeningGw','awakeningHigh'].map(name=>db.doc('memberProfiles/'+profile+'/settings/'+name).get({source:'server'})));
           return docs.every(doc=>doc.exists);
         },profileId);
+        assert.equal(allExist, true);
         assert.equal(await uid(page),expected);
       }
       await pc.locator('#list-slot12 input[type=checkbox]').first().setChecked(true,{force:true});

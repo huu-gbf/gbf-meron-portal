@@ -72,7 +72,10 @@ for(const persisted of [false,true]) test('mock production page restores '+(pers
     await page.waitForFunction(()=>document.querySelector('[data-member-sync]').getAttribute('aria-busy')==='false');
     if(persisted) {
       await page.waitForFunction(()=>calls.includes('memberProfiles/mock-profile/settings/speedCalculator'));
-      await page.waitForFunction(()=>document.querySelector('.table-time-input[data-hell="200"]').value==='10');
+      await page.waitForFunction(()=>
+        document.querySelector('.table-time-input[data-hell="200"][data-time-part="minutes"]').value==='0' &&
+        document.querySelector('.table-time-input[data-hell="200"][data-time-part="seconds"]').value==='10'
+      );
       assert.equal(await page.locator('#inputInterval').inputValue(),'1');
     }
     const calls=await page.evaluate(()=>window.calls);

@@ -961,6 +961,13 @@ input[type=number] {
   color: #fff;
 }
 
+.table-time-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 .table-time-input {
   background: rgba(20, 30, 55, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -968,8 +975,8 @@ input[type=number] {
   color: #fff;
   font-family: var(--font-numbers);
   font-weight: 700;
-  padding: 4px 8px;
-  width: 65px;
+  padding: 4px 6px;
+  width: 48px;
   text-align: center;
   font-size: 0.9rem;
 }
@@ -977,6 +984,19 @@ input[type=number] {
 .table-time-input:focus {
   border-color: var(--gold-primary);
   outline: none;
+}
+
+.table-time-unit {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.table-time-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 2px;
 }
 
 .table-speed-val {
@@ -1570,9 +1590,19 @@ window.addEventListener('member-sync-connection', event => {
     event.detail.client,
     () => ({hellTimesSec: {...state.comparisonTimes}, intervalSec: state.intervalSec}),
     settings => {
-      // A remote change replaces a draft only for the same difficulty.
-      for (const level of invalidTimeDrafts.keys()) {
-        if (settings.hellTimesSec[level] !== state.comparisonTimes[level]) invalidTimeDrafts.delete(level);
+      // A remote change replaces a draft only for the same difficulty when not actively mid-edit.
+      const activeEl = document.activeElement;
+      const changedLevels = new Set();
+      for (const level of [90, 95, 100, 150, 200, 250]) {
+        if (settings.hellTimesSec[level] !== state.comparisonTimes[level]) {
+          changedLevels.add(level);
+          const isEditingThisLevel =
+            (level === state.selectedHell && (activeEl === elements.inputMinutes || activeEl === elements.inputSeconds)) ||
+            (activeEl?.classList?.contains('table-time-input') && Number(activeEl.dataset.hell) === level);
+          if (!isEditingThisLevel) {
+            invalidTimeDrafts.delete(level);
+          }
+        }
       }
       state.comparisonTimes = {...settings.hellTimesSec};
       state.intervalSec = settings.intervalSec;
@@ -1580,9 +1610,14 @@ window.addEventListener('member-sync-connection', event => {
       saveInterval();
       elements.inputInterval.value = state.intervalSec;
       elements.intervalDisplay.textContent = state.intervalSec.toFixed(1);
-      if (invalidTimeDrafts.has(state.selectedHell)) updateCalculation();
-      else setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
-      renderComparisonTable(true);
+      if (invalidTimeDrafts.has(state.selectedHell)) {
+        updateCalculation();
+      } else if (changedLevels.has(state.selectedHell) || (activeEl !== elements.inputMinutes && activeEl !== elements.inputSeconds)) {
+        setTimeFromTotalSeconds(state.comparisonTimes[state.selectedHell]);
+      } else {
+        updateCalculation();
+      }
+      renderComparisonTable(changedLevels);
     },
     pendingIO
   );
@@ -1662,6 +1697,13 @@ function setupEventListeners() {
 }
 
 // Time input handlers
+function parseTimePart(input) {
+  const raw = String(input.value).trim();
+  if (!/^\d+$/.test(raw) || !input.validity.valid) return null;
+  const num = Number(raw);
+  return Number.isInteger(num) && num >= 0 && num <= 59 ? num : null;
+}
+
 function commitBattleTime(level, seconds) {
   invalidTimeDrafts.delete(level);
   if (state.comparisonTimes[level] === seconds) return;
@@ -1671,15 +1713,18 @@ function commitBattleTime(level, seconds) {
 }
 
 function handleTimeInput() {
-  const min = elements.inputMinutes.valueAsNumber;
-  const sec = elements.inputSeconds.valueAsNumber;
-  const total = min * 60 + sec;
-  if (elements.inputMinutes.validity.valid && elements.inputSeconds.validity.valid && validBattleTime(total)) {
+  const min = parseTimePart(elements.inputMinutes);
+  const sec = parseTimePart(elements.inputSeconds);
+  const total = min !== null && sec !== null ? min * 60 + sec : NaN;
+  if (validBattleTime(total)) {
     state.minutes = min;
     state.seconds = sec;
     commitBattleTime(state.selectedHell, total);
   } else {
-    invalidTimeDrafts.set(state.selectedHell, '');
+    invalidTimeDrafts.set(state.selectedHell, {
+      minutes: elements.inputMinutes.value,
+      seconds: elements.inputSeconds.value
+    });
   }
   updateCalculation();
 }
@@ -1815,8 +1860,13 @@ function createComparisonRow(hell) {
       <span style="font-family: var(--font-numbers); color: var(--text-muted); font-size: 0.85rem;">${materialName(hell)} ${hell.meat}個</span>
     </td>
     <td>
-      <input type="number" min="1" max="3599" class="table-time-input" aria-label="${hell.name} 討伐秒数" aria-describedby="tableHint${hell.level}" data-hell="${hell.level}">
-      <span id="tableHint${hell.level}" style="font-size: 0.75rem; color: var(--text-muted);"></span>
+      <div class="table-time-group">
+        <input type="number" min="0" max="59" step="1" class="table-time-input table-time-min" aria-label="${hell.name} 討伐時間（分）" aria-describedby="tableHint${hell.level}" data-hell="${hell.level}" data-time-part="minutes">
+        <span class="table-time-unit">分</span>
+        <input type="number" min="0" max="59" step="1" class="table-time-input table-time-sec" aria-label="${hell.name} 討伐時間（秒）" aria-describedby="tableHint${hell.level}" data-hell="${hell.level}" data-time-part="seconds">
+        <span class="table-time-unit">秒</span>
+        <span id="tableHint${hell.level}" class="table-time-hint"></span>
+      </div>
     </td>
     <td>
       <span style="font-family: var(--font-numbers); font-weight: 700;"></span> <span style="font-size:0.75rem; color:var(--text-muted);">周/h</span>
@@ -1841,22 +1891,41 @@ function createComparisonRow(hell) {
     }
   });
 
-  // Input change
-  const input = tr.querySelector('.table-time-input');
-  input.addEventListener('input', () => {
-    const val = input.valueAsNumber;
-    const valid = validBattleTime(val);
+  // Minutes & Seconds input changes
+  const minInput = tr.querySelector('.table-time-min');
+  const secInput = tr.querySelector('.table-time-sec');
+  const handleTableTimeInput = () => {
+    const min = parseTimePart(minInput);
+    const sec = parseTimePart(secInput);
+    const total = min !== null && sec !== null ? min * 60 + sec : NaN;
+    const valid = validBattleTime(total);
     if (valid) {
-      commitBattleTime(hell.level, val);
+      commitBattleTime(hell.level, total);
     } else {
-      invalidTimeDrafts.set(hell.level, input.value);
+      invalidTimeDrafts.set(hell.level, {
+        minutes: minInput.value,
+        seconds: secInput.value
+      });
     }
     if (hell.level === state.selectedHell) {
-      setTimeFromTotalSeconds(valid ? val : null);
+      if (valid) {
+        state.minutes = min;
+        state.seconds = sec;
+        elements.inputMinutes.value = min;
+        elements.inputSeconds.value = sec;
+      } else {
+        state.minutes = '';
+        state.seconds = '';
+        elements.inputMinutes.value = minInput.value;
+        elements.inputSeconds.value = secInput.value;
+      }
+      updateCalculation();
     } else {
       renderComparisonTable();
     }
-  });
+  };
+  minInput.addEventListener('input', handleTableTimeInput);
+  secInput.addEventListener('input', handleTableTimeInput);
 
   return tr;
 }
@@ -1898,13 +1967,23 @@ function renderComparisonTable(forceInputValues = false) {
 
     const cells = tr.children;
     // 入力欄: 入力中(フォーカス中)の欄にはvalueを書き戻さない
-    const input = cells[3].querySelector('.table-time-input');
-    const shown = invalidTimeDrafts.get(hell.level) ?? time;
-    if ((forceInputValues || document.activeElement !== input) && input.value !== String(shown)) {
-      input.value = shown;
+    const minInput = cells[3].querySelector('.table-time-min');
+    const secInput = cells[3].querySelector('.table-time-sec');
+    const hint = cells[3].querySelector('.table-time-hint');
+    const draft = invalidTimeDrafts.get(hell.level);
+    const numeric = Number.isFinite(time);
+    const shownMin = draft !== undefined ? draft.minutes : (numeric ? Math.floor(time / 60) : '');
+    const shownSec = draft !== undefined ? draft.seconds : (numeric ? time % 60 : '');
+    const forceThisRow = forceInputValues === true || (forceInputValues instanceof Set && forceInputValues.has(hell.level));
+    if ((forceThisRow || document.activeElement !== minInput) && minInput.value !== String(shownMin)) {
+      minInput.value = shownMin;
     }
-    input.setAttribute('aria-invalid', String(!valid));
-    cells[3].querySelector('span').textContent = valid ? `秒 (+${state.intervalSec.toFixed(1)}秒)` : '1〜3599秒の整数を入力してください';
+    if ((forceThisRow || document.activeElement !== secInput) && secInput.value !== String(shownSec)) {
+      secInput.value = shownSec;
+    }
+    minInput.setAttribute('aria-invalid', String(!valid));
+    secInput.setAttribute('aria-invalid', String(!valid));
+    hint.textContent = valid ? `(+${state.intervalSec.toFixed(1)}秒)` : '分・秒は0〜59の整数（合計1秒以上）で入力してください';
     cells[4].querySelector('span').textContent = valid ? clears.toFixed(1) : '—';
     const honorSpans = cells[5].querySelectorAll('span');
     honorSpans[0].textContent = valid ? formattedHonor.num : '—';

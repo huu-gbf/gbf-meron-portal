@@ -23,6 +23,9 @@ async function openSettings(page) {
 }
 
 async function openCalculator(page) {
+  if (page.url().includes('/index.html')) {
+    await page.waitForFunction(() => window.historyReadLocalState?.snapshot()?.profileId !== null);
+  }
   await page.goto(URL);
   await waitText(page,'status','接続済み');
 }
@@ -59,10 +62,15 @@ async function waitCloud(page,predicate) {
 }
 async function waitLocal(page,level,value) {
   await page.waitForFunction(({level,value})=>JSON.parse(localStorage.getItem('gbf_unf_speed_calc_times'))?.[level]===value,{level,value});
-  assert.equal(await page.locator('.table-time-input[data-hell="'+level+'"]').inputValue(),String(value));
+  assert.equal(await page.locator('.table-time-input[data-hell="'+level+'"][data-time-part="minutes"]').inputValue(),String(Math.floor(value/60)));
+  assert.equal(await page.locator('.table-time-input[data-hell="'+level+'"][data-time-part="seconds"]').inputValue(),String(value%60));
 }
 async function editHell(page,level,value) {
-  await page.locator('.table-time-input[data-hell="'+level+'"]').fill(String(value));
+  const minEl = page.locator('.table-time-input[data-hell="'+level+'"][data-time-part="minutes"]');
+  const secEl = page.locator('.table-time-input[data-hell="'+level+'"][data-time-part="seconds"]');
+  const min = String(Math.floor(value / 60)), sec = String(value % 60);
+  if ((await minEl.inputValue()) !== min) await minEl.fill(min);
+  await secEl.fill(sec);
 }
 async function editInterval(page,value) {
   await page.locator('#inputInterval').evaluate((input,value)=>{input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));},String(value));

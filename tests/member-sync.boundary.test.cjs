@@ -83,11 +83,32 @@ async function calculator(t, network, saved = {}) {
   const hide = () => window.dispatchEvent(new window.Event('pagehide'));
   const close = () => { controller.stop(); window.close(); };
   t.after(close);
+  const editHellParts = (level, minValue, secValue, activePart = 'seconds') => {
+    const minEl = window.document.querySelector('.table-time-input[data-hell="'+level+'"][data-time-part="minutes"]');
+    const secEl = window.document.querySelector('.table-time-input[data-hell="'+level+'"][data-time-part="seconds"]');
+    assert(minEl && secEl, 'comparison min/sec inputs for ' + level);
+    minEl.value = String(minValue);
+    secEl.value = String(secValue);
+    (activePart === 'minutes' ? minEl : secEl).dispatchEvent(new window.Event('input', {bubbles:true}));
+  };
+  const editHell = (level, value) => {
+    if (Number.isInteger(value) && value >= 0 && value <= 3599) {
+      editHellParts(level, Math.floor(value / 60), value % 60);
+    } else {
+      editHellParts(level, '', value);
+    }
+  };
+  const tableParts = () => levels.map(level => ({
+    minutes: window.document.querySelector('.table-time-input[data-hell="'+level+'"][data-time-part="minutes"]').value,
+    seconds: window.document.querySelector('.table-time-input[data-hell="'+level+'"][data-time-part="seconds"]').value
+  }));
   return {window, controller, input, readState, storage, pending, hide, close,
     select:level => window.document.querySelector('.hell-card[data-level="'+level+'"]').click(),
-    editHell:(level, value) => input('.table-time-input[data-hell="'+level+'"]', value),
+    editHell,
+    editHellParts,
+    tableParts,
     editInterval:value => input('#inputInterval', value),
-    table:() => levels.map(level => Number(window.document.querySelector('.table-time-input[data-hell="'+level+'"]').value))};
+    table:() => tableParts().map(({minutes, seconds}) => Number(minutes) * 60 + Number(seconds))};
 }
 async function debounce(t) {
   t.mock.timers.tick(800);
@@ -200,13 +221,15 @@ test('remote six HELL values and interval update all calculator outputs without 
 test('focused comparison input accepts a remote value without a write loop', async t => {
   t.mock.timers.enable({apis:['setTimeout']});
   const network = transport(), page = await calculator(t, network);
-  const input = page.window.document.querySelector('.table-time-input[data-hell="150"]');
-  input.focus();
-  assert.equal(page.window.document.activeElement, input);
+  const minInput = page.window.document.querySelector('.table-time-input[data-hell="150"][data-time-part="minutes"]');
+  const secInput = page.window.document.querySelector('.table-time-input[data-hell="150"][data-time-part="seconds"]');
+  secInput.focus();
+  assert.equal(page.window.document.activeElement, secInput);
   const next = network.read(); next.hellTimesSec[150] = 65;
   network.publish(next);
-  assert.equal(input.value, '65');
-  assert.equal(page.window.document.activeElement, input);
+  assert.equal(minInput.value, '1');
+  assert.equal(secInput.value, '5');
+  assert.equal(page.window.document.activeElement, secInput);
   assert.equal(page.readState().comparisonTimes[150], 65);
   await debounce(t);
   assert.deepEqual(network.writes, []);
@@ -338,4 +361,158 @@ test('200 and 250 HELL show and copy the same hourly rates with the correct mate
     assert(copied.includes('(' + exact + ' pt)'));
     assert(copied.includes('消費' + material + 'ペース: ' + text('meatHourly') + ' 個/h'));
   }
+});
+
+test('time conversion matrix, upper/lower two-way sync, difficulty independence, legacy storage compatibility and invalid input handling', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const network = transport();
+  const legacyTimes = {90:12, 95:59, 100:60, 150:75, 200:100, 250:140};
+  network.publish({hellTimesSec:{...legacyTimes}, intervalSec:3.5});
+  const page = await calculator(t, network, {
+    [timesKey]: JSON.stringify(legacyTimes),
+    [intervalKey]: '3.5'
+  });
+  const doc = page.window.document;
+  const rowMin = level => doc.querySelector('.table-time-input[data-hell="'+level+'"][data-time-part="minutes"]');
+  const rowSec = level => doc.querySelector('.table-time-input[data-hell="'+level+'"][data-time-part="seconds"]');
+
+  // D. 保存データ互換性 (旧版合計秒数データの読み込みと分・秒復元)
+  assert.deepEqual(page.tableParts(), [
+    {minutes:'0', seconds:'12'},
+    {minutes:'0', seconds:'59'},
+    {minutes:'1', seconds:'0'},
+    {minutes:'1', seconds:'15'},
+    {minutes:'1', seconds:'40'},
+    {minutes:'2', seconds:'20'}
+  ]);
+  assert.equal(doc.querySelector('#inputMinutes').value, '1');
+  assert.equal(doc.querySelector('#inputSeconds').value, '40');
+  assert.equal(doc.querySelector('#inputInterval').value, '3.5');
+
+  // A. 時間変換 (12, 59, 60, 75, 100, 140, 240, 3599)
+  const cases = [
+    [12, 0, 12],
+    [59, 0, 59],
+    [60, 1, 0],
+    [75, 1, 15],
+    [100, 1, 40],
+    [140, 2, 20],
+    [240, 4, 0],
+    [3599, 59, 59]
+  ];
+  page.select(250);
+  for (const [total, min, sec] of cases) {
+    // Upper -> Lower
+    page.input('#inputMinutes', min);
+    page.input('#inputSeconds', sec);
+    assert.equal(doc.querySelector('#totalBattleSeconds').textContent, String(total));
+    assert.equal(rowMin(250).value, String(min));
+    assert.equal(rowSec(250).value, String(sec));
+    assert.equal(JSON.parse(page.storage()[timesKey])[250], total);
+  }
+  for (const [total, min, sec] of [...cases].reverse()) {
+    // Lower -> Upper
+    page.editHellParts(250, min, sec);
+    assert.equal(doc.querySelector('#inputMinutes').value, String(min));
+    assert.equal(doc.querySelector('#inputSeconds').value, String(sec));
+    assert.equal(doc.querySelector('#totalBattleSeconds').textContent, String(total));
+    assert.equal(JSON.parse(page.storage()[timesKey])[250], total);
+  }
+
+  // B. 上下の連動 & 時速計算結果の一致
+  page.select(250);
+  page.input('#inputMinutes', 1);
+  page.input('#inputSeconds', 40);
+  assert.equal(rowMin(250).value, '1');
+  assert.equal(rowSec(250).value, '40');
+  const row250Cells = doc.querySelectorAll('#comparisonTableBody tr')[5].children;
+  assert.equal(doc.querySelector('#honorHourlyFormatted').textContent + doc.querySelector('#honorHourlyUnit').textContent,
+    row250Cells[5].textContent.trim());
+  assert.equal(Number(doc.querySelector('#clearsHourly').textContent).toFixed(1),
+    row250Cells[4].querySelector('span').textContent.trim());
+
+  page.editHellParts(250, 2, 20);
+  assert.equal(doc.querySelector('#inputMinutes').value, '2');
+  assert.equal(doc.querySelector('#inputSeconds').value, '20');
+  assert.equal(doc.querySelector('#totalBattleSeconds').textContent, '140');
+  assert.equal(doc.querySelector('#honorHourlyFormatted').textContent + doc.querySelector('#honorHourlyUnit').textContent,
+    row250Cells[5].textContent.trim());
+
+  // C. 難易度ごとの独立性
+  page.select(200);
+  page.input('#inputMinutes', 1);
+  page.input('#inputSeconds', 15);
+  page.select(250);
+  page.input('#inputMinutes', 1);
+  page.input('#inputSeconds', 40);
+  page.select(200);
+  assert.equal(doc.querySelector('#inputMinutes').value, '1');
+  assert.equal(doc.querySelector('#inputSeconds').value, '15');
+  page.select(250);
+  assert.equal(doc.querySelector('#inputMinutes').value, '1');
+  assert.equal(doc.querySelector('#inputSeconds').value, '40');
+  // Editing non-selected 200HELL in table must not change selected 250HELL
+  page.editHellParts(200, 1, 30);
+  assert.equal(page.readState().selectedHell, 250);
+  assert.equal(doc.querySelector('#inputMinutes').value, '1');
+  assert.equal(doc.querySelector('#inputSeconds').value, '40');
+  assert.equal(JSON.parse(page.storage()[timesKey])[200], 90);
+  assert.equal(JSON.parse(page.storage()[timesKey])[250], 100);
+
+  await debounce(t);
+  network.writes.length = 0;
+
+  // F. 不正入力 (空欄, 負数, 小数, 60秒以上, 60分以上, 0分0秒)
+  const invalidPairs = [
+    ['', '20'],
+    ['1', ''],
+    ['-1', '20'],
+    ['1', '-5'],
+    ['1.5', '0'],
+    ['1', '2.5'],
+    ['1', '60'],
+    ['60', '0'],
+    ['0', '0']
+  ];
+  for (const [badMin, badSec] of invalidPairs) {
+    page.editHellParts(250, badMin, badSec);
+    assert.equal(doc.querySelector('#timeError').hidden, false, `invalid ${badMin}:${badSec} must show error`);
+    assert.equal(doc.querySelector('#totalBattleSeconds').textContent, '—');
+    assert.equal(doc.querySelector('#honorHourlyFormatted').textContent, '—');
+    assert.equal(doc.querySelector('#btnCopyResult').disabled, true);
+    assert.equal(row250Cells[5].querySelector('span').textContent, '—');
+    assert.equal(JSON.parse(page.storage()[timesKey])[250], 100, 'invalid input must not overwrite saved value');
+  }
+  await debounce(t);
+  assert.deepEqual(network.writes, [], 'invalid inputs must never be synced');
+
+  // 正しい値に訂正すると正常に復帰すること
+  page.editHellParts(250, 2, 20);
+  assert.equal(doc.querySelector('#timeError').hidden, true);
+  assert.equal(doc.querySelector('#totalBattleSeconds').textContent, '140');
+  assert.equal(doc.querySelector('#btnCopyResult').disabled, false);
+  assert.equal(JSON.parse(page.storage()[timesKey])[250], 140);
+  await debounce(t);
+  assert.deepEqual(network.writes, [['hellTimesSec.250', 140]]);
+
+  // 他端末からの同期が入力途中の値（Backspace消去中や先頭0入力中）を不意に上書きしないこと
+  const sec250 = rowSec(250);
+  sec250.focus();
+  sec250.value = '';
+  sec250.dispatchEvent(new page.window.Event('input', {bubbles:true}));
+  assert.equal(sec250.value, '');
+  assert.equal(doc.querySelector('#inputSeconds').value, '');
+  const remoteWhileTyping = network.read();
+  remoteWhileTyping.hellTimesSec[90] = 15;
+  remoteWhileTyping.hellTimesSec[250] = 180;
+  network.publish(remoteWhileTyping);
+  assert.equal(sec250.value, '', 'in-progress empty seconds input must not be overwritten by remote snapshot while focused');
+  assert.equal(doc.querySelector('#inputSeconds').value, '', 'linked upper seconds input must also keep in-progress empty state');
+  sec250.value = '05';
+  sec250.dispatchEvent(new page.window.Event('input', {bubbles:true}));
+  const remoteOtherField = network.read();
+  remoteOtherField.hellTimesSec[95] = 25;
+  network.publish(remoteOtherField);
+  assert.equal(sec250.value, '05', 'focused leading-zero input must not be reformatted by unrelated remote snapshot');
+  assert.equal(doc.querySelector('#totalBattleSeconds').textContent, '125');
 });
